@@ -1,0 +1,87 @@
+package config
+
+import (
+	"time"
+
+	"github.com/spf13/viper"
+)
+
+type Config struct {
+	AppEnv  string
+	AppPort int
+	AppDebug  bool
+	Database DatabaseConfig
+	Redis    RedisConfig
+	JWT      JWTConfig
+}
+
+type DatabaseConfig struct {
+	Host     string
+	Port     string
+	User     string
+	Password string
+	DBName   string
+	SSLMode  string
+}
+
+type RedisConfig struct {
+	Host     string
+	Port     string
+	Password string
+	DB       int
+}
+
+type JWTConfig struct {
+	PrivateKeyPath string
+	PublicKeyPath  string
+	AccessExpiry   time.Duration
+	RefreshExpiry  time.Duration
+}
+
+func Load() (*Config, error) {
+	viper.SetDefault("APP_ENV", "development")
+	viper.SetDefault("APP_PORT", 8080)
+	viper.SetDefault("APP_DEBUG", true)
+	viper.SetDefault("DB_HOST", "localhost")
+	viper.SetDefault("DB_PORT", "5432")
+	viper.SetDefault("DB_USER", "postgres")
+	viper.SetDefault("DB_PASSWORD", "postgres")
+	viper.SetDefault("DB_NAME", "raffle")
+	viper.SetDefault("DB_SSL_MODE", "disable")
+	viper.SetDefault("REDIS_HOST", "localhost")
+	viper.SetDefault("REDIS_PORT", "6379")
+	viper.SetDefault("REDIS_PASSWORD", "")
+	viper.SetDefault("REDIS_DB", 0)
+	viper.SetDefault("JWT_PRIVATE_KEY_PATH", "/app/keys/private.pem")
+	viper.SetDefault("JWT_PUBLIC_KEY_PATH", "/app/keys/public.pem")
+	viper.SetDefault("JWT_ACCESS_EXPIRY", 15*time.Minute)
+	viper.SetDefault("JWT_REFRESH_EXPIRY", 7*24*time.Hour)
+
+	viper.AutomaticEnv()
+
+	return &Config{
+		AppEnv:  viper.GetString("APP_ENV"),
+		AppPort: viper.GetInt("APP_PORT"),
+		AppDebug:  viper.GetBool("APP_DEBUG"),
+		Database: DatabaseConfig{
+			Host:     viper.GetString("DB_HOST"),
+			Port:     viper.GetString("DB_PORT"),
+			User:     viper.GetString("DB_USER"),
+			Password: viper.GetString("DB_PASSWORD"),
+			DBName:   viper.GetString("DB_NAME"),
+			SSLMode:  viper.GetString("DB_SSL_MODE"),
+		},
+		Redis: RedisConfig{
+			Host:     viper.GetString("REDIS_HOST"),
+			Port:     viper.GetString("REDIS_PORT"),
+			Password: viper.GetString("REDIS_PASSWORD"),
+			DB:       viper.GetInt("REDIS_DB"),
+		},
+		JWT: JWTConfig{
+			PrivateKeyPath: viper.GetString("JWT_PRIVATE_KEY_PATH"),
+			PublicKeyPath:  viper.GetString("JWT_PUBLIC_KEY_PATH"),
+			AccessExpiry:   viper.GetDuration("JWT_ACCESS_EXPIRY"),
+			RefreshExpiry:  viper.GetDuration("JWT_REFRESH_EXPIRY"),
+		},
+	}, nil
+}

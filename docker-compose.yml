@@ -1,0 +1,122 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: raffle-postgres
+    environment:
+      POSTGRES_USER: raffle
+      POSTGRES_PASSWORD: raffle_dev
+      POSTGRES_DB: raffle_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raffle -d raffle_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - raffle-network
+    restart: unless-stopped
+    profiles:
+      - infra
+
+  redis:
+    image: redis:7-alpine
+    container_name: raffle-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - raffle-network
+    restart: unless-stopped
+    profiles:
+      - infra
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: docker/Dockerfile
+    container_name: raffle-backend
+    ports:
+      - "8080:8080"
+    environment:
+      APP_ENV: development
+      APP_PORT: 8080
+      APP_DEBUG: "true"
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: raffle
+      DB_PASSWORD: raffle_dev
+      DB_NAME: raffle_db
+      DB_SSLMODE: disable
+      DB_MAX_OPEN_CONNS: 25
+      DB_MAX_IDLE_CONNS: 5
+      DB_CONN_MAX_LIFETIME: 5m
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: 0
+      JWT_PRIVATE_KEY_PATH: /app/certs/private.pem
+      JWT_PUBLIC_KEY_PATH: /app/certs/public.pem
+      JWT_ACCESS_TOKEN_EXPIRY: 15m
+      JWT_REFRESH_TOKEN_EXPIRY: 7d
+      RATE_LIMIT_REQUESTS: 100
+      RATE_LIMIT_WINDOW: 1m
+    volumes:
+      - ./certs:/app/certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - raffle-network
+    restart: unless-stopped
+    profiles:
+      - app
+
+  minio:
+    image: minio/minio:latest
+    container_name: raffle-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - raffle-network
+    restart: unless-stopped
+    profiles:
+      - infra
+
+networks:
+  raffle-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
