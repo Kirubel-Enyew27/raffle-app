@@ -26,6 +26,12 @@ function toLocal(iso: string) {
 
 export function RaffleFormModal({ raffle, onClose }: Props) {
   const qc = useQueryClient()
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
   const [form, setForm] = useState<CreateRaffleInput>(EMPTY)
   const [error, setError] = useState('')
 
@@ -44,9 +50,10 @@ export function RaffleFormModal({ raffle, onClose }: Props) {
     }
   }, [raffle])
 
+  const numberKeys = new Set<keyof CreateRaffleInput>(['ticket_price', 'max_tickets', 'prize_pool'])
   const set = (k: keyof CreateRaffleInput) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-      setForm(f => ({ ...f, [k]: e.target.value }))
+      setForm(f => ({ ...f, [k]: numberKeys.has(k) ? Number(e.target.value) : e.target.value }))
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -63,11 +70,11 @@ export function RaffleFormModal({ raffle, onClose }: Props) {
   })
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div className="w-full max-w-lg rounded-xl bg-card p-6 shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{raffle ? 'Edit Raffle' : 'Create Raffle'}</h2>
-          <button onClick={onClose}><X className="h-5 w-5 text-muted-foreground" /></button>
+          <h2 id="modal-title" className="text-lg font-semibold">{raffle ? 'Edit Raffle' : 'Create Raffle'}</h2>
+          <button onClick={onClose} aria-label="Close"><X className="h-5 w-5 text-muted-foreground" /></button>
         </div>
 
         {error && <p className="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}

@@ -1,3 +1,4 @@
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { useAuth } from '@/contexts/AuthContext'
 import { WalletCard } from '@/features/dashboard/WalletCard'
 import { DrawCountdown } from '@/features/dashboard/DrawCountdown'
@@ -7,6 +8,7 @@ import { RecentTransactions } from '@/features/dashboard/RecentTransactions'
 import { MyTickets } from '@/features/dashboard/MyTickets'
 
 export function Component() {
+  usePageTitle('Dashboard')
   const { user } = useAuth()
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">

@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ticketApi } from '@/features/tickets/api'
 import { walletApi } from '@/features/wallet/api'
+import { usePageTitle } from '@/hooks/usePageTitle'
+import { ErrorMessage } from '@/components/ui/error-message'
 import { useCountdown } from '@/hooks/useCountdown'
 import { cn } from '@/lib/utils'
 
@@ -54,6 +56,7 @@ function PurchaseSuccess({ tickets, totalSpent, onDismiss }: {
 }
 
 export function Component() {
+  usePageTitle('Raffle detail')
   const { id } = useParams<{ id: string }>()
   const qc = useQueryClient()
   const [quantity, setQuantity] = useState(1)
@@ -180,11 +183,7 @@ export function Component() {
               />
             ) : (
               <>
-                {purchaseError && (
-                  <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    {purchaseError.message}
-                  </p>
-                )}
+                {purchaseError && <ErrorMessage message={purchaseError.message} />}
 
                 <div className="flex items-center justify-between">
                   <div>

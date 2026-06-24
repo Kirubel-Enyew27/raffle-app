@@ -6,6 +6,7 @@ import { useMutation } from '@tanstack/react-query'
 import { AuthCard } from '@/features/auth/AuthCard'
 import { authApi } from '@/features/auth/api'
 import { useAuth } from '@/contexts/AuthContext'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { FormField } from '@/components/forms/FormField'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -17,6 +18,7 @@ const schema = z.object({
 type Fields = z.infer<typeof schema>
 
 export function Component() {
+  usePageTitle('Sign in')
   const { login } = useAuth()
   const navigate = useNavigate()
 

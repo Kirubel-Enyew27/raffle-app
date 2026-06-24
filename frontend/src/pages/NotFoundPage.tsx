@@ -1,4 +1,7 @@
+import { usePageTitle } from '@/hooks/usePageTitle'
+
 export function Component() {
+  usePageTitle('Page not found')
   return (
     <div className="flex min-h-screen items-center justify-center">
       <div className="text-center space-y-2">

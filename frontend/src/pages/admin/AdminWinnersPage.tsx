@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { adminApi, type WinnerDetail } from '@/features/admin/api'
 import { WinnerVerificationModal } from '@/features/admin/WinnerVerificationModal'
 import { MarkPaidModal } from '@/features/admin/MarkPaidModal'
@@ -20,6 +21,7 @@ type Modal =
   | null
 
 export function Component() {
+  usePageTitle('Admin Winners')
   const [offset, setOffset] = useState(0)
   const [paidFilter, setPaidFilter] = useState<'' | 'true' | 'false'>('')
   const [modal, setModal] = useState<Modal>(null)

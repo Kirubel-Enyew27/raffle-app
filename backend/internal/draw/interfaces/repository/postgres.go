@@ -85,3 +85,25 @@ func (r *DrawRepo) GetCommitment(ctx context.Context, raffleID string) (*domain.
 	}
 	return commitment, nil
 }
+
+func (r *DrawRepo) FindByDrawID(ctx context.Context, drawID string) (*domain.DrawResult, error) {
+	result := &domain.DrawResult{}
+	query := `SELECT id, raffle_id, drawn_at, status, winner_ticket_number, winner_ticket_id,
+		server_seed_hash, revealed_seed, combined_hash, created_at
+		FROM raffle_draws WHERE id = $1`
+	err := r.db.QueryRowContext(ctx, query, drawID).Scan(
+		&result.ID, &result.RaffleID, &result.DrawTimestamp,
+		&result.Status, &result.WinningTicketNumber, &result.WinningTicketID,
+		&result.Proof.CommitHash, &result.Proof.RevealedSeed,
+		&result.Proof.CombinedHash, &result.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("draw not found")
+	}
+	if err != nil {
+		return nil, err
+	}
+	result.Proof.WinningNumber = result.WinningTicketNumber
+	result.Proof.VerificationURL = "/api/v1/draw/verify"
+	return result, nil
+}

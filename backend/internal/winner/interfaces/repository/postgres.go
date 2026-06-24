@@ -44,12 +44,11 @@ func (r *WinnerRepo) FindAll(ctx context.Context, limit, offset int, paidOnly *b
 		winners = append(winners, w)
 	}
 
-	countQuery := `SELECT COUNT(*) FROM winners` + where
 	var count int
 	if paidOnly != nil {
-		err = r.db.QueryRowContext(ctx, countQuery, *paidOnly).Scan(&count)
+		err = r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM winners WHERE prize_paid = $1`, *paidOnly).Scan(&count)
 	} else {
-		err = r.db.QueryRowContext(ctx, countQuery).Scan(&count)
+		err = r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM winners`).Scan(&count)
 	}
 	return winners, count, err
 }

@@ -49,11 +49,28 @@ func (a *DrawAdapter) GetProofByRaffleID(ctx context.Context, raffleID string) (
 	}
 	return &domain.DrawProof{
 		CommitHash:      r.Proof.CommitHash,
-		ServerSeedHash:  r.Proof.CommitHash,
+		ServerSeedHash:  r.Proof.CommitHash, // server_seed_hash stored as commit_hash in DB
 		RevealedSeed:    r.Proof.RevealedSeed,
 		CombinedHash:    r.Proof.CombinedHash,
 		WinningNumber:   r.Proof.WinningNumber,
 		VerificationURL: r.Proof.VerificationURL,
+	}, nil
+}
+
+func (a *DrawAdapter) FindByID(ctx context.Context, drawID string) (*domain.Draw, error) {
+	// DrawRepo doesn't have FindByID; use raffle lookup via the draw record's raffle_id.
+	// The winner domain only needs this for the winning ticket lookup via GetWinningTicket.
+	// We search by draw ID directly.
+	r, err := a.repo.FindByDrawID(ctx, drawID)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.Draw{
+		ID:            r.ID,
+		RaffleID:      r.RaffleID,
+		DrawTimestamp: r.DrawTimestamp,
+		Status:        r.Status,
+		WinningTicket: r.WinningTicketID,
 	}, nil
 }
 

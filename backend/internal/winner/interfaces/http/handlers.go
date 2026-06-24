@@ -52,6 +52,26 @@ func (h *WinnerHandler) GetWinnerDetail(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "data": winner})
 }
 
+func (h *WinnerHandler) GetWinningTicket(c *gin.Context) {
+	id := c.Param("id")
+	ticket, err := h.winnerService.GetWinningTicket(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "NOT_FOUND", "error": gin.H{"message": err.Error()}})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "data": ticket})
+}
+
+func (h *WinnerHandler) GetDrawVerification(c *gin.Context) {
+	id := c.Param("id")
+	verification, err := h.winnerService.GetDrawVerification(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": "NOT_FOUND", "error": gin.H{"message": err.Error()}})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "data": verification})
+}
+
 func (h *WinnerHandler) MarkPrizePaid(c *gin.Context) {
 	id := c.Param("id")
 	var req struct {

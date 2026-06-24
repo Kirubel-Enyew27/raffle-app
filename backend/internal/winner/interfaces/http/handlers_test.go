@@ -30,7 +30,8 @@ func newMockWinnerRepo() *mockWinnerRepo {
 
 func (m *mockWinnerRepo) Create(ctx context.Context, w *domain.Winner) error {
 	w.ID = "w-1"
-	m.winners[w.ID] = w
+	clone := *w
+	m.winners[w.ID] = &clone
 	return nil
 }
 func (m *mockWinnerRepo) FindByRaffleID(ctx context.Context, raffleID string) ([]domain.Winner, error) {
@@ -65,7 +66,6 @@ func (m *mockWinnerRepo) MarkPrizePaid(ctx context.Context, id string, paymentDa
 func (m *mockWinnerRepo) ExistsByDrawIDAndTicketID(ctx context.Context, drawID, ticketID string) (bool, error) {
 	return false, nil
 }
-
 func (m *mockWinnerRepo) FindAll(ctx context.Context, limit, offset int, paidOnly *bool) ([]domain.Winner, int, error) {
 	var list []domain.Winner
 	for _, w := range m.winners {
@@ -79,12 +79,8 @@ func (m *mockWinnerRepo) FindAll(ctx context.Context, limit, offset int, paidOnl
 		}
 		list = append(list, *w)
 	}
-
 	total := len(list)
-	sort.Slice(list, func(i, j int) bool {
-		return list[i].ID < list[j].ID
-	})
-
+	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
 	if offset >= len(list) {
 		return []domain.Winner{}, total, nil
 	}
@@ -95,19 +91,29 @@ func (m *mockWinnerRepo) FindAll(ctx context.Context, limit, offset int, paidOnl
 	return list[offset:end], total, nil
 }
 
-type stubRepo struct{}
+type stubRaffleRepo struct{}
 
-func (s *stubRepo) FindByID(ctx context.Context, id string) (*domain.Raffle, error) {
+func (s *stubRaffleRepo) FindByID(ctx context.Context, id string) (*domain.Raffle, error) {
 	return &domain.Raffle{ID: id, Title: "Test Raffle"}, nil
 }
 
 type stubDrawRepo struct{}
 
+func (s *stubDrawRepo) FindByID(ctx context.Context, drawID string) (*domain.Draw, error) {
+	return &domain.Draw{ID: drawID, RaffleID: "r-1", DrawTimestamp: time.Now()}, nil
+}
 func (s *stubDrawRepo) FindByRaffleID(ctx context.Context, raffleID string) (*domain.Draw, error) {
 	return &domain.Draw{ID: "draw-1", RaffleID: raffleID, DrawTimestamp: time.Now()}, nil
 }
 func (s *stubDrawRepo) GetProofByRaffleID(ctx context.Context, raffleID string) (*domain.DrawProof, error) {
-	return &domain.DrawProof{VerificationURL: "/api/v1/draw/verify"}, nil
+	return &domain.DrawProof{
+		CommitHash:      "commit-hash",
+		ServerSeedHash:  "server-seed-hash",
+		RevealedSeed:    "revealed",
+		CombinedHash:    "combined",
+		WinningNumber:   7,
+		VerificationURL: "/api/v1/draw/verify",
+	}, nil
 }
 
 type stubUserRepo struct{}
@@ -119,13 +125,13 @@ func (s *stubUserRepo) FindByID(ctx context.Context, id string) (*domain.User, e
 type stubTicketRepo struct{}
 
 func (s *stubTicketRepo) FindByID(ctx context.Context, id string) (*domain.Ticket, error) {
-	return &domain.Ticket{ID: id, TicketNumber: 7}, nil
+	return &domain.Ticket{ID: id, RaffleID: "r-1", UserID: "u-1", TicketNumber: 7}, nil
 }
 
 func newTestHandler() *WinnerHandler {
 	svc := application.NewWinnerService(
 		newMockWinnerRepo(),
-		&stubRepo{},
+		&stubRaffleRepo{},
 		&stubDrawRepo{},
 		&stubUserRepo{},
 		&stubTicketRepo{},
@@ -135,11 +141,34 @@ func newTestHandler() *WinnerHandler {
 }
 
 func newTestHandlerWithRepo(repo *mockWinnerRepo) *WinnerHandler {
-	svc := application.NewWinnerService(repo, &stubRepo{}, &stubDrawRepo{}, &stubUserRepo{}, &stubTicketRepo{}, nil)
+	svc := application.NewWinnerService(repo, &stubRaffleRepo{}, &stubDrawRepo{}, &stubUserRepo{}, &stubTicketRepo{}, nil)
 	return NewWinnerHandler(svc)
 }
 
-// --- tests ---
+func seedWinner(repo *mockWinnerRepo) {
+	repo.winners["w-1"] = &domain.Winner{
+		ID: "w-1", RaffleID: "r-1", DrawID: "d-1", TicketID: "t-1", UserID: "u-1",
+		PrizeAmount: 100, PrizePaid: false,
+	}
+}
+
+// --- ListWinners ---
+
+func TestListWinners_Empty(t *testing.T) {
+	r := gin.New()
+	h := newTestHandler()
+	r.GET("/winners", h.ListWinners)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/winners", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+// --- GetWinnersByRaffle ---
 
 func TestGetWinnersByRaffle_Empty(t *testing.T) {
 	r := gin.New()
@@ -154,6 +183,8 @@ func TestGetWinnersByRaffle_Empty(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 }
+
+// --- GetWinnerDetail ---
 
 func TestGetWinnerDetail_NotFound(t *testing.T) {
 	r := gin.New()
@@ -171,9 +202,7 @@ func TestGetWinnerDetail_NotFound(t *testing.T) {
 
 func TestGetWinnerDetail_Found(t *testing.T) {
 	repo := newMockWinnerRepo()
-	repo.winners["w-1"] = &domain.Winner{
-		ID: "w-1", RaffleID: "r-1", DrawID: "d-1", TicketID: "t-1", UserID: "u-1", PrizeAmount: 100,
-	}
+	seedWinner(repo)
 
 	r := gin.New()
 	h := newTestHandlerWithRepo(repo)
@@ -187,13 +216,112 @@ func TestGetWinnerDetail_Found(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 	var resp map[string]interface{}
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatal(err)
-	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp["code"] != "SUCCESS" {
 		t.Errorf("expected code SUCCESS, got %v", resp["code"])
 	}
 }
+
+// --- GetWinningTicket ---
+
+func TestGetWinningTicket_NotFound(t *testing.T) {
+	r := gin.New()
+	h := newTestHandler()
+	r.GET("/winners/:id/ticket", h.GetWinningTicket)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/winners/nonexistent/ticket", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestGetWinningTicket_Found(t *testing.T) {
+	repo := newMockWinnerRepo()
+	seedWinner(repo)
+
+	r := gin.New()
+	h := newTestHandlerWithRepo(repo)
+	r.GET("/winners/:id/ticket", h.GetWinningTicket)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/winners/w-1/ticket", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["code"] != "SUCCESS" {
+		t.Errorf("expected code SUCCESS, got %v", resp["code"])
+	}
+	data, ok := resp["data"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected data object")
+	}
+	if data["ticket_id"] != "t-1" {
+		t.Errorf("expected ticket_id t-1, got %v", data["ticket_id"])
+	}
+	if data["user_email"] != "user@example.com" {
+		t.Errorf("expected user@example.com, got %v", data["user_email"])
+	}
+}
+
+// --- GetDrawVerification ---
+
+func TestGetDrawVerification_NotFound(t *testing.T) {
+	r := gin.New()
+	h := newTestHandler()
+	r.GET("/winners/:id/verification", h.GetDrawVerification)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/winners/nonexistent/verification", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestGetDrawVerification_Found(t *testing.T) {
+	repo := newMockWinnerRepo()
+	seedWinner(repo)
+
+	r := gin.New()
+	h := newTestHandlerWithRepo(repo)
+	r.GET("/winners/:id/verification", h.GetDrawVerification)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/winners/w-1/verification", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["code"] != "SUCCESS" {
+		t.Errorf("expected code SUCCESS, got %v", resp["code"])
+	}
+	data, ok := resp["data"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected data object")
+	}
+	if data["commit_hash"] != "commit-hash" {
+		t.Errorf("expected commit-hash, got %v", data["commit_hash"])
+	}
+	if data["server_seed_hash"] != "server-seed-hash" {
+		t.Errorf("expected server-seed-hash, got %v", data["server_seed_hash"])
+	}
+	if data["verification_url"] == "" {
+		t.Error("expected non-empty verification_url")
+	}
+}
+
+// --- MarkPrizePaid ---
 
 func TestMarkPrizePaid_MissingBody(t *testing.T) {
 	r := gin.New()
@@ -212,10 +340,7 @@ func TestMarkPrizePaid_MissingBody(t *testing.T) {
 
 func TestMarkPrizePaid_Success(t *testing.T) {
 	repo := newMockWinnerRepo()
-	repo.winners["w-1"] = &domain.Winner{
-		ID: "w-1", RaffleID: "r-1", DrawID: "d-1", TicketID: "t-1", UserID: "u-1",
-		PrizeAmount: 100, PrizePaid: false,
-	}
+	seedWinner(repo)
 
 	r := gin.New()
 	h := newTestHandlerWithRepo(repo)
@@ -239,9 +364,7 @@ func TestMarkPrizePaid_Success(t *testing.T) {
 
 func TestMarkPrizePaid_AlreadyPaid(t *testing.T) {
 	repo := newMockWinnerRepo()
-	repo.winners["w-1"] = &domain.Winner{
-		ID: "w-1", PrizePaid: true,
-	}
+	repo.winners["w-1"] = &domain.Winner{ID: "w-1", PrizePaid: true}
 
 	r := gin.New()
 	h := newTestHandlerWithRepo(repo)

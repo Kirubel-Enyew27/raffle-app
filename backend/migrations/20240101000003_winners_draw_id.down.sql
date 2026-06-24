@@ -1,0 +1,12 @@
+DROP INDEX IF EXISTS idx_winners_draw_ticket;
+DROP INDEX IF EXISTS idx_winners_raffle_id;
+DROP INDEX IF EXISTS idx_winners_draw_id;
+DROP INDEX IF EXISTS idx_winners_user_id;
+ALTER TABLE winners DROP COLUMN IF EXISTS draw_id;
+ALTER TABLE winners DROP COLUMN IF EXISTS prize_paid;
+ALTER TABLE winners DROP COLUMN IF EXISTS payment_date;
+ALTER TABLE winners DROP COLUMN IF EXISTS payment_reference;
+ALTER TABLE winners DROP COLUMN IF EXISTS ticket_id;
+ALTER TABLE winners DROP COLUMN IF EXISTS created_at;
+ALTER TABLE winners DROP COLUMN IF EXISTS updated_at;
+ALTER TABLE raffle_draws DROP COLUMN IF EXISTS status;

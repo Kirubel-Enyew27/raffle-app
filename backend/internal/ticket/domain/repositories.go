@@ -20,6 +20,7 @@ type RaffleEntity struct {
 	TotalTickets int
 	SoldTickets  int
 	TicketPrice  float64
+	PrizePool    float64
 }
 
 func (r *RaffleEntity) IsActive() bool {

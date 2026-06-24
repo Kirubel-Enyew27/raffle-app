@@ -90,29 +90,43 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 		tokenString := parts[1]
 
-		userID := "00000000-0000-0000-0000-000000000001"
-		role := "user"
-
+		// Magic token "admin" for local development / E2E tests
 		if tokenString == "admin" {
-			userID = "00000000-0000-0000-0000-000000000002"
-			role = "admin"
-		} else {
-			pubKeyPath := viper.GetString("JWT_PUBLIC_KEY_PATH")
-			if pubKeyPath != "" {
-				pubKeyBytes, err := os.ReadFile(pubKeyPath)
-				if err == nil {
-					claims, err := appjwt.ParseToken(tokenString, pubKeyBytes)
-					if err == nil {
-						userID = claims.UserID
-						role = claims.Role
-					}
-				}
-			}
+			userID := "00000000-0000-0000-0000-000000000002"
+			role := "admin"
+			c.Set("user_id", userID)
+			c.Set("role", role)
+			ctx := appcontext.WithUserContext(c.Request.Context(), userID, role)
+			c.Request = c.Request.WithContext(ctx)
+			c.Next()
+			return
 		}
 
-		c.Set("user_id", userID)
-		c.Set("role", role)
-		ctx := appcontext.WithUserContext(c.Request.Context(), userID, role)
+		// Validate real JWT token with the public key
+		pubKeyPath := viper.GetString("JWT_PUBLIC_KEY_PATH")
+		if pubKeyPath == "" {
+			RespondError(c, http.StatusInternalServerError, "server misconfiguration: JWT_PUBLIC_KEY_PATH not set")
+			c.Abort()
+			return
+		}
+
+		pubKeyBytes, err := os.ReadFile(pubKeyPath)
+		if err != nil {
+			RespondError(c, http.StatusInternalServerError, "server misconfiguration: cannot read public key")
+			c.Abort()
+			return
+		}
+
+		claims, err := appjwt.ParseToken(tokenString, pubKeyBytes)
+		if err != nil {
+			RespondError(c, http.StatusUnauthorized, "invalid or expired token")
+			c.Abort()
+			return
+		}
+
+		c.Set("user_id", claims.UserID)
+		c.Set("role", claims.Role)
+		ctx := appcontext.WithUserContext(c.Request.Context(), claims.UserID, claims.Role)
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	}

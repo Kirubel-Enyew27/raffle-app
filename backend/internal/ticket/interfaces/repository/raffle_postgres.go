@@ -17,9 +17,9 @@ func NewTicketRaffleRepo(db *sql.DB) *TicketRaffleRepo {
 }
 
 func (r *TicketRaffleRepo) FindByID(ctx context.Context, id string) (*ticketdomain.RaffleEntity, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, ticket_price, total_tickets, sold_tickets, status FROM raffles WHERE id = $1`, id)
+	row := r.db.QueryRowContext(ctx, `SELECT id, ticket_price, total_tickets, sold_tickets, status, prize_pool FROM raffles WHERE id = $1`, id)
 	raffle := &ticketdomain.RaffleEntity{}
-	err := row.Scan(&raffle.ID, &raffle.TicketPrice, &raffle.TotalTickets, &raffle.SoldTickets, &raffle.Status)
+	err := row.Scan(&raffle.ID, &raffle.TicketPrice, &raffle.TotalTickets, &raffle.SoldTickets, &raffle.Status, &raffle.PrizePool)
 	if err != nil {
 		return nil, err
 	}
@@ -27,9 +27,9 @@ func (r *TicketRaffleRepo) FindByID(ctx context.Context, id string) (*ticketdoma
 }
 
 func (r *TicketRaffleRepo) FindByIDForUpdate(ctx context.Context, tx *sql.Tx, id string) (*ticketdomain.RaffleEntity, error) {
-	row := tx.QueryRowContext(ctx, `SELECT id, ticket_price, total_tickets, sold_tickets, status FROM raffles WHERE id = $1 FOR UPDATE`, id)
+	row := tx.QueryRowContext(ctx, `SELECT id, ticket_price, total_tickets, sold_tickets, status, prize_pool FROM raffles WHERE id = $1 FOR UPDATE`, id)
 	raffle := &ticketdomain.RaffleEntity{}
-	err := row.Scan(&raffle.ID, &raffle.TicketPrice, &raffle.TotalTickets, &raffle.SoldTickets, &raffle.Status)
+	err := row.Scan(&raffle.ID, &raffle.TicketPrice, &raffle.TotalTickets, &raffle.SoldTickets, &raffle.Status, &raffle.PrizePool)
 	if err != nil {
 		return nil, err
 	}

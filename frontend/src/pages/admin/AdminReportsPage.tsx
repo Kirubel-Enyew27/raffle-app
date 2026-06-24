@@ -4,6 +4,7 @@ import { RevenueReport } from '@/features/admin/RevenueReport'
 import { TicketsReport } from '@/features/admin/TicketsReport'
 import { WinnerSummaryReport } from '@/features/admin/WinnerSummaryReport'
 import { ProfitSummaryReport } from '@/features/admin/ProfitSummaryReport'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { cn } from '@/lib/utils'
 
 const TABS = [
@@ -16,6 +17,7 @@ const TABS = [
 type Tab = typeof TABS[number]['id']
 
 export function Component() {
+  usePageTitle('Admin Reports')
   const [tab, setTab] = useState<Tab>('profit')
   const [range, setRange] = useState(defaultRange)
   const [period, setPeriod] = useState('daily')

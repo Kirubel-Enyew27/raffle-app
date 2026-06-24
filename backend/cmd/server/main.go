@@ -93,15 +93,6 @@ func main() {
 		idempotencyStore,
 	)
 
-	drawSvc := drawapp.NewDrawService(
-		drawrepo.NewDrawRepo(db),
-		drawrepo.NewDrawRaffleAdapter(rafflerepo.NewRaffleRepo(db), ticketrepo.NewTicketRepo(db)),
-		ticketrepo.NewTicketRepo(db),
-		drawinfra.NewCryptoSeedService(),
-		drawinfra.NewCryptoRandomService(),
-		auditSvc,
-	)
-
 	winnerSvc := winnerapp.NewWinnerService(
 		winnerrepo.NewWinnerRepo(db),
 		winnerrepo.NewRaffleAdapter(rafflerepo.NewRaffleRepo(db)),
@@ -109,6 +100,16 @@ func main() {
 		winnerrepo.NewUserAdapter(identityrepo.NewUserRepo(db)),
 		winnerrepo.NewTicketAdapter(ticketrepo.NewTicketRepo(db)),
 		auditSvc,
+	)
+
+	drawSvc := drawapp.NewDrawService(
+		drawrepo.NewDrawRepo(db),
+		drawrepo.NewDrawRaffleAdapter(rafflerepo.NewRaffleRepo(db), ticketrepo.NewTicketRepo(db)),
+		ticketrepo.NewTicketRepo(db),
+		drawinfra.NewCryptoSeedService(),
+		drawinfra.NewCryptoRandomService(),
+		auditSvc,
+		winnerSvc,
 	)
 
 	notificationSvc := notificationapp.NewNotificationService(

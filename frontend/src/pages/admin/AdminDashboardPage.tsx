@@ -12,6 +12,7 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { adminApi, defaultRange } from '@/features/admin/api'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { cn } from '@/lib/utils'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -357,6 +358,7 @@ function UpcomingDraws() {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function Component() {
+  usePageTitle('Admin Dashboard')
   const [range, setRange] = useState(defaultRange)
   const [period, setPeriod] = useState('daily')
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,12 @@ interface Props {
 
 export function MarkPaidModal({ winner, onClose }: Props) {
   const qc = useQueryClient()
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
   const [ref, setRef] = useState('')
   const [error, setError] = useState('')
 
@@ -28,11 +34,11 @@ export function MarkPaidModal({ winner, onClose }: Props) {
   const usd = winner.prize_amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div className="w-full max-w-md rounded-xl bg-card p-6 shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Mark Prize as Paid</h2>
-          <button onClick={onClose}><X className="h-5 w-5 text-muted-foreground" /></button>
+          <h2 id="modal-title" className="text-lg font-semibold">Mark Prize as Paid</h2>
+          <button onClick={onClose} aria-label="Close"><X className="h-5 w-5 text-muted-foreground" /></button>
         </div>
 
         <div className="mb-4 rounded-lg border bg-muted/30 p-3 text-sm space-y-1">

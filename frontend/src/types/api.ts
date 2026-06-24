@@ -80,6 +80,58 @@ export interface Winner {
   payment_date?: string
   payment_reference?: string
   created_at: string
+  updated_at: string
+}
+
+export interface DrawProof {
+  commit_hash: string
+  server_seed_hash: string
+  revealed_seed: string
+  combined_hash: string
+  winning_number: number
+  verification_url: string
+}
+
+export interface WinnerDetail {
+  id: string
+  raffle_id: string
+  draw_id: string
+  ticket_id: string
+  user_id: string
+  prize_amount: number
+  prize_paid: boolean
+  payment_date?: string
+  payment_reference?: string
+  created_at: string
+  updated_at: string
+  raffle_title: string
+  ticket_number: number
+  user_email: string
+  draw_timestamp: string
+  draw_proof: DrawProof
+}
+
+export interface WinningTicket {
+  ticket_id: string
+  ticket_number: number
+  raffle_id: string
+  user_id: string
+  user_email: string
+  draw_timestamp: string
+}
+
+export interface DrawVerification {
+  draw_id: string
+  raffle_id: string
+  draw_timestamp: string
+  commit_hash: string
+  server_seed_hash: string
+  revealed_seed: string
+  combined_hash: string
+  winning_number: number
+  verification_url: string
+  winner_id: string
+  winning_ticket_id: string
 }
 
 // Notification

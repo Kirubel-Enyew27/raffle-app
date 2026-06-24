@@ -8,10 +8,15 @@ import (
 	auditapp "github.com/raffle-app/backend/internal/audit/application"
 	"github.com/raffle-app/backend/internal/draw/domain"
 	ticketdomain "github.com/raffle-app/backend/internal/ticket/domain"
+	winnerdomain "github.com/raffle-app/backend/internal/winner/domain"
 	appcontext "github.com/raffle-app/backend/pkg/context"
 	apperrors "github.com/raffle-app/backend/pkg/errors"
 	"github.com/raffle-app/backend/pkg/crypto"
 )
+
+type WinnerService interface {
+	CreateWinner(ctx context.Context, raffleID, drawID, ticketID, userID string, prizeAmount float64) (*winnerdomain.Winner, error)
+}
 
 type DrawService struct {
 	drawRepo      domain.DrawRepository
@@ -20,6 +25,7 @@ type DrawService struct {
 	seedService   domain.SeedService
 	randomService domain.RandomService
 	auditService  *auditapp.AuditService
+	winnerService WinnerService
 }
 
 func NewDrawService(
@@ -29,6 +35,7 @@ func NewDrawService(
 	seedService domain.SeedService,
 	randomService domain.RandomService,
 	auditService *auditapp.AuditService,
+	winnerService WinnerService,
 ) *DrawService {
 	return &DrawService{
 		drawRepo:      drawRepo,
@@ -37,6 +44,7 @@ func NewDrawService(
 		seedService:   seedService,
 		randomService: randomService,
 		auditService:  auditService,
+		winnerService: winnerService,
 	}
 }
 
@@ -128,6 +136,12 @@ func (s *DrawService) ExecuteDraw(ctx context.Context, raffleID string) (*domain
 
 	if err := s.raffleRepo.UpdateStatus(ctx, raffleID, "completed"); err != nil {
 		return nil, apperrors.WithField("DB_ERROR", "failed to update raffle status", 500, err)
+	}
+
+	if s.winnerService != nil {
+		if _, err := s.winnerService.CreateWinner(ctx, raffleID, result.ID, winningTicket.ID, winningTicket.UserID, raffle.PrizePool); err != nil {
+			return nil, apperrors.WithField("WINNER_ERROR", "failed to create winner record", 500, err)
+		}
 	}
 
 	if s.auditService != nil {

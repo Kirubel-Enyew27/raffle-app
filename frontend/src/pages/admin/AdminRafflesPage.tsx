@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { adminApi } from '@/features/admin/api'
 import { RaffleFormModal } from '@/features/admin/RaffleFormModal'
 import { RaffleParticipantsModal } from '@/features/admin/RaffleParticipantsModal'
@@ -33,6 +34,7 @@ type Modal =
   | null
 
 export function Component() {
+  usePageTitle('Admin Raffles')
   const qc = useQueryClient()
   const [offset, setOffset] = useState(0)
   const [statusFilter, setStatusFilter] = useState('')

@@ -20,6 +20,7 @@ type RaffleRepository interface {
 }
 
 type DrawRepository interface {
+	FindByID(ctx context.Context, drawID string) (*Draw, error)
 	FindByRaffleID(ctx context.Context, raffleID string) (*Draw, error)
 	GetProofByRaffleID(ctx context.Context, raffleID string) (*DrawProof, error)
 }

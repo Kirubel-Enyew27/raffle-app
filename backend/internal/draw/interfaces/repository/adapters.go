@@ -29,6 +29,7 @@ func (a *DrawRaffleAdapter) FindByID(ctx context.Context, id string) (*ticketdom
 		TotalTickets: r.TotalTickets,
 		SoldTickets:  r.SoldTickets,
 		TicketPrice:  r.TicketPrice,
+		PrizePool:    r.PrizePool,
 	}, nil
 }
 

@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link } from 'react-router-dom'
 import { AuthCard } from '@/features/auth/AuthCard'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { FormField } from '@/components/forms/FormField'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -14,6 +15,7 @@ const schema = z.object({
 type Fields = z.infer<typeof schema>
 
 export function Component() {
+  usePageTitle('Forgot password')
   const [submitted, setSubmitted] = useState(false)
 
   const { register, handleSubmit, formState: { errors } } = useForm<Fields>({
@@ -44,6 +46,10 @@ export function Component() {
               Sign in
             </Link>
           </p>
+          <div className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+            ⚠ Password reset email delivery is not yet configured.
+            Contact support if you're locked out.
+          </div>
         </div>
       </AuthCard>
     )

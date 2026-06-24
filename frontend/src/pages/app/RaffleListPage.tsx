@@ -8,7 +8,9 @@ import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { ticketApi } from '@/features/tickets/api'
+import { ErrorMessage } from '@/components/ui/error-message'
 import { cn } from '@/lib/utils'
 import type { Raffle } from '@/types/api'
 
@@ -91,6 +93,7 @@ function RaffleCardSkeleton() {
 }
 
 export function Component() {
+  usePageTitle('Raffles')
   const [page, setPage] = useState(0)
   const [status, setStatus] = useState('active')
   const [search, setSearch] = useState('')
@@ -138,11 +141,7 @@ export function Component() {
         </Select>
       </div>
 
-      {error && (
-        <p className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          Failed to load raffles
-        </p>
-      )}
+      {error && <ErrorMessage message="Failed to load raffles" />}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {isLoading

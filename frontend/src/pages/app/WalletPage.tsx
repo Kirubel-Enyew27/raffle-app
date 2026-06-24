@@ -10,7 +10,9 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { FormField } from '@/components/forms/FormField'
+import { ErrorMessage } from '@/components/ui/error-message'
 import { walletApi } from '@/features/wallet/api'
 import { cn } from '@/lib/utils'
 
@@ -83,11 +85,7 @@ function TxForm({ type, onSuccess }: TxFormProps) {
 
   return (
     <form onSubmit={handleSubmit(d => mutate(d))} className="space-y-3">
-      {error && (
-        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error.message}
-        </p>
-      )}
+      {error && <ErrorMessage message={error.message} />}
 
       <FormField label="Amount" htmlFor="amount" error={errors.amount?.message as string | undefined}>
         <div className="relative">
@@ -178,7 +176,7 @@ function TransactionHistory() {
               ))}
 
               {error && (
-                <tr><td colSpan={5} className="py-6 text-center text-sm text-destructive">
+                <tr><td colSpan={5} className="py-6 text-center text-destructive">
                   Failed to load transactions
                 </td></tr>
               )}
@@ -241,6 +239,7 @@ function TransactionHistory() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export function Component() {
+  usePageTitle('Wallet')
   const [activeForm, setActiveForm] = useState<'deposit' | 'withdraw' | null>(null)
 
   return (

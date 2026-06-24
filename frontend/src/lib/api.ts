@@ -18,7 +18,12 @@ api.interceptors.response.use(
   (err: AxiosError<{ error?: { message?: string }; message?: string }>) => {
     if (err.response?.status === 401) {
       localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      // Redirect immediately and suppress the error from reaching components.
+      // The never-settling promise prevents React Query from updating error state
+      // before the page navigation takes over.
       window.location.href = '/login'
+      return new Promise<never>(() => {})
     }
     const message =
       err.response?.data?.error?.message ??

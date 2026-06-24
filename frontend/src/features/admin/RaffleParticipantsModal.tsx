@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -10,6 +11,12 @@ interface Props {
 }
 
 export function RaffleParticipantsModal({ raffle, onClose }: Props) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
   const { data, isLoading } = useQuery({
     queryKey: ['raffle-tickets', raffle.id],
     queryFn: () => adminApi.listRaffleTickets(raffle.id),
@@ -31,14 +38,14 @@ export function RaffleParticipantsModal({ raffle, onClose }: Props) {
     : []
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div className="flex w-full max-w-2xl flex-col rounded-xl bg-card shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b px-6 py-4">
           <div>
-            <h2 className="text-lg font-semibold">Participants</h2>
+            <h2 id="modal-title" className="text-lg font-semibold">Participants</h2>
             <p className="text-sm text-muted-foreground">{raffle.title}</p>
           </div>
-          <button onClick={onClose}><X className="h-5 w-5 text-muted-foreground" /></button>
+          <button onClick={onClose} aria-label="Close"><X className="h-5 w-5 text-muted-foreground" /></button>
         </div>
 
         <div className="overflow-auto p-6" style={{ maxHeight: '60vh' }}>

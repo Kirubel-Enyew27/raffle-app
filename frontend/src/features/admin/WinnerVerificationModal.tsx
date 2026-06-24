@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { X, CheckCircle } from 'lucide-react'
 import type { WinnerDetail } from '@/features/admin/api'
 
@@ -16,17 +17,23 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 export function WinnerVerificationModal({ winner, onClose }: Props) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
   const proof = winner.draw_proof
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div className="w-full max-w-xl rounded-xl bg-card shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b px-6 py-4">
           <div className="flex items-center gap-2">
             <CheckCircle className="h-5 w-5 text-green-500" />
-            <h2 className="text-lg font-semibold">Draw Verification</h2>
+            <h2 id="modal-title" className="text-lg font-semibold">Draw Verification</h2>
           </div>
-          <button onClick={onClose}><X className="h-5 w-5 text-muted-foreground" /></button>
+          <button onClick={onClose} aria-label="Close"><X className="h-5 w-5 text-muted-foreground" /></button>
         </div>
 
         <div className="px-6 py-4 space-y-0">

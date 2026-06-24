@@ -35,7 +35,6 @@ func (m *memWinnerRepo) Create(ctx context.Context, w *domain.Winner) error {
 	}
 	clone := *w
 	m.winners[key] = &clone
-	// also index by ID
 	m.winners[w.ID] = &clone
 	return nil
 }
@@ -108,12 +107,8 @@ func (m *memWinnerRepo) FindAll(ctx context.Context, limit, offset int, paidOnly
 		}
 		list = append(list, *w)
 	}
-
 	total := len(list)
-	sort.Slice(list, func(i, j int) bool {
-		return list[i].ID < list[j].ID
-	})
-
+	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
 	if offset >= len(list) {
 		return []domain.Winner{}, total, nil
 	}
@@ -132,11 +127,23 @@ func (r *memRaffleRepo) FindByID(_ context.Context, id string) (*domain.Raffle, 
 
 type memDrawRepo struct{}
 
+func (r *memDrawRepo) FindByID(_ context.Context, drawID string) (*domain.Draw, error) {
+	return &domain.Draw{ID: drawID, RaffleID: "raffle-1", DrawTimestamp: time.Now(), Status: "completed"}, nil
+}
+
 func (r *memDrawRepo) FindByRaffleID(_ context.Context, raffleID string) (*domain.Draw, error) {
 	return &domain.Draw{ID: "draw-1", RaffleID: raffleID, DrawTimestamp: time.Now(), Status: "completed"}, nil
 }
+
 func (r *memDrawRepo) GetProofByRaffleID(_ context.Context, raffleID string) (*domain.DrawProof, error) {
-	return &domain.DrawProof{CommitHash: "abc", VerificationURL: "/api/v1/draw/verify"}, nil
+	return &domain.DrawProof{
+		CommitHash:      "commit-abc",
+		ServerSeedHash:  "seed-hash-xyz",
+		RevealedSeed:    "server-seed-revealed",
+		CombinedHash:    "combined-hash-123",
+		WinningNumber:   42,
+		VerificationURL: "/api/v1/draw/verify",
+	}, nil
 }
 
 type memUserRepo struct{}
@@ -159,6 +166,56 @@ func newService() (*application.WinnerService, *memWinnerRepo) {
 
 // ---- tests ----
 
+func TestIntegration_ProcessDrawResult_Success(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+
+	w, err := svc.ProcessDrawResult(ctx, domain.ProcessDrawInput{
+		RaffleID:        "raffle-1",
+		DrawID:          "draw-1",
+		WinningTicketID: "ticket-1",
+		WinningUserID:   "user-1",
+		PrizeAmount:     500.0,
+		DrawTimestamp:   time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("ProcessDrawResult: %v", err)
+	}
+	if w.ID == "" {
+		t.Fatal("expected winner ID to be set")
+	}
+	if w.DrawID != "draw-1" {
+		t.Errorf("expected draw-1, got %s", w.DrawID)
+	}
+	if w.PrizePaid {
+		t.Error("winner should not be paid initially")
+	}
+}
+
+func TestIntegration_ProcessDrawResult_InvalidPrize(t *testing.T) {
+	svc, _ := newService()
+	_, err := svc.ProcessDrawResult(context.Background(), domain.ProcessDrawInput{
+		RaffleID: "raffle-1", DrawID: "draw-1",
+		WinningTicketID: "ticket-1", WinningUserID: "user-1",
+		PrizeAmount: -1,
+	})
+	if err == nil {
+		t.Fatal("expected error for negative prize")
+	}
+}
+
+func TestIntegration_ProcessDrawResult_MissingTicket(t *testing.T) {
+	svc, _ := newService()
+	_, err := svc.ProcessDrawResult(context.Background(), domain.ProcessDrawInput{
+		RaffleID: "raffle-1", DrawID: "draw-1",
+		WinningTicketID: "", WinningUserID: "user-1",
+		PrizeAmount: 100,
+	})
+	if err == nil {
+		t.Fatal("expected error for missing ticket")
+	}
+}
+
 func TestIntegration_CreateAndRetrieveWinner(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
@@ -179,13 +236,13 @@ func TestIntegration_CreateAndRetrieveWinner(t *testing.T) {
 		t.Errorf("expected prize 500, got %f", detail.PrizeAmount)
 	}
 	if detail.UserEmail != "winner@example.com" {
-		t.Errorf("expected email winner@example.com, got %s", detail.UserEmail)
+		t.Errorf("expected winner@example.com, got %s", detail.UserEmail)
 	}
 	if detail.TicketNumber != 42 {
 		t.Errorf("expected ticket number 42, got %d", detail.TicketNumber)
 	}
 	if detail.RaffleTitle != "Grand Raffle" {
-		t.Errorf("expected raffle title 'Grand Raffle', got %s", detail.RaffleTitle)
+		t.Errorf("expected 'Grand Raffle', got %s", detail.RaffleTitle)
 	}
 }
 
@@ -202,11 +259,81 @@ func TestIntegration_PreventDuplicateWinner(t *testing.T) {
 	}
 }
 
-func TestIntegration_InvalidPrizeAmount(t *testing.T) {
+func TestIntegration_GetWinningTicket(t *testing.T) {
 	svc, _ := newService()
-	_, err := svc.CreateWinner(context.Background(), "raffle-1", "draw-1", "ticket-1", "user-1", 0)
+	ctx := context.Background()
+
+	w, err := svc.CreateWinner(ctx, "raffle-1", "draw-1", "ticket-1", "user-1", 100.0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ticket, err := svc.GetWinningTicket(ctx, w.ID)
+	if err != nil {
+		t.Fatalf("GetWinningTicket: %v", err)
+	}
+	if ticket.TicketID != "ticket-1" {
+		t.Errorf("expected ticket-1, got %s", ticket.TicketID)
+	}
+	if ticket.TicketNumber != 42 {
+		t.Errorf("expected 42, got %d", ticket.TicketNumber)
+	}
+	if ticket.UserEmail != "winner@example.com" {
+		t.Errorf("expected winner@example.com, got %s", ticket.UserEmail)
+	}
+	if ticket.DrawTimestamp.IsZero() {
+		t.Error("expected draw timestamp to be set")
+	}
+}
+
+func TestIntegration_GetWinningTicket_NotFound(t *testing.T) {
+	svc, _ := newService()
+
+	_, err := svc.GetWinningTicket(context.Background(), "nonexistent")
 	if err == nil {
-		t.Fatal("expected error for zero prize amount")
+		t.Fatal("expected error for nonexistent winner")
+	}
+}
+
+func TestIntegration_GetDrawVerification(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+
+	w, err := svc.CreateWinner(ctx, "raffle-1", "draw-1", "ticket-1", "user-1", 100.0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	verification, err := svc.GetDrawVerification(ctx, w.ID)
+	if err != nil {
+		t.Fatalf("GetDrawVerification: %v", err)
+	}
+	if verification.CommitHash != "commit-abc" {
+		t.Errorf("expected commit-abc, got %s", verification.CommitHash)
+	}
+	if verification.ServerSeedHash != "seed-hash-xyz" {
+		t.Errorf("expected seed-hash-xyz, got %s", verification.ServerSeedHash)
+	}
+	if verification.RevealedSeed != "server-seed-revealed" {
+		t.Errorf("expected server-seed-revealed, got %s", verification.RevealedSeed)
+	}
+	if verification.WinnerID != w.ID {
+		t.Errorf("expected winner ID %s, got %s", w.ID, verification.WinnerID)
+	}
+	if verification.WinningTicketID != "ticket-1" {
+		t.Errorf("expected ticket-1, got %s", verification.WinningTicketID)
+	}
+	if verification.VerificationURL == "" {
+		t.Error("expected verification URL to be set")
+	}
+}
+
+func TestIntegration_GetDrawVerification_NotFound(t *testing.T) {
+	svc, _ := newService()
+
+	_, err := svc.GetDrawVerification(context.Background(), "nonexistent")
+	if err == nil {
+		t.Fatal("expected error for nonexistent winner")
 	}
 }
 
@@ -242,7 +369,7 @@ func TestIntegration_MarkPrizePaid(t *testing.T) {
 		t.Error("expected PrizePaid=true")
 	}
 	if paid.PaymentReference != "tx-ref-001" {
-		t.Errorf("expected ref tx-ref-001, got %s", paid.PaymentReference)
+		t.Errorf("expected tx-ref-001, got %s", paid.PaymentReference)
 	}
 	if paid.PaymentDate == nil {
 		t.Error("expected PaymentDate to be set")
@@ -267,5 +394,34 @@ func TestIntegration_MarkPrizePaid_WinnerNotFound(t *testing.T) {
 	_, err := svc.MarkPrizePaid(context.Background(), "nonexistent", "tx-x")
 	if err == nil {
 		t.Fatal("expected error for nonexistent winner")
+	}
+}
+
+func TestIntegration_ListAll_PaidFilter(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+
+	w, _ := svc.CreateWinner(ctx, "raffle-1", "draw-1", "ticket-1", "user-1", 100.0)
+	svc.MarkPrizePaid(ctx, w.ID, "tx-paid")
+
+	paidTrue := true
+	paid, total, err := svc.ListAll(ctx, 20, 0, &paidTrue)
+	if err != nil {
+		t.Fatalf("ListAll: %v", err)
+	}
+	if total != 1 {
+		t.Errorf("expected total 1, got %d", total)
+	}
+	if len(paid) != 1 || !paid[0].PrizePaid {
+		t.Error("expected 1 paid winner")
+	}
+
+	paidFalse := false
+	unpaid, _, err := svc.ListAll(ctx, 20, 0, &paidFalse)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(unpaid) != 0 {
+		t.Errorf("expected 0 unpaid winners, got %d", len(unpaid))
 	}
 }
