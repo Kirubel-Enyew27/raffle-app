@@ -33,7 +33,7 @@ export interface Raffle {
   ticket_price: number
   total_tickets: number
   sold_tickets: number
-  status: 'scheduled' | 'active' | 'completed' | 'cancelled'
+  status: 'scheduled' | 'active' | 'completed' | 'cancelled' | 'draft' | 'closed'
   draw_date: string
   prize_pool: number
   currency: string

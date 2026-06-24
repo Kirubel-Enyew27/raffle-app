@@ -7,6 +7,7 @@ import (
 
 type WinnerRepository interface {
 	Create(ctx context.Context, winner *Winner) error
+	FindAll(ctx context.Context, limit, offset int, paidOnly *bool) ([]Winner, int, error)
 	FindByRaffleID(ctx context.Context, raffleID string) ([]Winner, error)
 	FindByDrawID(ctx context.Context, drawID string) ([]Winner, error)
 	FindByID(ctx context.Context, id string) (*Winner, error)

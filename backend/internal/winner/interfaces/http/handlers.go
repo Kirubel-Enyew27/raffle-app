@@ -2,6 +2,7 @@ package http
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/raffle-app/backend/internal/winner/application"
@@ -13,6 +14,22 @@ type WinnerHandler struct {
 
 func NewWinnerHandler(winnerService *application.WinnerService) *WinnerHandler {
 	return &WinnerHandler{winnerService: winnerService}
+}
+
+func (h *WinnerHandler) ListWinners(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	var paidOnly *bool
+	if p := c.Query("paid"); p != "" {
+		v := p == "true"
+		paidOnly = &v
+	}
+	winners, total, err := h.winnerService.ListAll(c.Request.Context(), limit, offset, paidOnly)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "INTERNAL_ERROR", "error": gin.H{"message": err.Error()}})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "data": gin.H{"winners": winners, "total": total, "limit": limit, "offset": offset}})
 }
 
 func (h *WinnerHandler) GetWinnersByRaffle(c *gin.Context) {

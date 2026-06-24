@@ -10,4 +10,7 @@ func RegisterTicketRoutes(r *gin.RouterGroup, handler *TicketHandler) {
 	{
 		tickets.POST("/purchase", middleware.AuthMiddleware(), handler.PurchaseTickets)
 	}
+
+	// Admin: list tickets for a specific raffle
+	r.GET("/raffles/:id/tickets", middleware.AuthMiddleware(), handler.ListByRaffle)
 }

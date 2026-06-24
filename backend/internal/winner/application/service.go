@@ -38,6 +38,34 @@ func NewWinnerService(
 	}
 }
 
+func (s *WinnerService) ListAll(ctx context.Context, limit, offset int, paidOnly *bool) ([]domain.WinnerDetail, int, error) {
+	winners, total, err := s.winnerRepo.FindAll(ctx, limit, offset, paidOnly)
+	if err != nil {
+		return nil, 0, err
+	}
+	details := make([]domain.WinnerDetail, 0, len(winners))
+	for _, w := range winners {
+		detail := domain.WinnerDetail{Winner: w}
+		if user, err := s.userRepo.FindByID(ctx, w.UserID); err == nil {
+			detail.UserEmail = user.Email
+		}
+		if ticket, err := s.ticketRepo.FindByID(ctx, w.TicketID); err == nil {
+			detail.TicketNumber = ticket.TicketNumber
+		}
+		if raffle, err := s.raffleRepo.FindByID(ctx, w.RaffleID); err == nil {
+			detail.RaffleTitle = raffle.Title
+		}
+		if draw, err := s.drawRepo.FindByRaffleID(ctx, w.RaffleID); err == nil {
+			detail.DrawTimestamp = draw.DrawTimestamp
+			if proof, err := s.drawRepo.GetProofByRaffleID(ctx, w.RaffleID); err == nil {
+				detail.DrawProof = *proof
+			}
+		}
+		details = append(details, detail)
+	}
+	return details, total, nil
+}
+
 func (s *WinnerService) CreateWinner(ctx context.Context, raffleID, drawID, ticketID, userID string, prizeAmount float64) (*domain.Winner, error) {
 	if prizeAmount <= 0 {
 		return nil, errors.New("prize amount must be positive")

@@ -1,1 +1,4 @@
 docs
+backend/.env
+backend/certs
+certs

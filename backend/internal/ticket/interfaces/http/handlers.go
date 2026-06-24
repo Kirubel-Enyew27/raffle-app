@@ -27,6 +27,16 @@ func respondError(c *gin.Context, err error) {
 	c.JSON(http.StatusInternalServerError, gin.H{"code": "INTERNAL_ERROR", "message": err.Error()})
 }
 
+func (h *TicketHandler) ListByRaffle(c *gin.Context) {
+	raffleID := c.Param("id")
+	tickets, err := h.ticketService.ListByRaffle(c.Request.Context(), raffleID)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": "success", "data": gin.H{"tickets": tickets, "total": len(tickets)}})
+}
+
 func (h *TicketHandler) PurchaseTickets(c *gin.Context) {
 	userID := c.GetString("user_id")
 	if userID == "" {

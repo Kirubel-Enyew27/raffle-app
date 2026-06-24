@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"sort"
 	"testing"
 	"time"
 
@@ -72,6 +73,35 @@ func (m *mockWinnerRepo) ExistsByDrawIDAndTicketID(ctx context.Context, drawID, 
 	key := drawID + ":" + ticketID
 	_, ok := m.winners[key]
 	return ok, nil
+}
+
+func (m *mockWinnerRepo) FindAll(ctx context.Context, limit, offset int, paidOnly *bool) ([]domain.Winner, int, error) {
+	var list []domain.Winner
+	for _, w := range m.winners {
+		if paidOnly != nil {
+			if *paidOnly && !w.PrizePaid {
+				continue
+			}
+			if !*paidOnly && w.PrizePaid {
+				continue
+			}
+		}
+		list = append(list, *w)
+	}
+
+	total := len(list)
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].ID < list[j].ID
+	})
+
+	if offset >= len(list) {
+		return []domain.Winner{}, total, nil
+	}
+	end := offset + limit
+	if end > len(list) || limit <= 0 {
+		end = len(list)
+	}
+	return list[offset:end], total, nil
 }
 
 type mockRaffleRepo struct {

@@ -52,6 +52,10 @@ func generateID() string {
 	return fmt.Sprintf("%x", buf)
 }
 
+func (s *TicketService) ListByRaffle(ctx context.Context, raffleID string) ([]*ticketdomain.Ticket, error) {
+	return s.ticketRepo.FindByRaffleID(ctx, raffleID)
+}
+
 func (s *TicketService) PurchaseTickets(ctx context.Context, input *ticketdomain.PurchaseTicketsInput) (*ticketdomain.PurchaseResult, error) {
 	if input.Quantity <= 0 || input.Quantity > 10 {
 		return nil, apperrors.ErrValidationFailed

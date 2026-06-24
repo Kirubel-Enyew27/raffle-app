@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"time"
 
@@ -23,14 +24,32 @@ func NewWalletService(repo domain.WalletRepository, auditService *auditapp.Audit
 }
 
 func (s *WalletService) GetWallet(ctx context.Context, userID string) (*domain.Wallet, error) {
-	return s.repo.FindByUserID(ctx, userID)
+	wallet, err := s.repo.FindByUserID(ctx, userID)
+	if err != nil {
+		if err == errors.ErrNotFound {
+			wallet = &domain.Wallet{
+				ID:        generateID(),
+				UserID:    userID,
+				Balance:   0,
+				Currency:  "USD",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			}
+			if err := s.repo.Create(ctx, wallet); err != nil {
+				return nil, err
+			}
+			return wallet, nil
+		}
+		return nil, err
+	}
+	return wallet, nil
 }
 
 func (s *WalletService) Deposit(ctx context.Context, userID string, amount float64, reference, description string) (*domain.WalletTransaction, error) {
 	if amount <= 0 {
 		return nil, errors.ErrValidationFailed
 	}
-	wallet, err := s.repo.FindByUserID(ctx, userID)
+	wallet, err := s.GetWallet(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +89,7 @@ func (s *WalletService) Withdraw(ctx context.Context, userID string, amount floa
 	if amount <= 0 {
 		return nil, errors.ErrValidationFailed
 	}
-	wallet, err := s.repo.FindByUserID(ctx, userID)
+	wallet, err := s.GetWallet(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +129,7 @@ func (s *WalletService) Withdraw(ctx context.Context, userID string, amount floa
 }
 
 func (s *WalletService) GetTransactionHistory(ctx context.Context, userID string, limit, offset int) ([]*domain.WalletTransaction, int64, error) {
-	wallet, err := s.repo.FindByUserID(ctx, userID)
+	wallet, err := s.GetWallet(ctx, userID)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -126,5 +145,7 @@ func (s *WalletService) GetTransactionHistory(ctx context.Context, userID string
 }
 
 func generateID() string {
-	return "generated_id"
+	buf := make([]byte, 16)
+	_, _ = rand.Read(buf)
+	return fmt.Sprintf("%x", buf)
 }

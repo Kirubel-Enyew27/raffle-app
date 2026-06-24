@@ -57,6 +57,11 @@ func (r *TicketWalletRepo) DebitTx(ctx context.Context, tx *sql.Tx, walletID str
 	return err
 }
 
+func (r *TicketWalletRepo) Debit(ctx context.Context, walletID string, amount float64) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE wallets SET balance = balance - $1, updated_at = $2 WHERE id = $3`, amount, time.Now(), walletID)
+	return err
+}
+
 func (r *TicketWalletRepo) CreateTransaction(ctx context.Context, walletTx *ticketdomain.WalletTransaction) error {
 	query := `INSERT INTO wallet_transactions (id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
 	_, err := r.db.ExecContext(ctx, query, walletTx.ID, walletTx.WalletID, walletTx.UserID, walletTx.Type, walletTx.Status, walletTx.Amount, walletTx.BalanceBefore, walletTx.BalanceAfter, walletTx.Reference, walletTx.Description, walletTx.Metadata, time.Now(), time.Now())

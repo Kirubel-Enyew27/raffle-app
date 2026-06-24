@@ -2,24 +2,43 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	auditapp "github.com/raffle-app/backend/internal/audit/application"
 	audithttp "github.com/raffle-app/backend/internal/audit/interfaces/http"
 	auditmw "github.com/raffle-app/backend/internal/audit/interfaces/http/middleware"
 	auditrepo "github.com/raffle-app/backend/internal/audit/interfaces/repository"
+	drawapp "github.com/raffle-app/backend/internal/draw/application"
+	drawhttp "github.com/raffle-app/backend/internal/draw/interfaces/http"
 	drawrepo "github.com/raffle-app/backend/internal/draw/interfaces/repository"
+	drawinfra "github.com/raffle-app/backend/internal/draw/infrastructure"
+	identityapp "github.com/raffle-app/backend/internal/identity/application"
+	identityhttp "github.com/raffle-app/backend/internal/identity/interfaces/http"
 	identityrepo "github.com/raffle-app/backend/internal/identity/interfaces/repository"
+	notificationapp "github.com/raffle-app/backend/internal/notification/application"
+	notificationhttp "github.com/raffle-app/backend/internal/notification/interfaces/http"
+	notificationqueue "github.com/raffle-app/backend/internal/notification/interfaces/queue"
+	notificationrepo "github.com/raffle-app/backend/internal/notification/interfaces/repository"
+	raffleapp "github.com/raffle-app/backend/internal/raffle/application"
+	rafflehttp "github.com/raffle-app/backend/internal/raffle/interfaces/http"
 	rafflerepo "github.com/raffle-app/backend/internal/raffle/interfaces/repository"
-	ticketrepo "github.com/raffle-app/backend/internal/ticket/interfaces/repository"
 	reportapp "github.com/raffle-app/backend/internal/reporting/application"
 	reporthttp "github.com/raffle-app/backend/internal/reporting/interfaces/http"
 	reportrepo "github.com/raffle-app/backend/internal/reporting/interfaces/repository"
+	ticketapp "github.com/raffle-app/backend/internal/ticket/application"
+	tickethttp "github.com/raffle-app/backend/internal/ticket/interfaces/http"
+	ticketrepo "github.com/raffle-app/backend/internal/ticket/interfaces/repository"
+	walletapp "github.com/raffle-app/backend/internal/wallet/application"
+	wallethttp "github.com/raffle-app/backend/internal/wallet/interfaces/http"
+	walletrepo "github.com/raffle-app/backend/internal/wallet/interfaces/repository"
 	winnerapp "github.com/raffle-app/backend/internal/winner/application"
 	winnerhttp "github.com/raffle-app/backend/internal/winner/interfaces/http"
 	winnerrepo "github.com/raffle-app/backend/internal/winner/interfaces/repository"
 	"github.com/raffle-app/backend/pkg/config"
 	"github.com/raffle-app/backend/pkg/database"
+	"github.com/raffle-app/backend/pkg/idempotency"
 	"github.com/raffle-app/backend/pkg/logger"
 	"github.com/raffle-app/backend/pkg/middleware"
 )
@@ -39,10 +58,50 @@ func main() {
 	}
 	defer database.Close(db)
 
-	// Audit
+	rdb, err := database.NewRedis(cfg.Redis)
+	if err != nil {
+		panic(err)
+	}
+	defer database.CloseRedis(rdb)
+
+	jwtPrivate, err := os.ReadFile(cfg.JWT.PrivateKeyPath)
+	if err != nil {
+		panic(err)
+	}
+
+	// Services
 	auditSvc := auditapp.NewAuditService(auditrepo.NewAuditRepo(db))
 
-	// Winner
+	identitySvc := identityapp.NewIdentityService(
+		identityrepo.NewUserRepo(db),
+		auditSvc,
+		jwtPrivate,
+		cfg.JWT.AccessExpiry,
+	)
+
+	walletSvc := walletapp.NewWalletService(walletrepo.NewWalletRepo(db), auditSvc)
+
+	raffleSvc := raffleapp.NewRaffleService(rafflerepo.NewRaffleRepo(db), auditSvc)
+
+	idempotencyStore := idempotency.NewStore(rdb, 24*time.Hour)
+	ticketSvc := ticketapp.NewTicketService(
+		db,
+		ticketrepo.NewTicketRepo(db),
+		ticketrepo.NewTicketRaffleRepo(db),
+		ticketrepo.NewTicketWalletRepo(db),
+		auditSvc,
+		idempotencyStore,
+	)
+
+	drawSvc := drawapp.NewDrawService(
+		drawrepo.NewDrawRepo(db),
+		drawrepo.NewDrawRaffleAdapter(rafflerepo.NewRaffleRepo(db), ticketrepo.NewTicketRepo(db)),
+		ticketrepo.NewTicketRepo(db),
+		drawinfra.NewCryptoSeedService(),
+		drawinfra.NewCryptoRandomService(),
+		auditSvc,
+	)
+
 	winnerSvc := winnerapp.NewWinnerService(
 		winnerrepo.NewWinnerRepo(db),
 		winnerrepo.NewRaffleAdapter(rafflerepo.NewRaffleRepo(db)),
@@ -52,6 +111,14 @@ func main() {
 		auditSvc,
 	)
 
+	notificationSvc := notificationapp.NewNotificationService(
+		notificationrepo.NewNotificationRepo(db),
+		notificationqueue.NewRedisQueue(rdb),
+	)
+
+	reportSvc := reportapp.NewReportService(reportrepo.NewReportRepo(db))
+
+	// Router
 	r := gin.New()
 	r.Use(middleware.RecoveryMiddleware())
 	r.Use(middleware.CORSMiddleware())
@@ -60,11 +127,15 @@ func main() {
 	api := r.Group("/api/v1")
 	api.Use(auditmw.NewAuditMiddleware(auditSvc).Middleware())
 
-	audithttp.RegisterAuditRoutes(api, audithttp.NewAuditHandler(auditSvc))
-	reporthttp.RegisterReportRoutes(api, reporthttp.NewReportHandler(
-		reportapp.NewReportService(reportrepo.NewReportRepo(db)),
-	))
+	identityhttp.RegisterIdentityRoutes(api, identityhttp.NewIdentityHandler(identitySvc))
+	wallethttp.RegisterWalletRoutes(api, wallethttp.NewWalletHandler(walletSvc))
+	rafflehttp.RegisterRaffleRoutes(api, rafflehttp.NewRaffleHandler(raffleSvc))
+	tickethttp.RegisterTicketRoutes(api, tickethttp.NewTicketHandler(ticketSvc))
+	drawhttp.RegisterDrawRoutes(api, drawhttp.NewDrawHandler(drawSvc))
 	winnerhttp.RegisterWinnerRoutes(api, winnerhttp.NewWinnerHandler(winnerSvc))
+	notificationhttp.RegisterRoutes(api, notificationhttp.NewHandler(notificationSvc))
+	audithttp.RegisterAuditRoutes(api, audithttp.NewAuditHandler(auditSvc))
+	reporthttp.RegisterReportRoutes(api, reporthttp.NewReportHandler(reportSvc))
 
 	if err := r.Run(fmt.Sprintf(":%d", cfg.AppPort)); err != nil {
 		panic(err)

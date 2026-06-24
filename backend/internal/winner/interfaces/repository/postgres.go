@@ -18,6 +18,42 @@ func NewWinnerRepo(db *sql.DB) *WinnerRepo {
 	return &WinnerRepo{db: db}
 }
 
+func (r *WinnerRepo) FindAll(ctx context.Context, limit, offset int, paidOnly *bool) ([]domain.Winner, int, error) {
+	where := ""
+	args := []any{limit, offset}
+	if paidOnly != nil {
+		where = " WHERE prize_paid = $3"
+		args = append(args, *paidOnly)
+	}
+	query := `SELECT id, raffle_id, draw_id, ticket_id, user_id, prize_amount, prize_paid, payment_date, payment_reference, created_at, updated_at
+	          FROM winners` + where + ` ORDER BY created_at DESC LIMIT $1 OFFSET $2`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var winners []domain.Winner
+	for rows.Next() {
+		var w domain.Winner
+		if err := rows.Scan(&w.ID, &w.RaffleID, &w.DrawID, &w.TicketID, &w.UserID,
+			&w.PrizeAmount, &w.PrizePaid, &w.PaymentDate, &w.PaymentReference,
+			&w.CreatedAt, &w.UpdatedAt); err != nil {
+			return nil, 0, err
+		}
+		winners = append(winners, w)
+	}
+
+	countQuery := `SELECT COUNT(*) FROM winners` + where
+	var count int
+	if paidOnly != nil {
+		err = r.db.QueryRowContext(ctx, countQuery, *paidOnly).Scan(&count)
+	} else {
+		err = r.db.QueryRowContext(ctx, countQuery).Scan(&count)
+	}
+	return winners, count, err
+}
+
 func (r *WinnerRepo) Create(ctx context.Context, winner *domain.Winner) error {
 	query := `INSERT INTO winners (raffle_id, draw_id, ticket_id, user_id, prize_amount, created_at, updated_at)
 	          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`

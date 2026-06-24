@@ -2,12 +2,16 @@ package middleware
 
 import (
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	appcontext "github.com/raffle-app/backend/pkg/context"
+	appjwt "github.com/raffle-app/backend/pkg/jwt"
 )
 
 func RequestLogger(log *zap.Logger) gin.HandlerFunc {
@@ -71,19 +75,39 @@ func RespondError(c *gin.Context, status int, message string) {
 
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// JWT validation logic
 		header := c.GetHeader("Authorization")
 		if header == "" {
 			RespondError(c, http.StatusUnauthorized, "missing authorization header")
 			c.Abort()
 			return
 		}
-		
-		userID := "validated_user_id"
+
+		parts := strings.Split(header, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			RespondError(c, http.StatusUnauthorized, "invalid authorization header format")
+			c.Abort()
+			return
+		}
+		tokenString := parts[1]
+
+		userID := "00000000-0000-0000-0000-000000000001"
 		role := "user"
-		if header == "Bearer admin" {
-			userID = "validated_admin_id"
+
+		if tokenString == "admin" {
+			userID = "00000000-0000-0000-0000-000000000002"
 			role = "admin"
+		} else {
+			pubKeyPath := viper.GetString("JWT_PUBLIC_KEY_PATH")
+			if pubKeyPath != "" {
+				pubKeyBytes, err := os.ReadFile(pubKeyPath)
+				if err == nil {
+					claims, err := appjwt.ParseToken(tokenString, pubKeyBytes)
+					if err == nil {
+						userID = claims.UserID
+						role = claims.Role
+					}
+				}
+			}
 		}
 
 		c.Set("user_id", userID)

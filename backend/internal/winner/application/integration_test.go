@@ -5,6 +5,7 @@ package application_test
 import (
 	"context"
 	"errors"
+	"sort"
 	"testing"
 	"time"
 
@@ -87,6 +88,40 @@ func (m *memWinnerRepo) MarkPrizePaid(ctx context.Context, id string, paymentDat
 func (m *memWinnerRepo) ExistsByDrawIDAndTicketID(ctx context.Context, drawID, ticketID string) (bool, error) {
 	_, ok := m.winners[drawID+":"+ticketID]
 	return ok, nil
+}
+
+func (m *memWinnerRepo) FindAll(ctx context.Context, limit, offset int, paidOnly *bool) ([]domain.Winner, int, error) {
+	var list []domain.Winner
+	seen := make(map[string]bool)
+	for _, w := range m.winners {
+		if seen[w.ID] {
+			continue
+		}
+		seen[w.ID] = true
+		if paidOnly != nil {
+			if *paidOnly && !w.PrizePaid {
+				continue
+			}
+			if !*paidOnly && w.PrizePaid {
+				continue
+			}
+		}
+		list = append(list, *w)
+	}
+
+	total := len(list)
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].ID < list[j].ID
+	})
+
+	if offset >= len(list) {
+		return []domain.Winner{}, total, nil
+	}
+	end := offset + limit
+	if end > len(list) || limit <= 0 {
+		end = len(list)
+	}
+	return list[offset:end], total, nil
 }
 
 type memRaffleRepo struct{}

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"net/http"
 	"time"
@@ -24,7 +25,16 @@ func NewRaffleService(repo domain.RaffleRepository, auditService *auditapp.Audit
 	}
 }
 
+func generateUUID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%12x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
+
 func (s *RaffleService) CreateRaffle(ctx context.Context, raffle *domain.Raffle) error {
+	if raffle.ID == "" {
+		raffle.ID = generateUUID()
+	}
 	if err := s.validateRaffle(raffle); err != nil {
 		return err
 	}

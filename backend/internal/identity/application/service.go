@@ -2,7 +2,9 @@ package application
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
+	"fmt"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -28,9 +30,19 @@ func NewIdentityService(userRepo domain.UserRepository, auditService *auditapp.A
 	}
 }
 
+func generateUUID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%12x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
+
 func (s *IdentityService) Register(ctx context.Context, id, email, password string) (*domain.User, error) {
 	if email == "" || password == "" {
 		return nil, apperrors.ErrValidationFailed
+	}
+
+	if id == "" {
+		id = generateUUID()
 	}
 
 	exists, err := s.userRepo.ExistsByEmail(ctx, email)
