@@ -1,0 +1,62 @@
+package domain
+
+import (
+	"regexp"
+	"strings"
+)
+
+// WebhookRequest is the payload received from the SMS Forwarder app.
+type WebhookRequest struct {
+	Sender     string `json:"sender" binding:"required"`
+	Message    string `json:"message" binding:"required"`
+	ReceivedAt string `json:"received_at"`
+}
+
+// WebhookResponse is returned after processing an SMS webhook.
+type WebhookResponse struct {
+	Status        string  `json:"status"`
+	TransactionID string  `json:"transaction_id"`
+	Amount        float64 `json:"amount"`
+	Verified      bool    `json:"verified"`
+}
+
+// IsTelebirrSMS checks whether a message is a valid Telebirr payment SMS.
+// Accepts if sender is "127" OR the message contains the known Telebirr phrase.
+func IsTelebirrSMS(sender, message string) bool {
+	sender = strings.TrimSpace(sender)
+	message = strings.TrimSpace(message)
+	if sender == "127" {
+		return true
+	}
+	return strings.Contains(message, "Your transaction number is")
+}
+
+// ExtractTransactionID extracts the Telebirr transaction/receipt number from an SMS.
+// The SMS contains: "Your transaction number is DFM26GE790."
+func ExtractTransactionID(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	re := regexp.MustCompile(`transaction number is\s+(\S+)`)
+	match := re.FindStringSubmatch(raw)
+	if len(match) < 2 {
+		return "", ErrTransactionIDNotFound
+	}
+	txID := strings.TrimSpace(match[1])
+	// Remove trailing punctuation
+	txID = strings.TrimRight(txID, ".")
+	if txID == "" {
+		return "", ErrTransactionIDNotFound
+	}
+	return txID, nil
+}
+
+// ErrTransactionIDNotFound is returned when no transaction ID can be extracted.
+var ErrTransactionIDNotFound = &ParseError{Message: "transaction ID not found in SMS"}
+
+// ParseError represents an SMS parsing error.
+type ParseError struct {
+	Message string
+}
+
+func (e *ParseError) Error() string {
+	return e.Message
+}

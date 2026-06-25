@@ -36,6 +36,10 @@ import (
 	winnerapp "github.com/raffle-app/backend/internal/winner/application"
 	winnerhttp "github.com/raffle-app/backend/internal/winner/interfaces/http"
 	winnerrepo "github.com/raffle-app/backend/internal/winner/interfaces/repository"
+	smsapp "github.com/raffle-app/backend/internal/sms/application"
+	smshttp "github.com/raffle-app/backend/internal/sms/interfaces/http"
+	smsinfra "github.com/raffle-app/backend/internal/sms/infrastructure"
+	smsrepo "github.com/raffle-app/backend/internal/sms/interfaces/repository"
 	"github.com/raffle-app/backend/pkg/config"
 	"github.com/raffle-app/backend/pkg/database"
 	"github.com/raffle-app/backend/pkg/idempotency"
@@ -119,6 +123,16 @@ func main() {
 
 	reportSvc := reportapp.NewReportService(reportrepo.NewReportRepo(db))
 
+	userRepo := identityrepo.NewUserRepo(db)
+	smsSvc := smsapp.NewSMSService(
+		db,
+		userRepo,
+		walletrepo.NewWalletRepo(db),
+		smsrepo.NewSMSLogRepo(db),
+		smsinfra.NewReceiptFetcher(30*time.Second),
+		cfg.SMSAPIKey,
+	)
+
 	// Router
 	r := gin.New()
 	r.Use(middleware.RecoveryMiddleware())
@@ -137,6 +151,7 @@ func main() {
 	notificationhttp.RegisterRoutes(api, notificationhttp.NewHandler(notificationSvc))
 	audithttp.RegisterAuditRoutes(api, audithttp.NewAuditHandler(auditSvc))
 	reporthttp.RegisterReportRoutes(api, reporthttp.NewReportHandler(reportSvc))
+	smshttp.RegisterSMSRoutes(api, smshttp.NewSMSHandler(smsSvc), cfg.SMSAPIKey)
 
 	if err := r.Run(fmt.Sprintf(":%d", cfg.AppPort)); err != nil {
 		panic(err)

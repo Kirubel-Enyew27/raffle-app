@@ -23,9 +23,29 @@ func (r *WalletRepo) Create(ctx context.Context, wallet *domain.Wallet) error {
 	return err
 }
 
+func (r *WalletRepo) CreateTx(ctx context.Context, tx *sql.Tx, wallet *domain.Wallet) error {
+	query := `INSERT INTO wallets (id, user_id, balance, currency, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)`
+	_, err := tx.ExecContext(ctx, query, wallet.ID, wallet.UserID, wallet.Balance, wallet.Currency, time.Now(), time.Now())
+	return err
+}
+
 func (r *WalletRepo) FindByUserID(ctx context.Context, userID string) (*domain.Wallet, error) {
 	query := `SELECT id, user_id, balance, currency, created_at, updated_at FROM wallets WHERE user_id = $1`
 	row := r.db.QueryRowContext(ctx, query, userID)
+	wallet := &domain.Wallet{}
+	err := row.Scan(&wallet.ID, &wallet.UserID, &wallet.Balance, &wallet.Currency, &wallet.CreatedAt, &wallet.UpdatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.ErrNotFound
+		}
+		return nil, err
+	}
+	return wallet, nil
+}
+
+func (r *WalletRepo) FindByUserIDWithLock(ctx context.Context, tx *sql.Tx, userID string) (*domain.Wallet, error) {
+	query := `SELECT id, user_id, balance, currency, created_at, updated_at FROM wallets WHERE user_id = $1 FOR UPDATE`
+	row := tx.QueryRowContext(ctx, query, userID)
 	wallet := &domain.Wallet{}
 	err := row.Scan(&wallet.ID, &wallet.UserID, &wallet.Balance, &wallet.Currency, &wallet.CreatedAt, &wallet.UpdatedAt)
 	if err != nil {
@@ -87,6 +107,17 @@ func (r *WalletRepo) FindTransactionsByWalletID(ctx context.Context, walletID st
 		txs = append(txs, tx)
 	}
 	return txs, nil
+}
+
+func (r *WalletRepo) UpdateBalanceTx(ctx context.Context, tx *sql.Tx, walletID string, newBalance float64) error {
+	_, err := tx.ExecContext(ctx, `UPDATE wallets SET balance = $1, updated_at = $2 WHERE id = $3`, newBalance, time.Now(), walletID)
+	return err
+}
+
+func (r *WalletRepo) CreateTransactionTx(ctx context.Context, tx *sql.Tx, walletTx *domain.WalletTransaction) error {
+	query := `INSERT INTO wallet_transactions (id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
+	_, err := tx.ExecContext(ctx, query, walletTx.ID, walletTx.WalletID, walletTx.UserID, walletTx.Type, walletTx.Status, walletTx.Amount, walletTx.BalanceBefore, walletTx.BalanceAfter, walletTx.Reference, walletTx.Description, walletTx.Metadata, time.Now(), time.Now())
+	return err
 }
 
 func (r *WalletRepo) CountTransactionsByWalletID(ctx context.Context, walletID string) (int64, error) {

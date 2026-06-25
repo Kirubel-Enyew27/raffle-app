@@ -36,7 +36,7 @@ func generateUUID() string {
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%12x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
-func (s *IdentityService) Register(ctx context.Context, id, email, password string) (*domain.User, error) {
+func (s *IdentityService) Register(ctx context.Context, id, email, password, fullName string) (*domain.User, error) {
 	if email == "" || password == "" {
 		return nil, apperrors.ErrValidationFailed
 	}
@@ -61,6 +61,7 @@ func (s *IdentityService) Register(ctx context.Context, id, email, password stri
 	user := &domain.User{
 		ID:           id,
 		Email:        email,
+		FullName:     fullName,
 		PasswordHash: string(hashed),
 		Role:         "user",
 		IsBanned:     false,
@@ -73,7 +74,6 @@ func (s *IdentityService) Register(ctx context.Context, id, email, password stri
 	}
 
 	// Record audit log
-	// Registered user is the actor, and since user is register, actorID is user.ID, action is register
 	_ = s.auditService.Record(ctx, &user.ID, "user", "register", "user", &user.ID, "", nil, nil)
 
 	return user, nil

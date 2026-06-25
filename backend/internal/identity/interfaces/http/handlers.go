@@ -19,6 +19,7 @@ type RegisterRequest struct {
 	ID       string `json:"id"`
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required,min=6"`
+	FullName string `json:"full_name"`
 }
 
 type LoginRequest struct {
@@ -38,7 +39,7 @@ func (h *IdentityHandler) Register(c *gin.Context) {
 		return
 	}
 
-	user, err := h.service.Register(c.Request.Context(), req.ID, req.Email, req.Password)
+	user, err := h.service.Register(c.Request.Context(), req.ID, req.Email, req.Password, req.FullName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "error", "message": err.Error()})
 		return

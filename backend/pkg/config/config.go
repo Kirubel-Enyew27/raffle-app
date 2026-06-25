@@ -13,6 +13,7 @@ type Config struct {
 	Database DatabaseConfig
 	Redis    RedisConfig
 	JWT      JWTConfig
+	SMSAPIKey string
 }
 
 type DatabaseConfig struct {
@@ -56,6 +57,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("JWT_PUBLIC_KEY_PATH", "/app/keys/public.pem")
 	viper.SetDefault("JWT_ACCESS_EXPIRY", 15*time.Minute)
 	viper.SetDefault("JWT_REFRESH_EXPIRY", 7*24*time.Hour)
+	viper.SetDefault("SMS_API_KEY", "dev-sms-api-key-123")
 
 	viper.AutomaticEnv()
 
@@ -83,5 +85,6 @@ func Load() (*Config, error) {
 			AccessExpiry:   viper.GetDuration("JWT_ACCESS_EXPIRY"),
 			RefreshExpiry:  viper.GetDuration("JWT_REFRESH_EXPIRY"),
 		},
+		SMSAPIKey: viper.GetString("SMS_API_KEY"),
 	}, nil
 }
