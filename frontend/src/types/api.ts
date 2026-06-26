@@ -15,6 +15,9 @@ export interface PaginatedResponse<T> {
 export interface User {
   id: string
   email: string
+  full_name?: string
+  phone?: string
+  avatar_url?: string
   role: 'user' | 'admin'
   is_banned: boolean
   created_at: string
@@ -59,12 +62,15 @@ export interface Wallet {
 
 export interface WalletTransaction {
   id: string
-  type: 'deposit' | 'withdrawal'
+  wallet_id?: string
+  user_id?: string
+  type: 'deposit' | 'withdrawal' | 'sms_deposit'
   status: string
   amount: number
   balance_before: number
   balance_after: number
   reference: string
+  description?: string
   created_at: string
 }
 

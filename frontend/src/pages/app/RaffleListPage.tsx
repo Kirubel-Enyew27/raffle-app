@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { ticketApi } from '@/features/tickets/api'
 import { ErrorMessage } from '@/components/ui/error-message'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import type { Raffle } from '@/types/api'
 
 const PAGE_SIZE = 12
@@ -54,12 +54,12 @@ function RaffleCard({ raffle }: { raffle: Raffle }) {
 
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-lg font-bold">${raffle.ticket_price}</p>
+              <p className="text-lg font-bold">{formatCurrency(raffle.ticket_price)}</p>
               <p className="text-xs text-muted-foreground">per ticket</p>
             </div>
             <div className="text-right">
               <p className="font-semibold text-green-600">
-                ${raffle.prize_pool.toLocaleString()}
+                {formatCurrency(raffle.prize_pool)}
               </p>
               <p className="text-xs text-muted-foreground">prize pool</p>
             </div>

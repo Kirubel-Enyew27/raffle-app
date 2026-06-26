@@ -3,6 +3,7 @@ import { Wallet } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { dashboardApi } from './api'
+import { formatCurrency } from '@/lib/utils'
 
 export function WalletCard() {
   const { data, isLoading, error } = useQuery({
@@ -22,9 +23,9 @@ export function WalletCard() {
         {data && (
           <>
             <p className="text-3xl font-bold">
-              {data.balance.toLocaleString('en-US', { style: 'currency', currency: data.currency || 'USD' })}
+              {formatCurrency(data.balance, data.currency)}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">{data.currency}</p>
+            <p className="mt-1 text-xs text-muted-foreground">ETB &bull; Ethiopian Birr</p>
           </>
         )}
       </CardContent>

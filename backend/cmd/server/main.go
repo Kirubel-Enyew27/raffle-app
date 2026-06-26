@@ -139,6 +139,9 @@ func main() {
 	r.Use(middleware.CORSMiddleware())
 	r.Use(middleware.AuditContextMiddleware())
 
+	// Serve uploaded files (avatars, etc.)
+	r.Static("/uploads", "./uploads")
+
 	api := r.Group("/api/v1")
 	api.Use(auditmw.NewAuditMiddleware(auditSvc).Middleware())
 

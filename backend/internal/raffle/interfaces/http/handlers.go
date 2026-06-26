@@ -73,7 +73,7 @@ func (h *RaffleHandler) CreateRaffle(c *gin.Context) {
 		raffle.Status = "draft"
 	}
 	if raffle.Currency == "" {
-		raffle.Currency = "USD"
+		raffle.Currency = "ETB"
 	}
 
 	if err := h.raffleService.CreateRaffle(c.Request.Context(), raffle); err != nil {

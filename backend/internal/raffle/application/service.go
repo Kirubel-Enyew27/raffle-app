@@ -211,7 +211,7 @@ func (s *RaffleService) validateRaffle(raffle *domain.Raffle) error {
 		return apperrors.WithField("MISSING_CREATOR", "creator id is required", http.StatusBadRequest, nil)
 	}
 	if raffle.Currency == "" {
-		raffle.Currency = "USD"
+		raffle.Currency = "ETB"
 	}
 	validStatuses := map[string]bool{"draft": true, "active": true, "scheduled": true, "closed": true}
 	if !validStatuses[raffle.Status] {

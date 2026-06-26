@@ -10,8 +10,8 @@ interface Props {
   onClose: () => void
 }
 
-const usd = (n: number) =>
-  n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
+import { formatCurrency } from '@/lib/utils'
+const usd = (n: number) => formatCurrency(n)
 
 export function RaffleTicketSalesPanel({ raffle, onClose }: Props) {
   useEffect(() => {

@@ -5,7 +5,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ReportsControls, exportCSV, type Range } from './ReportsControls'
 import { adminApi } from './api'
 
-const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+import { formatCurrency } from '@/lib/utils'
+const usd = (n: number) => formatCurrency(n)
 
 interface KpiProps { label: string; value: string; icon: React.ElementType; sub?: string; loading?: boolean; green?: boolean }
 

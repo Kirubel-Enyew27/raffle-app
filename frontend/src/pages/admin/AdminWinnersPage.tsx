@@ -6,14 +6,14 @@ import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatCurrency } from '@/lib/utils'
 import { adminApi, type WinnerDetail } from '@/features/admin/api'
 import { WinnerVerificationModal } from '@/features/admin/WinnerVerificationModal'
 import { MarkPaidModal } from '@/features/admin/MarkPaidModal'
 
 const PAGE_SIZE = 20
 
-const usd = (n: number) =>
-  n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
+const usd = (n: number) => formatCurrency(n)
 
 type Modal =
   | { type: 'verify'; winner: WinnerDetail }

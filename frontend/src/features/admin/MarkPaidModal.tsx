@@ -4,6 +4,7 @@ import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { formatCurrency } from '@/lib/utils'
 import { adminApi, type WinnerDetail } from '@/features/admin/api'
 
 interface Props {
@@ -31,7 +32,7 @@ export function MarkPaidModal({ winner, onClose }: Props) {
     onError: (e: Error) => setError(e.message),
   })
 
-  const usd = winner.prize_amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+  const usd = formatCurrency(winner.prize_amount)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="modal-title">

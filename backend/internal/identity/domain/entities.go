@@ -4,8 +4,10 @@ import "time"
 
 type User struct {
 	ID           string     `json:"id"`
-	Email        string     `json:"email"`
+	Email        string     `json:"email,omitempty"`
+	Phone        string     `json:"phone,omitempty"`
 	FullName     string     `json:"full_name,omitempty"`
+	AvatarURL    string     `json:"avatar_url,omitempty"`
 	PasswordHash string     `json:"-"`
 	Role         string     `json:"role"`
 	IsBanned     bool       `json:"is_banned"`

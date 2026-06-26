@@ -7,7 +7,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ReportsControls, exportCSV, type Range } from './ReportsControls'
 import { adminApi } from './api'
 
-const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+import { formatCurrency } from '@/lib/utils'
+const usd = (n: number) => formatCurrency(n)
 
 interface Props { range: Range; onRange: (r: Range) => void; period: string; onPeriod: (p: string) => void }
 
@@ -48,7 +49,7 @@ export function RevenueReport({ range, onRange, period, onPeriod }: Props) {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                 <XAxis dataKey="period" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={v => `${(v/1000).toFixed(0)}k Br`} />
                 <Tooltip formatter={(v) => usd(Number(v))} />
                 <Legend />
                 <Area type="monotone" dataKey="ticket_revenue" name="Revenue" stroke="#6366f1" fill="url(#gRev)" strokeWidth={2} dot={false} />

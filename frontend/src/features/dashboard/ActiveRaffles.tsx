@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Ticket } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import { dashboardApi } from './api'
 
 const statusColor: Record<string, string> = {
@@ -52,7 +52,7 @@ export function ActiveRaffles() {
                 <span className="flex items-center gap-1 text-muted-foreground">
                   <Ticket className="h-3 w-3" />{r.sold_tickets}/{r.total_tickets}
                 </span>
-                <span className="font-semibold">${r.ticket_price}</span>
+                <span className="font-semibold">{formatCurrency(r.ticket_price)}</span>
               </div>
             </Link>
           ))}

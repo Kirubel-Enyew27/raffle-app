@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
 const schema = z.object({
-  email: z.string().email('Enter a valid email'),
+  identifier: z.string().min(1, 'Enter your email or phone'),
   password: z.string().min(1, 'Password is required'),
 })
 type Fields = z.infer<typeof schema>
@@ -27,7 +27,7 @@ export function Component() {
   })
 
   const { mutate, isPending, error } = useMutation({
-    mutationFn: ({ email, password }: Fields) => authApi.login(email, password),
+    mutationFn: ({ identifier, password }: Fields) => authApi.login(identifier, password),
     onSuccess: ({ token, user }) => {
       login(token, user)
       navigate(user.role === 'admin' ? '/admin/dashboard' : '/dashboard')
@@ -43,8 +43,8 @@ export function Component() {
           </p>
         )}
 
-        <FormField label="Email" htmlFor="email" error={errors.email?.message}>
-          <Input id="email" type="email" autoComplete="email" {...register('email')} />
+        <FormField label="Email or phone" htmlFor="identifier" error={errors.identifier?.message}>
+          <Input id="identifier" type="text" autoComplete="username" placeholder="email@example.com or +251912345678" {...register('identifier')} />
         </FormField>
 
         <FormField label="Password" htmlFor="password" error={errors.password?.message}>

@@ -13,4 +13,12 @@ func RegisterWalletRoutes(r *gin.RouterGroup, handler *WalletHandler) {
 		wallets.POST("/deposit", handler.Deposit)
 		wallets.POST("/withdraw", handler.Withdraw)
 	}
+
+	// Admin routes for withdrawal management
+	admin := r.Group("/admin/wallets", middleware.AuthMiddleware())
+	{
+		admin.GET("/pending-withdrawals", handler.ListPendingWithdrawals)
+		admin.POST("/approve-withdrawal/:id", handler.ApproveWithdrawal)
+		admin.POST("/reject-withdrawal/:id", handler.RejectWithdrawal)
+	}
 }

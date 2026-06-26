@@ -72,3 +72,15 @@
 
 * { border-color: var(--color-border); }
 body { background-color: var(--color-background); color: var(--color-foreground); }
+button { cursor: pointer; }
+
+/* Native select dropdown options — ensure all items are visible and clickable */
+select option {
+  color: var(--color-foreground);
+  background-color: var(--color-background);
+  cursor: pointer;
+}
+select option:checked {
+  background-color: var(--color-primary);
+  color: var(--color-primary-foreground);
+}

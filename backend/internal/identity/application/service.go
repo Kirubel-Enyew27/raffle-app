@@ -36,8 +36,8 @@ func generateUUID() string {
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%12x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
-func (s *IdentityService) Register(ctx context.Context, id, email, password, fullName string) (*domain.User, error) {
-	if email == "" || password == "" {
+func (s *IdentityService) Register(ctx context.Context, id, email, password, fullName, phone string) (*domain.User, error) {
+	if (email == "" && phone == "") || password == "" {
 		return nil, apperrors.ErrValidationFailed
 	}
 
@@ -45,12 +45,24 @@ func (s *IdentityService) Register(ctx context.Context, id, email, password, ful
 		id = generateUUID()
 	}
 
-	exists, err := s.userRepo.ExistsByEmail(ctx, email)
-	if err != nil {
-		return nil, err
+	if email != "" {
+		exists, err := s.userRepo.ExistsByEmail(ctx, email)
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, apperrors.ErrConflict
+		}
 	}
-	if exists {
-		return nil, apperrors.ErrConflict
+
+	if phone != "" {
+		exists, err := s.userRepo.ExistsByPhone(ctx, phone)
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, apperrors.ErrConflict
+		}
 	}
 
 	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -61,6 +73,7 @@ func (s *IdentityService) Register(ctx context.Context, id, email, password, ful
 	user := &domain.User{
 		ID:           id,
 		Email:        email,
+		Phone:        phone,
 		FullName:     fullName,
 		PasswordHash: string(hashed),
 		Role:         "user",
@@ -79,15 +92,20 @@ func (s *IdentityService) Register(ctx context.Context, id, email, password, ful
 	return user, nil
 }
 
-func (s *IdentityService) Login(ctx context.Context, email, password string) (string, *domain.User, error) {
-	if email == "" || password == "" {
+func (s *IdentityService) Login(ctx context.Context, identifier, password string) (string, *domain.User, error) {
+	if identifier == "" || password == "" {
 		return "", nil, apperrors.ErrValidationFailed
 	}
 
-	user, err := s.userRepo.FindByEmail(ctx, email)
+	// Try email first, then phone
+	user, err := s.userRepo.FindByEmail(ctx, identifier)
 	if err != nil {
-		return "", nil, err
+		user, err = s.userRepo.FindByPhone(ctx, identifier)
+		if err != nil {
+			return "", nil, errors.New("invalid credentials")
+		}
 	}
+
 
 	if user.IsBanned {
 		return "", nil, errors.New("user is banned")
@@ -107,6 +125,30 @@ func (s *IdentityService) Login(ctx context.Context, email, password string) (st
 	_ = s.auditService.Record(ctx, &user.ID, user.Role, "login", "auth", &user.ID, "", nil, nil)
 
 	return token, user, nil
+}
+
+func (s *IdentityService) UpdateProfile(ctx context.Context, userID, fullName, phone string, avatarURL ...string) (*domain.User, error) {
+	user, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if fullName != "" {
+		user.FullName = fullName
+	}
+	if phone != "" {
+		user.Phone = phone
+	}
+	if len(avatarURL) > 0 && avatarURL[0] != "" {
+		user.AvatarURL = avatarURL[0]
+	}
+
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return nil, err
+	}
+
+	_ = s.auditService.Record(ctx, &userID, user.Role, "profile_update", "user", &userID, "", nil, nil)
+	return user, nil
 }
 
 func (s *IdentityService) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {

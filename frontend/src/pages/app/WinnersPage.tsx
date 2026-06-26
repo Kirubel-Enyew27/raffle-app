@@ -12,7 +12,8 @@ import type { WinnerDetail } from '@/types/api'
 
 const PAGE_SIZE = 100
 
-const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
+import { formatCurrency } from '@/lib/utils'
+const fmt = (n: number) => formatCurrency(n)
 
 // ─── Detail Row ──────────────────────────────────────────
 function DetailRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
@@ -99,7 +100,7 @@ function WinnerDetailModal({ winner, onClose }: { winner: WinnerDetail; onClose:
         <div className="space-y-0">
           <DetailRow label="Raffle" value={winner.raffle_title} />
           <DetailRow label="Winner" value={winner.user_email} />
-          <DetailRow label="Prize Amount" value={<span className="font-semibold text-green-600">{usd(winner.prize_amount)}</span>} />
+          <DetailRow label="Prize Amount" value={<span className="font-semibold text-green-600">{fmt(winner.prize_amount)}</span>} />
           <DetailRow label="Status" value={<Badge variant={winner.prize_paid ? 'success' : 'warning'}>{winner.prize_paid ? 'Paid' : 'Unpaid'}</Badge>} />
           {winner.payment_reference && <DetailRow label="Payment Ref" value={<span className="font-mono text-xs">{winner.payment_reference}</span>} />}
           {winner.payment_date && <DetailRow label="Paid On" value={new Date(winner.payment_date).toLocaleString()} />}
@@ -293,7 +294,7 @@ export function Component() {
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                      {usd(w.prize_amount)}
+                      {fmt(w.prize_amount)}
                     </p>
                     <p className="text-xs text-muted-foreground">prize</p>
                   </div>

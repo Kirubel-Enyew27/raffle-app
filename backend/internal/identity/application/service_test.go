@@ -73,7 +73,21 @@ func (m *mockUserRepo) FindByName(ctx context.Context, name string) (*domain.Use
 }
 
 func (m *mockUserRepo) FindByPhone(ctx context.Context, phone string) (*domain.User, error) {
-	return nil, errors.New("not implemented")
+	for _, u := range m.users {
+		if u.Phone == phone {
+			return u, nil
+		}
+	}
+	return nil, errors.New("user not found")
+}
+
+func (m *mockUserRepo) ExistsByPhone(ctx context.Context, phone string) (bool, error) {
+	for _, u := range m.users {
+		if u.Phone == phone {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (m *mockUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {
@@ -131,7 +145,7 @@ func TestRegister(t *testing.T) {
 
 	svc := NewIdentityService(userRepo, auditService, privKey, 15*time.Minute)
 
-	user, err := svc.Register(context.Background(), "user-123", "test@example.com", "password123", "Test User")
+	user, err := svc.Register(context.Background(), "user-123", "test@example.com", "password123", "Test User", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -161,7 +175,7 @@ func TestLogin(t *testing.T) {
 	svc := NewIdentityService(userRepo, auditService, privKey, 15*time.Minute)
 
 	// Register user first
-	_, err := svc.Register(context.Background(), "user-123", "test@example.com", "password123", "Test User")
+	_, err := svc.Register(context.Background(), "user-123", "test@example.com", "password123", "Test User", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +216,7 @@ func TestChangePassword(t *testing.T) {
 	svc := NewIdentityService(userRepo, auditService, privKey, 15*time.Minute)
 
 	// Register user first
-	_, err := svc.Register(context.Background(), "user-123", "test@example.com", "password123", "Test User")
+	_, err := svc.Register(context.Background(), "user-123", "test@example.com", "password123", "Test User", "")
 	if err != nil {
 		t.Fatal(err)
 	}

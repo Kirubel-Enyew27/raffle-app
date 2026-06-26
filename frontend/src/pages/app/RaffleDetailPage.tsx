@@ -11,7 +11,7 @@ import { walletApi } from '@/features/wallet/api'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { ErrorMessage } from '@/components/ui/error-message'
 import { useCountdown } from '@/hooks/useCountdown'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 
 const statusVariant: Record<string, 'success' | 'secondary' | 'outline' | 'warning'> = {
   active: 'success', scheduled: 'secondary', completed: 'outline', cancelled: 'warning',
@@ -48,7 +48,7 @@ function PurchaseSuccess({ tickets, totalSpent, onDismiss }: {
         ))}
       </div>
       <p className="mb-3 text-sm text-green-700 dark:text-green-400">
-        Total charged: <strong>${totalSpent.toFixed(2)}</strong>
+        Total charged: <strong>{formatCurrency(totalSpent)}</strong>
       </p>
       <Button variant="outline" size="sm" onClick={onDismiss}>Buy more</Button>
     </div>
@@ -133,8 +133,8 @@ export function Component() {
       {/* stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { icon: Trophy, label: 'Prize Pool', value: `$${raffle.prize_pool.toLocaleString()}` },
-          { icon: Ticket, label: 'Ticket Price', value: `$${raffle.ticket_price}` },
+          { icon: Trophy, label: 'Prize Pool', value: formatCurrency(raffle.prize_pool) },
+          { icon: Ticket, label: 'Ticket Price', value: formatCurrency(raffle.ticket_price) },
           { icon: Users, label: 'Tickets Left', value: remaining.toLocaleString() },
           { icon: Calendar, label: 'Draw In', value: <CountdownBadge drawDate={raffle.draw_date} /> },
         ].map(({ icon: Icon, label, value }) => (
@@ -208,14 +208,14 @@ export function Component() {
                 {/* cost summary */}
                 <div className="rounded-lg bg-muted/50 p-3 space-y-1.5 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">{quantity} × ${raffle.ticket_price}</span>
-                    <span className="font-medium">${cost.toFixed(2)}</span>
+                    <span className="text-muted-foreground">{quantity} × {formatCurrency(raffle.ticket_price)}</span>
+                    <span className="font-medium">{formatCurrency(cost)}</span>
                   </div>
                   {wallet && (
                     <div className="flex justify-between border-t pt-1.5">
                       <span className="text-muted-foreground">Your balance</span>
                       <span className={cn('font-medium', !canAfford && 'text-destructive')}>
-                        ${wallet.balance.toFixed(2)}
+                        {formatCurrency(wallet.balance)}
                       </span>
                     </div>
                   )}
@@ -233,7 +233,7 @@ export function Component() {
                   disabled={isPending || !canAfford || quantity < 1}
                   onClick={() => purchase()}
                 >
-                  {isPending ? 'Processing…' : `Buy ${quantity} ticket${quantity > 1 ? 's' : ''} — $${cost.toFixed(2)}`}
+                  {isPending ? 'Processing…' : `Buy ${quantity} ticket${quantity > 1 ? 's' : ''} — ${formatCurrency(cost)}`}
                 </Button>
               </>
             )}

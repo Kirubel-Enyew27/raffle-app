@@ -10,6 +10,9 @@ func RegisterIdentityRoutes(r *gin.RouterGroup, handler *IdentityHandler) {
 	{
 		auth.POST("/register", handler.Register)
 		auth.POST("/login", handler.Login)
+		auth.PUT("/profile", middleware.AuthMiddleware(), handler.UpdateProfile)
+		auth.POST("/avatar", middleware.AuthMiddleware(), handler.UploadAvatar)
 		auth.POST("/change-password", middleware.AuthMiddleware(), handler.ChangePassword)
 	}
 }
+

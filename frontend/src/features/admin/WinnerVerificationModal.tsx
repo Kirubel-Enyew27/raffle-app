@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { X, CheckCircle } from 'lucide-react'
+import { formatCurrency } from '@/lib/utils'
 import type { WinnerDetail } from '@/features/admin/api'
 
 interface Props {
@@ -43,7 +44,7 @@ export function WinnerVerificationModal({ winner, onClose }: Props) {
           <Row label="Draw Time" value={winner.draw_timestamp ? new Date(winner.draw_timestamp).toLocaleString() : '—'} />
           <Row label="Prize Amount" value={
             <span className="font-sans font-semibold">
-              {winner.prize_amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+              {formatCurrency(winner.prize_amount)}
             </span>
           } />
         </div>

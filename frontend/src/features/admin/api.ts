@@ -1,5 +1,5 @@
 import { api } from '@/lib/api'
-import type { ApiResponse, Raffle, Ticket } from '@/types/api'
+import type { ApiResponse, Raffle, Ticket, WalletTransaction } from '@/types/api'
 
 export interface RevenueRow {
   period: string
@@ -153,5 +153,19 @@ export const adminApi = {
 
   winnerSummary: (from: string, to: string, limit = 30, offset = 0) =>
     api.get<ApiResponse<Page<WinnerSummaryRow>>>('/reports/winners', { params: { from, to, limit, offset } })
+      .then(r => r.data.data),
+
+  // ─── Withdrawal Management ───────────────────────────────────────────────────
+
+  pendingWithdrawals: () =>
+    api.get<ApiResponse<WalletTransaction[]>>('/admin/wallets/pending-withdrawals')
+      .then(r => r.data.data),
+
+  approveWithdrawal: (id: string) =>
+    api.post<ApiResponse<WalletTransaction>>(`/admin/wallets/approve-withdrawal/${id}`)
+      .then(r => r.data.data),
+
+  rejectWithdrawal: (id: string) =>
+    api.post<ApiResponse<WalletTransaction>>(`/admin/wallets/reject-withdrawal/${id}`)
       .then(r => r.data.data),
 }

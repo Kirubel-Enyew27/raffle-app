@@ -9,6 +9,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { adminApi } from '@/features/admin/api'
 import { RaffleFormModal } from '@/features/admin/RaffleFormModal'
 import { RaffleParticipantsModal } from '@/features/admin/RaffleParticipantsModal'
+import { formatCurrency } from '@/lib/utils'
 import { RaffleTicketSalesPanel } from '@/features/admin/RaffleTicketSalesPanel'
 import type { Raffle } from '@/types/api'
 
@@ -23,8 +24,7 @@ const statusVariant: Record<string, 'default' | 'success' | 'warning' | 'destruc
   cancelled: 'destructive',
 }
 
-const usd = (n: number) =>
-  n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
+const usd = (n: number) => formatCurrency(n)
 
 type Modal =
   | { type: 'create' }

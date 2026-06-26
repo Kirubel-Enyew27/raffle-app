@@ -61,14 +61,58 @@ func (h *WalletHandler) Withdraw(c *gin.Context) {
 	userID := c.GetString("user_id")
 	var req struct {
 		Amount      float64 `json:"amount"`
-		Reference   string  `json:"reference"`
-		Description string  `json:"description"`
+		Phone       string  `json:"phone"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "error", "message": err.Error()})
 		return
 	}
-	tx, err := h.walletService.Withdraw(c.Request.Context(), userID, req.Amount, req.Reference, req.Description)
+	tx, err := h.walletService.Withdraw(c.Request.Context(), userID, req.Amount, "Withdraw to "+req.Phone, "Withdrawal requested")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "error", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": "success", "data": tx})
+}
+
+// ─── Admin: Pending Withdrawals ────────────────────────────────────────────────
+
+func (h *WalletHandler) ListPendingWithdrawals(c *gin.Context) {
+	if c.GetString("role") != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"code": "error", "message": "admin only"})
+		return
+	}
+	txs, err := h.walletService.ListPendingWithdrawals(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "error", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": "success", "data": txs})
+}
+
+func (h *WalletHandler) ApproveWithdrawal(c *gin.Context) {
+	if c.GetString("role") != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"code": "error", "message": "admin only"})
+		return
+	}
+	adminUserID := c.GetString("user_id")
+	txID := c.Param("id")
+	tx, err := h.walletService.ApproveWithdrawal(c.Request.Context(), txID, adminUserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "error", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": "success", "data": tx})
+}
+
+func (h *WalletHandler) RejectWithdrawal(c *gin.Context) {
+	if c.GetString("role") != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"code": "error", "message": "admin only"})
+		return
+	}
+	adminUserID := c.GetString("user_id")
+	txID := c.Param("id")
+	tx, err := h.walletService.RejectWithdrawal(c.Request.Context(), txID, adminUserID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "error", "message": err.Error()})
 		return

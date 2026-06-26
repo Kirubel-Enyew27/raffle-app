@@ -16,7 +16,7 @@ interface Props {
 const EMPTY: CreateRaffleInput = {
   title: '', description: '', ticket_price: 0,
   max_tickets: 0, draw_date: '', status: 'draft',
-  prize_pool: 0, currency: 'USD',
+  prize_pool: 0, currency: 'ETB',
 }
 
 function toLocal(iso: string) {

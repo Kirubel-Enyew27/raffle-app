@@ -17,7 +17,8 @@ import { cn } from '@/lib/utils'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+import { formatCurrency } from '@/lib/utils'
+const usd = (n: number) => formatCurrency(n)
 const num = (n: number) => n.toLocaleString('en-US')
 
 // ── DateRangePicker ───────────────────────────────────────────────────────────
@@ -112,7 +113,7 @@ function RevenueChart({ range, period }: { range: Range; period: string }) {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis dataKey="period" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                   <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false}
-                    tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
+                    tickFormatter={v => `${(v / 1000).toFixed(0)}k Br`} />
                   <Tooltip formatter={(v) => usd(Number(v))} />
                   <Legend />
                   <Area type="monotone" dataKey="ticket_revenue" name="Revenue"

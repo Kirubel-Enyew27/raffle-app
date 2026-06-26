@@ -125,3 +125,42 @@ func (r *WalletRepo) CountTransactionsByWalletID(ctx context.Context, walletID s
 	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM wallet_transactions WHERE wallet_id = $1`, walletID).Scan(&count)
 	return count, err
 }
+
+func (r *WalletRepo) FindTransactionsByStatus(ctx context.Context, txType, status string) ([]*domain.WalletTransaction, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at
+		 FROM wallet_transactions WHERE type = $1 AND status = $2 ORDER BY created_at DESC`, txType, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var txs []*domain.WalletTransaction
+	for rows.Next() {
+		tx := &domain.WalletTransaction{}
+		if err := rows.Scan(&tx.ID, &tx.WalletID, &tx.UserID, &tx.Type, &tx.Status, &tx.Amount, &tx.BalanceBefore, &tx.BalanceAfter, &tx.Reference, &tx.Description, &tx.Metadata, &tx.CreatedAt, &tx.UpdatedAt); err != nil {
+			return nil, err
+		}
+		txs = append(txs, tx)
+	}
+	return txs, nil
+}
+
+func (r *WalletRepo) FindTransactionByID(ctx context.Context, id string) (*domain.WalletTransaction, error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at
+		 FROM wallet_transactions WHERE id = $1`, id)
+	tx := &domain.WalletTransaction{}
+	err := row.Scan(&tx.ID, &tx.WalletID, &tx.UserID, &tx.Type, &tx.Status, &tx.Amount, &tx.BalanceBefore, &tx.BalanceAfter, &tx.Reference, &tx.Description, &tx.Metadata, &tx.CreatedAt, &tx.UpdatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.ErrNotFound
+		}
+		return nil, err
+	}
+	return tx, nil
+}
+
+func (r *WalletRepo) UpdateTransactionStatus(ctx context.Context, id, status string) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE wallet_transactions SET status = $1, updated_at = $2 WHERE id = $3`, status, time.Now(), id)
+	return err
+}

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Trophy } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import { dashboardApi } from './api'
 
 export function PreviousWinnings() {
@@ -54,7 +54,7 @@ export function PreviousWinnings() {
           <div key={w.id} className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-green-600">
-                ${w.prize_amount.toFixed(2)}
+                {formatCurrency(w.prize_amount)}
               </p>
               <p className="text-xs text-muted-foreground">
                 {new Date(w.created_at).toLocaleDateString()}

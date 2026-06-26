@@ -10,14 +10,20 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { FormField } from '@/components/forms/FormField'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Smartphone } from 'lucide-react'
 
 const schema = z.object({
-  email: z.string().email('Enter a valid email'),
+  fullName: z.string().min(2, 'Enter your full name'),
+  email: z.string().email('Enter a valid email').optional().or(z.literal('')),
+  phone: z.string().regex(/^\+?[0-9]{7,15}$/, 'Enter a valid phone number').optional().or(z.literal('')),
   password: z.string().min(6, 'At least 6 characters'),
   confirm: z.string(),
 }).refine(d => d.password === d.confirm, {
   message: 'Passwords do not match',
   path: ['confirm'],
+}).refine(d => d.email || d.phone, {
+  message: 'Enter your email or phone number',
+  path: ['email'],
 })
 type Fields = z.infer<typeof schema>
 
@@ -31,10 +37,11 @@ export function Component() {
   })
 
   const { mutate, isPending, error } = useMutation({
-    mutationFn: ({ email, password }: Fields) => authApi.register(email, password),
-    onSuccess: async (_user, { email, password }) => {
-      // Auto-login after registration
-      const { token, user } = await authApi.login(email, password)
+    mutationFn: ({ fullName, email, phone, password }: Fields) => authApi.register(email, password, fullName, phone),
+    onSuccess: async (_user, { email, phone, password }) => {
+      // Auto-login after registration (use email or phone)
+      const identifier = email || phone
+      const { token, user } = await authApi.login(identifier, password)
       login(token, user)
       navigate('/dashboard')
     },
@@ -49,8 +56,20 @@ export function Component() {
           </p>
         )}
 
+        <FormField label="Full name" htmlFor="fullName" error={errors.fullName?.message}>
+          <Input id="fullName" type="text" autoComplete="name" {...register('fullName')} />
+          <p className="mt-2 flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
+            <Smartphone className="h-3.5 w-3.5 shrink-0" />
+            Make sure the full name matches the name registered on Telebirr for automatic processing.
+          </p>
+        </FormField>
+
+        <FormField label="Phone" htmlFor="phone" error={errors.phone?.message}>
+          <Input id="phone" type="tel" autoComplete="tel" placeholder="e.g. +251912345678" {...register('phone')} />
+        </FormField>
+
         <FormField label="Email" htmlFor="email" error={errors.email?.message}>
-          <Input id="email" type="email" autoComplete="email" {...register('email')} />
+          <Input id="email" type="email" autoComplete="email" placeholder="optional" {...register('email')} />
         </FormField>
 
         <FormField label="Password" htmlFor="password" error={errors.password?.message}>

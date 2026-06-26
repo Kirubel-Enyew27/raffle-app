@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"strings"
 	"time"
 
 	"github.com/raffle-app/backend/internal/identity/domain"
@@ -19,12 +18,20 @@ func NewUserRepo(db *sql.DB) *UserRepo {
 }
 
 func scanUser(row scannable, user *domain.User) error {
+	var email sql.NullString
+	var phone sql.NullString
 	var banReason sql.NullString
+	var fullName sql.NullString
+	var avatarURL sql.NullString
 	var deletedAt sql.NullTime
-	err := row.Scan(&user.ID, &user.Email, &user.FullName, &user.PasswordHash, &user.Role, &user.IsBanned, &banReason, &deletedAt, &user.CreatedAt, &user.UpdatedAt)
+	err := row.Scan(&user.ID, &email, &phone, &fullName, &avatarURL, &user.PasswordHash, &user.Role, &user.IsBanned, &banReason, &deletedAt, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		return err
 	}
+	user.Email = email.String
+	user.Phone = phone.String
+	user.FullName = fullName.String
+	user.AvatarURL = avatarURL.String
 	if banReason.Valid {
 		user.BanReason = &banReason.String
 	}
@@ -39,7 +46,7 @@ type scannable interface {
 	Scan(dest ...interface{}) error
 }
 
-const userColumns = "id, email, full_name, password_hash, role, is_banned, ban_reason, deleted_at, created_at, updated_at"
+const userColumns = "id, email, phone, full_name, avatar_url, password_hash, role, is_banned, ban_reason, deleted_at, created_at, updated_at"
 
 func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
 	query := `SELECT ` + userColumns + ` FROM users WHERE email = $1 AND deleted_at IS NULL`
@@ -54,8 +61,8 @@ func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*domain.User,
 }
 
 func (r *UserRepo) Create(ctx context.Context, user *domain.User) error {
-	query := `INSERT INTO users (id, email, full_name, password_hash, role, is_banned, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-	_, err := r.db.ExecContext(ctx, query, user.ID, user.Email, user.FullName, user.PasswordHash, user.Role, user.IsBanned, time.Now(), time.Now())
+	query := `INSERT INTO users (id, email, phone, full_name, avatar_url, password_hash, role, is_banned, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+	_, err := r.db.ExecContext(ctx, query, user.ID, user.Email, user.Phone, user.FullName, user.AvatarURL, user.PasswordHash, user.Role, user.IsBanned, time.Now(), time.Now())
 	return err
 }
 
@@ -85,13 +92,13 @@ func (r *UserRepo) FindByID(ctx context.Context, id string) (*domain.User, error
 }
 
 func (r *UserRepo) Update(ctx context.Context, user *domain.User) error {
-	query := `UPDATE users SET email = $1, role = $2, is_banned = $3, ban_reason = $4, updated_at = $5 WHERE id = $6`
+	query := `UPDATE users SET email = $1, phone = $2, full_name = $3, avatar_url = $4, role = $5, is_banned = $6, ban_reason = $7, updated_at = $8 WHERE id = $9`
 	var banReason sql.NullString
 	if user.BanReason != nil {
 		banReason.Valid = true
 		banReason.String = *user.BanReason
 	}
-	_, err := r.db.ExecContext(ctx, query, user.Email, user.Role, user.IsBanned, banReason, time.Now(), user.ID)
+	_, err := r.db.ExecContext(ctx, query, user.Email, user.Phone, user.FullName, user.AvatarURL, user.Role, user.IsBanned, banReason, time.Now(), user.ID)
 	return err
 }
 
@@ -108,20 +115,22 @@ func (r *UserRepo) FindByName(ctx context.Context, name string) (*domain.User, e
 }
 
 func (r *UserRepo) FindByPhone(ctx context.Context, phone string) (*domain.User, error) {
-	likePhone := phone
-	if likePhone != "" {
-		likePhone = strings.ReplaceAll(likePhone, "*", "_")
-		likePhone = strings.ReplaceAll(likePhone, "%", "_")
-	}
-	query := `SELECT ` + userColumns + ` FROM users WHERE phone LIKE $1 AND deleted_at IS NULL`
+	query := `SELECT ` + userColumns + ` FROM users WHERE phone = $1 AND deleted_at IS NULL`
 	user := &domain.User{}
-	if err := scanUser(r.db.QueryRowContext(ctx, query, likePhone), user); err != nil {
+	if err := scanUser(r.db.QueryRowContext(ctx, query, phone), user); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.ErrNotFound
 		}
 		return nil, err
 	}
 	return user, nil
+}
+
+func (r *UserRepo) ExistsByPhone(ctx context.Context, phone string) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM users WHERE phone = $1 AND deleted_at IS NULL)`
+	var exists bool
+	err := r.db.QueryRowContext(ctx, query, phone).Scan(&exists)
+	return exists, err
 }
 
 func (r *UserRepo) SoftDelete(ctx context.Context, id string) error {

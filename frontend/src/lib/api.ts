@@ -12,11 +12,11 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Normalise error shape; redirect to /login on 401
+// Normalise error shape; redirect to /login on 401 (except for login requests)
 api.interceptors.response.use(
   (res) => res,
   (err: AxiosError<{ error?: { message?: string }; message?: string }>) => {
-    if (err.response?.status === 401) {
+    if (err.response?.status === 401 && !err.config?.url?.includes('/auth/login')) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       // Redirect immediately and suppress the error from reaching components.

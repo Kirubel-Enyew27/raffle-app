@@ -31,7 +31,7 @@ func (s *WalletService) GetWallet(ctx context.Context, userID string) (*domain.W
 				ID:        generateID(),
 				UserID:    userID,
 				Balance:   0,
-				Currency:  "USD",
+				Currency:  "ETB",
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
 			}
@@ -96,16 +96,16 @@ func (s *WalletService) Withdraw(ctx context.Context, userID string, amount floa
 	if wallet.Balance < amount {
 		return nil, errors.ErrInsufficientFunds
 	}
-	newBalance := wallet.Balance - amount
+
 	tx := &domain.WalletTransaction{
 		ID:            generateID(),
 		WalletID:      wallet.ID,
 		UserID:        userID,
 		Type:          "withdrawal",
-		Status:        "completed",
+		Status:        "pending",
 		Amount:        amount,
 		BalanceBefore: wallet.Balance,
-		BalanceAfter:  newBalance,
+		BalanceAfter:  wallet.Balance, // unchanged until admin approves
 		Reference:     reference,
 		Description:   description,
 		CreatedAt:     time.Now(),
@@ -114,15 +114,77 @@ func (s *WalletService) Withdraw(ctx context.Context, userID string, amount floa
 	if err := s.repo.CreateTransaction(ctx, tx); err != nil {
 		return nil, err
 	}
+
+	// Balance is NOT deducted — admin will approve and send manually within 24h
+	if s.auditService != nil {
+		oldVal := fmt.Sprintf("%.2f", wallet.Balance)
+		newVal := "pending_withdrawal"
+		_ = s.auditService.Record(ctx, &userID, "user", "withdrawal_request", "wallet", &wallet.ID, "", &oldVal, &newVal)
+	}
+
+	return tx, nil
+}
+
+func (s *WalletService) ListPendingWithdrawals(ctx context.Context) ([]*domain.WalletTransaction, error) {
+	return s.repo.FindTransactionsByStatus(ctx, "withdrawal", "pending")
+}
+
+func (s *WalletService) ApproveWithdrawal(ctx context.Context, txID, adminUserID string) (*domain.WalletTransaction, error) {
+	tx, err := s.repo.FindTransactionByID(ctx, txID)
+	if err != nil {
+		return nil, errors.ErrNotFound
+	}
+	if tx.Type != "withdrawal" || tx.Status != "pending" {
+		return nil, fmt.Errorf("transaction is not a pending withdrawal")
+	}
+
+	// Deduct balance now
+	wallet, err := s.repo.FindByID(ctx, tx.WalletID)
+	if err != nil {
+		return nil, err
+	}
+	if wallet.Balance < tx.Amount {
+		return nil, errors.ErrInsufficientFunds
+	}
+
+	newBalance := wallet.Balance - tx.Amount
 	if err := s.repo.UpdateBalance(ctx, wallet.ID, newBalance); err != nil {
 		return nil, err
 	}
 
-	// Record withdrawal audit log
+	tx.Status = "completed"
+	tx.BalanceAfter = newBalance
+	tx.UpdatedAt = time.Now()
+	if err := s.repo.UpdateTransactionStatus(ctx, tx.ID, "completed"); err != nil {
+		return nil, err
+	}
+
 	if s.auditService != nil {
-		oldVal := fmt.Sprintf("%.2f", wallet.Balance)
+		oldVal := fmt.Sprintf("%.2f", wallet.Balance+tx.Amount)
 		newVal := fmt.Sprintf("%.2f", newBalance)
-		_ = s.auditService.Record(ctx, &userID, "user", "withdrawal", "wallet", &wallet.ID, "", &oldVal, &newVal)
+		_ = s.auditService.Record(ctx, &adminUserID, "admin", "withdrawal_approved", "wallet", &wallet.ID, "", &oldVal, &newVal)
+	}
+
+	return tx, nil
+}
+
+func (s *WalletService) RejectWithdrawal(ctx context.Context, txID, adminUserID string) (*domain.WalletTransaction, error) {
+	tx, err := s.repo.FindTransactionByID(ctx, txID)
+	if err != nil {
+		return nil, errors.ErrNotFound
+	}
+	if tx.Type != "withdrawal" || tx.Status != "pending" {
+		return nil, fmt.Errorf("transaction is not a pending withdrawal")
+	}
+
+	tx.Status = "rejected"
+	tx.UpdatedAt = time.Now()
+	if err := s.repo.UpdateTransactionStatus(ctx, tx.ID, "rejected"); err != nil {
+		return nil, err
+	}
+
+	if s.auditService != nil {
+		_ = s.auditService.Record(ctx, &adminUserID, "admin", "withdrawal_rejected", "wallet", &tx.WalletID, "", nil, nil)
 	}
 
 	return tx, nil

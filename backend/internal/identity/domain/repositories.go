@@ -12,4 +12,5 @@ type UserRepository interface {
 	SoftDelete(ctx context.Context, id string) error
 	UpdatePassword(ctx context.Context, userID, passwordHash string) error
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
+	ExistsByPhone(ctx context.Context, phone string) (bool, error)
 }

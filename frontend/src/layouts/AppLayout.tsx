@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Navigate, Outlet, Link, useNavigate } from 'react-router-dom'
-import { LogOut, Bell, Menu, X } from 'lucide-react'
+import { LogOut, Bell, Menu, X, User as UserIcon } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 
@@ -16,6 +16,7 @@ function Navbar() {
     { to: '/tickets', label: 'My Tickets' },
     { to: '/wallet', label: 'Wallet' },
     { to: '/winners', label: 'Winners' },
+    { to: '/profile', label: 'Profile' },
   ]
 
   return (
@@ -48,7 +49,16 @@ function Navbar() {
               <Bell className="h-4 w-4" />
             </Button>
           </Link>
-          <span className="hidden text-sm text-muted-foreground sm:block">{user?.email}</span>
+          <div className="flex items-center gap-2">
+            <div className="hidden h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted sm:flex">
+              {user?.avatar_url ? (
+                <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <UserIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              )}
+            </div>
+            <span className="hidden text-sm text-muted-foreground sm:block">{user?.full_name || user?.email}</span>
+          </div>
           <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Sign out">
             <LogOut className="h-4 w-4" />
           </Button>

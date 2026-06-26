@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowDownLeft, ArrowUpRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import { dashboardApi } from './api'
 
 export function RecentTransactions() {
@@ -54,7 +54,7 @@ export function RecentTransactions() {
               'text-sm font-semibold',
               tx.type === 'deposit' ? 'text-green-600' : 'text-red-600',
             )}>
-              {tx.type === 'deposit' ? '+' : '-'}${tx.amount.toFixed(2)}
+              {tx.type === 'deposit' ? '+' : '-'}{formatCurrency(tx.amount)}
             </span>
           </div>
         ))}
