@@ -70,7 +70,7 @@ func (r *TicketRepo) FindByRaffleID(ctx context.Context, raffleID string) ([]*ti
 	}
 	defer rows.Close()
 
-	var tickets []*ticketdomain.Ticket
+	tickets := make([]*ticketdomain.Ticket, 0)
 	for rows.Next() {
 		ticket := &ticketdomain.Ticket{}
 		err := rows.Scan(
@@ -94,7 +94,7 @@ func (r *TicketRepo) FindByWalletTxID(ctx context.Context, walletTxID string) ([
 	}
 	defer rows.Close()
 
-	var tickets []*ticketdomain.Ticket
+	tickets := make([]*ticketdomain.Ticket, 0)
 	for rows.Next() {
 		ticket := &ticketdomain.Ticket{}
 		err := rows.Scan(

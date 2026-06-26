@@ -1,7 +1,11 @@
 import axios, { type AxiosError } from 'axios'
 
+// In production (Vercel), VITE_API_URL points to the Koyeb backend.
+// In development, Vite's proxy handles /api requests to localhost:8080.
+const BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
+
 export const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
 })
 

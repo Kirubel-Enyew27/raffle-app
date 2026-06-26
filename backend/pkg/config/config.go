@@ -33,10 +33,8 @@ type RedisConfig struct {
 }
 
 type JWTConfig struct {
-	PrivateKeyPath string
-	PublicKeyPath  string
-	AccessExpiry   time.Duration
-	RefreshExpiry  time.Duration
+	Secret       string
+	AccessExpiry time.Duration
 }
 
 func Load() (*Config, error) {
@@ -53,8 +51,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("REDIS_PORT", "6379")
 	viper.SetDefault("REDIS_PASSWORD", "")
 	viper.SetDefault("REDIS_DB", 0)
-	viper.SetDefault("JWT_PRIVATE_KEY_PATH", "../certs/private.pem")
-	viper.SetDefault("JWT_PUBLIC_KEY_PATH", "../certs/public.pem")
+	viper.SetDefault("JWT_SECRET", "change-me-in-production")
 	viper.SetDefault("JWT_ACCESS_EXPIRY", 15*time.Minute)
 	viper.SetDefault("JWT_REFRESH_EXPIRY", 7*24*time.Hour)
 	viper.SetDefault("SMS_API_KEY", "dev-sms-api-key-123")
@@ -80,10 +77,8 @@ func Load() (*Config, error) {
 			DB:       viper.GetInt("REDIS_DB"),
 		},
 		JWT: JWTConfig{
-			PrivateKeyPath: viper.GetString("JWT_PRIVATE_KEY_PATH"),
-			PublicKeyPath:  viper.GetString("JWT_PUBLIC_KEY_PATH"),
-			AccessExpiry:   viper.GetDuration("JWT_ACCESS_EXPIRY"),
-			RefreshExpiry:  viper.GetDuration("JWT_REFRESH_EXPIRY"),
+			Secret:       viper.GetString("JWT_SECRET"),
+			AccessExpiry: viper.GetDuration("JWT_ACCESS_EXPIRY"),
 		},
 		SMSAPIKey: viper.GetString("SMS_API_KEY"),
 	}, nil

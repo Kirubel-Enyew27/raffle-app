@@ -17,15 +17,15 @@ import (
 type IdentityService struct {
 	userRepo     domain.UserRepository
 	auditService *auditapp.AuditService
-	jwtPrivate   []byte
+	jwtSecret    []byte
 	jwtExpiry    time.Duration
 }
 
-func NewIdentityService(userRepo domain.UserRepository, auditService *auditapp.AuditService, jwtPrivate []byte, jwtExpiry time.Duration) *IdentityService {
+func NewIdentityService(userRepo domain.UserRepository, auditService *auditapp.AuditService, jwtSecret []byte, jwtExpiry time.Duration) *IdentityService {
 	return &IdentityService{
 		userRepo:     userRepo,
 		auditService: auditService,
-		jwtPrivate:   jwtPrivate,
+		jwtSecret:    jwtSecret,
 		jwtExpiry:    jwtExpiry,
 	}
 }
@@ -116,7 +116,7 @@ func (s *IdentityService) Login(ctx context.Context, identifier, password string
 		return "", nil, errors.New("invalid credentials")
 	}
 
-	token, err := appjwt.GenerateToken(user.ID, user.Email, user.Role, s.jwtPrivate, s.jwtExpiry)
+	token, err := appjwt.GenerateTokenHMAC(user.ID, user.Email, user.Role, s.jwtSecret, s.jwtExpiry)
 	if err != nil {
 		return "", nil, apperrors.ErrInternal
 	}

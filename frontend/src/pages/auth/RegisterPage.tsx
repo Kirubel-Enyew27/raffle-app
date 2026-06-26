@@ -40,7 +40,7 @@ export function Component() {
     mutationFn: ({ fullName, email, phone, password }: Fields) => authApi.register(email, password, fullName, phone),
     onSuccess: async (_user, { email, phone, password }) => {
       // Auto-login after registration (use email or phone)
-      const identifier = email || phone
+      const identifier = (email || phone)!
       const { token, user } = await authApi.login(identifier, password)
       login(token, user)
       navigate('/dashboard')

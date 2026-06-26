@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -68,9 +67,9 @@ func main() {
 	}
 	defer database.CloseRedis(rdb)
 
-	jwtPrivate, err := os.ReadFile(cfg.JWT.PrivateKeyPath)
-	if err != nil {
-		panic(err)
+	// Run database migrations (safe to run every startup — tracks applied in schema_migrations)
+	if err := database.RunMigrations(db, "migrations"); err != nil {
+		panic(fmt.Errorf("failed to run migrations: %w", err))
 	}
 
 	// Services
@@ -79,7 +78,7 @@ func main() {
 	identitySvc := identityapp.NewIdentityService(
 		identityrepo.NewUserRepo(db),
 		auditSvc,
-		jwtPrivate,
+		[]byte(cfg.JWT.Secret),
 		cfg.JWT.AccessExpiry,
 	)
 

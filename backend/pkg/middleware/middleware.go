@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -102,22 +101,15 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Validate real JWT token with the public key
-		pubKeyPath := viper.GetString("JWT_PUBLIC_KEY_PATH")
-		if pubKeyPath == "" {
-			RespondError(c, http.StatusInternalServerError, "server misconfiguration: JWT_PUBLIC_KEY_PATH not set")
+		// Validate real JWT token with the HMAC secret
+		jwtSecret := viper.GetString("JWT_SECRET")
+		if jwtSecret == "" {
+			RespondError(c, http.StatusInternalServerError, "server misconfiguration: JWT_SECRET not set")
 			c.Abort()
 			return
 		}
 
-		pubKeyBytes, err := os.ReadFile(pubKeyPath)
-		if err != nil {
-			RespondError(c, http.StatusInternalServerError, "server misconfiguration: cannot read public key")
-			c.Abort()
-			return
-		}
-
-		claims, err := appjwt.ParseToken(tokenString, pubKeyBytes)
+		claims, err := appjwt.ParseTokenHMAC(tokenString, []byte(jwtSecret))
 		if err != nil {
 			RespondError(c, http.StatusUnauthorized, "invalid or expired token")
 			c.Abort()

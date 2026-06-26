@@ -3,9 +3,6 @@ package application
 import (
 	"context"
 	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"testing"
 	"time"
@@ -124,26 +121,19 @@ func (m *mockAuditRepo) DeleteOlderThan(ctx context.Context, cutoffDate time.Tim
 	return 0, nil
 }
 
-func generateTestRSAKey() ([]byte, error) {
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, err
-	}
-	privDER := x509.MarshalPKCS1PrivateKey(privateKey)
-	privBlock := pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: privDER,
-	}
-	return pem.EncodeToMemory(&privBlock), nil
+func generateTestSecret() []byte {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	return b
 }
 
 func TestRegister(t *testing.T) {
 	userRepo := newMockUserRepo()
 	auditRepo := &mockAuditRepo{}
 	auditService := auditapp.NewAuditService(auditRepo)
-	privKey, _ := generateTestRSAKey()
+	secret := generateTestSecret()
 
-	svc := NewIdentityService(userRepo, auditService, privKey, 15*time.Minute)
+	svc := NewIdentityService(userRepo, auditService, secret, 15*time.Minute)
 
 	user, err := svc.Register(context.Background(), "user-123", "test@example.com", "password123", "Test User", "")
 	if err != nil {
@@ -170,9 +160,9 @@ func TestLogin(t *testing.T) {
 	userRepo := newMockUserRepo()
 	auditRepo := &mockAuditRepo{}
 	auditService := auditapp.NewAuditService(auditRepo)
-	privKey, _ := generateTestRSAKey()
+	secret := generateTestSecret()
 
-	svc := NewIdentityService(userRepo, auditService, privKey, 15*time.Minute)
+	svc := NewIdentityService(userRepo, auditService, secret, 15*time.Minute)
 
 	// Register user first
 	_, err := svc.Register(context.Background(), "user-123", "test@example.com", "password123", "Test User", "")
@@ -211,9 +201,9 @@ func TestChangePassword(t *testing.T) {
 	userRepo := newMockUserRepo()
 	auditRepo := &mockAuditRepo{}
 	auditService := auditapp.NewAuditService(auditRepo)
-	privKey, _ := generateTestRSAKey()
+	secret := generateTestSecret()
 
-	svc := NewIdentityService(userRepo, auditService, privKey, 15*time.Minute)
+	svc := NewIdentityService(userRepo, auditService, secret, 15*time.Minute)
 
 	// Register user first
 	_, err := svc.Register(context.Background(), "user-123", "test@example.com", "password123", "Test User", "")
