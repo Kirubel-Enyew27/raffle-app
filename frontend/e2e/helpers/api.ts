@@ -33,7 +33,7 @@ export async function registerUser(email: string, password: string) {
 }
 
 export async function loginUser(email: string, password: string) {
-  return req<LoginResponse>('POST', '/auth/login', { email, password })
+  return req<LoginResponse>('POST', '/auth/login', { identifier: email, password })
 }
 
 export async function deposit(token: string, amount: number) {

@@ -30,6 +30,7 @@ test.describe('Raffle Lifecycle, Draw, and Winner Verification', () => {
   test('should purchase a ticket, execute draw, and verify the cryptographic proof', async ({ page }) => {
     // ── STEP 1: Register a new user & Top up their wallet ──
     await page.goto('/register')
+    await page.fill('#fullName', 'Test User')
     await page.fill('#email', userEmail)
     await page.fill('#password', password)
     await page.fill('#confirm', password)
@@ -43,7 +44,7 @@ test.describe('Raffle Lifecycle, Draw, and Winner Verification', () => {
     await page.fill('#reference', `dep-${uid()}`)
     await page.fill('#description', 'E2E ticket buying funds')
     await page.click('button[type="submit"]:has-text("Deposit funds")')
-    await expect(page.locator('p.text-3xl')).toHaveText('$50.00')
+    await expect(page.locator('p.text-3xl')).toHaveText('50.00 Br')
 
     // ── STEP 2: Purchase a ticket ──
     // Navigate directly to the raffle detail page
@@ -69,7 +70,7 @@ test.describe('Raffle Lifecycle, Draw, and Winner Verification', () => {
     await page.goto('/login')
     
     // Login as admin
-    await page.fill('#email', 'admin@raffle.com')
+    await page.fill('#identifier', 'admin@raffle.com')
     await page.fill('#password', 'admin123')
     await page.click('button[type="submit"]')
     await page.waitForURL('/admin/dashboard')

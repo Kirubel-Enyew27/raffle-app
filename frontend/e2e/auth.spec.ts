@@ -11,6 +11,7 @@ test.describe('Authentication Flow', () => {
     await expect(page).toHaveTitle(/Create account/i)
 
     // 2. Fill registration form
+    await page.fill('#fullName', 'Test User')
     await page.fill('#email', email)
     await page.fill('#password', password)
     await page.fill('#confirm', password)
@@ -30,7 +31,7 @@ test.describe('Authentication Flow', () => {
     await expect(page).toHaveTitle(/Sign in/i)
 
     // 2. Fill login form
-    await page.fill('#email', email)
+    await page.fill('#identifier', email)
     await page.fill('#password', password)
 
     // 3. Submit
@@ -44,7 +45,7 @@ test.describe('Authentication Flow', () => {
 
   test('should show validation error on incorrect credentials', async ({ page }) => {
     await page.goto('/login')
-    await page.fill('#email', 'nonexistent@example.com')
+    await page.fill('#identifier', 'nonexistent@example.com')
     await page.fill('#password', 'wrongpassword')
     await page.click('button[type="submit"]')
 
