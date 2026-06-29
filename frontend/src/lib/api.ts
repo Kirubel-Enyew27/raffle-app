@@ -1,6 +1,6 @@
 import axios, { type AxiosError } from 'axios'
 
-// In production (Vercel), VITE_API_URL points to the Koyeb backend.
+// In production (Vercel), VITE_API_URL points to the Render backend.
 // In development, Vite's proxy handles /api requests to localhost:8080.
 const BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
