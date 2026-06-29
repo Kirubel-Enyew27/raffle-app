@@ -37,7 +37,7 @@ export function Component() {
   })
 
   const { mutate, isPending, error } = useMutation({
-    mutationFn: ({ fullName, email, phone, password }: Fields) => authApi.register(email || '', password, fullName, phone),
+    mutationFn: ({ fullName, email, phone, password }: Fields) => authApi.register(email, password, fullName, phone),
     onSuccess: async (_user, { email, phone, password }) => {
       // Auto-login after registration (use email or phone)
       const identifier = (email || phone)!
