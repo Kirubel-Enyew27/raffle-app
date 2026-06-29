@@ -19,8 +19,6 @@ services:
     networks:
       - raffle-network
     restart: unless-stopped
-    profiles:
-      - infra
 
   redis:
     image: redis:7-alpine
@@ -37,8 +35,6 @@ services:
     networks:
       - raffle-network
     restart: unless-stopped
-    profiles:
-      - infra
 
   backend:
     build:
@@ -64,14 +60,8 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ""
       REDIS_DB: 0
-      JWT_PRIVATE_KEY_PATH: /app/certs/private.pem
-      JWT_PUBLIC_KEY_PATH: /app/certs/public.pem
-      JWT_ACCESS_TOKEN_EXPIRY: 15m
-      JWT_REFRESH_TOKEN_EXPIRY: 7d
-      RATE_LIMIT_REQUESTS: 100
-      RATE_LIMIT_WINDOW: 1m
-    volumes:
-      - ./certs:/app/certs:ro
+      JWT_SECRET: change-me-in-production
+      JWT_ACCESS_EXPIRY: 15m
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,8 +99,6 @@ services:
     networks:
       - raffle-network
     restart: unless-stopped
-    profiles:
-      - infra
 
 networks:
   raffle-network:
