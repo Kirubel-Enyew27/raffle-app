@@ -38,8 +38,8 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: docker/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     container_name: raffle-backend
     ports:
       - "8080:8080"
