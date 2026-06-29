@@ -26,10 +26,11 @@ type DatabaseConfig struct {
 }
 
 type RedisConfig struct {
-	Host     string
-	Port     string
-	Password string
-	DB       int
+	Host       string
+	Port       string
+	Password   string
+	DB         int
+	TLSEnabled bool
 }
 
 type JWTConfig struct {
@@ -51,6 +52,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("REDIS_PORT", "6379")
 	viper.SetDefault("REDIS_PASSWORD", "")
 	viper.SetDefault("REDIS_DB", 0)
+	viper.SetDefault("REDIS_TLS_ENABLED", false)
 	viper.SetDefault("JWT_SECRET", "change-me-in-production")
 	viper.SetDefault("JWT_ACCESS_EXPIRY", 15*time.Minute)
 	viper.SetDefault("JWT_REFRESH_EXPIRY", 7*24*time.Hour)
@@ -71,10 +73,11 @@ func Load() (*Config, error) {
 			SSLMode:  viper.GetString("DB_SSL_MODE"),
 		},
 		Redis: RedisConfig{
-			Host:     viper.GetString("REDIS_HOST"),
-			Port:     viper.GetString("REDIS_PORT"),
-			Password: viper.GetString("REDIS_PASSWORD"),
-			DB:       viper.GetInt("REDIS_DB"),
+			Host:       viper.GetString("REDIS_HOST"),
+			Port:       viper.GetString("REDIS_PORT"),
+			Password:   viper.GetString("REDIS_PASSWORD"),
+			DB:         viper.GetInt("REDIS_DB"),
+			TLSEnabled: viper.GetBool("REDIS_TLS_ENABLED"),
 		},
 		JWT: JWTConfig{
 			Secret:       viper.GetString("JWT_SECRET"),
