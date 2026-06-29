@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowDownLeft, ArrowUpRight, Wallet, Smartphone, Copy, Check, Clock, ArrowRight } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Wallet, Smartphone, Copy, Check, Clock } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -112,7 +112,7 @@ function WithdrawCard() {
 
   const withdrawMutation = useMutation({
     mutationFn: ({ amount, phone }: { amount: number; phone: string }) =>
-      walletApi.withdraw(amount, phone),
+      walletApi.withdraw(amount, phone, `Withdrawal to ${phone}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['wallet'] })
       qc.invalidateQueries({ queryKey: ['transactions'] })
