@@ -118,17 +118,21 @@ func (s *SMSService) ProcessWebhook(ctx context.Context, sender, message, ipAddr
 		}
 	}
 
-	// Fetch the official Telebirr receipt page to verify the transaction
-	receipt, err := s.receiptFetcher.Fetch(transactionID)
+	// Verify the transaction — try the API first, fall back to HTML scraping
+	receipt, err := s.receiptFetcher.VerifyTelebirrTransaction(ctx, transactionID)
 	if err != nil {
-		logEntry := buildLogEntry(sender, message, transactionID, ipAddress)
-		logEntry.Credited = false
-		errMsg := fmt.Sprintf("receipt fetch failed: %v", err)
-		logEntry.ErrorMessage = &errMsg
-		_ = s.smsLogRepo.Create(ctx, logEntry)
-		return &ProcessResult{
-			TransactionID: transactionID,
-			Error:         fmt.Errorf("receipt verification failed for %s: %w", transactionID, err),
+		// API verification failed; fall back to HTML page scraping
+		receipt, err = s.receiptFetcher.Fetch(transactionID)
+		if err != nil {
+			logEntry := buildLogEntry(sender, message, transactionID, ipAddress)
+			logEntry.Credited = false
+			errMsg := fmt.Sprintf("receipt fetch failed (both API and scrape): %v", err)
+			logEntry.ErrorMessage = &errMsg
+			_ = s.smsLogRepo.Create(ctx, logEntry)
+			return &ProcessResult{
+				TransactionID: transactionID,
+				Error:         fmt.Errorf("receipt verification failed for %s: %w", transactionID, err),
+			}
 		}
 	}
 

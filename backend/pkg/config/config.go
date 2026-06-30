@@ -7,13 +7,15 @@ import (
 )
 
 type Config struct {
-	AppEnv   string
-	AppPort  int
-	AppDebug bool
-	Database DatabaseConfig
-	Redis    RedisConfig
-	JWT      JWTConfig
-	SMSAPIKey string
+	AppEnv         string
+	AppPort        int
+	AppDebug       bool
+	Database       DatabaseConfig
+	Redis          RedisConfig
+	JWT            JWTConfig
+	SMSAPIKey      string
+	TeleVerifyURL  string
+	TeleVerifyKey  string
 }
 
 type DatabaseConfig struct {
@@ -57,6 +59,8 @@ func Load() (*Config, error) {
 	viper.SetDefault("JWT_ACCESS_EXPIRY", 15*time.Minute)
 	viper.SetDefault("JWT_REFRESH_EXPIRY", 7*24*time.Hour)
 	viper.SetDefault("SMS_API_KEY", "dev-sms-api-key-123")
+	viper.SetDefault("TELE_VERIFY_URL", "")
+	viper.SetDefault("TELE_VERIFY_KEY", "")
 
 	viper.AutomaticEnv()
 
@@ -83,6 +87,8 @@ func Load() (*Config, error) {
 			Secret:       viper.GetString("JWT_SECRET"),
 			AccessExpiry: viper.GetDuration("JWT_ACCESS_EXPIRY"),
 		},
-		SMSAPIKey: viper.GetString("SMS_API_KEY"),
+		SMSAPIKey:     viper.GetString("SMS_API_KEY"),
+		TeleVerifyURL: viper.GetString("TELE_VERIFY_URL"),
+		TeleVerifyKey: viper.GetString("TELE_VERIFY_KEY"),
 	}, nil
 }

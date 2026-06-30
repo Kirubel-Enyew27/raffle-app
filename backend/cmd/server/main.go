@@ -128,7 +128,7 @@ func main() {
 		userRepo,
 		walletrepo.NewWalletRepo(db),
 		smsrepo.NewSMSLogRepo(db),
-		smsinfra.NewReceiptFetcher(30*time.Second),
+		smsinfra.NewReceiptFetcher(30*time.Second, cfg.TeleVerifyURL, cfg.TeleVerifyKey),
 		cfg.SMSAPIKey,
 	)
 

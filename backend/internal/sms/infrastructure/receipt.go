@@ -1,6 +1,9 @@
 package infrastructure
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,14 +24,45 @@ type ReceiptData struct {
 	RawHTML         string // stored for audit
 }
 
-// ReceiptFetcher fetches and parses Telebirr transaction receipt pages.
-type ReceiptFetcher struct {
-	client *http.Client
+// TelebirrVerifyRequest is sent to the Telebirr verification API.
+type TelebirrVerifyRequest struct {
+	Reference string `json:"reference"`
 }
 
-func NewReceiptFetcher(timeout time.Duration) *ReceiptFetcher {
+// TelebirrData is the response payload from the Telebirr verification API.
+type TelebirrData struct {
+	PayerName              string `json:"payerName"`
+	PayerTelebirrNo        string `json:"payerTelebirrNo"`
+	CreditedPartyName      string `json:"creditedPartyName"`
+	CreditedPartyAccountNo string `json:"creditedPartyAccountNo"`
+	TransactionStatus      string `json:"transactionStatus"`
+	ReceiptNo              string `json:"receiptNo"`
+	PaymentDate            string `json:"paymentDate"`
+	SettledAmount          string `json:"settledAmount"`
+	TotalPaidAmount        string `json:"totalPaidAmount"`
+}
+
+// TelebirrVerifyResponse is the top-level API response wrapper.
+type TelebirrVerifyResponse struct {
+	Success bool          `json:"success"`
+	Data    TelebirrData `json:"data"`
+}
+
+// ReceiptFetcher fetches and verifies Telebirr transaction receipts.
+// It supports two methods:
+//  1. API-based verification (primary) — POST to TeleVerifyUrl with API key
+//  2. HTML page scraping (fallback) — fetch from transactioninfo.ethiotelecom.et
+type ReceiptFetcher struct {
+	client        *http.Client
+	teleVerifyURL string
+	teleVerifyKey string
+}
+
+func NewReceiptFetcher(timeout time.Duration, teleVerifyURL, teleVerifyKey string) *ReceiptFetcher {
 	return &ReceiptFetcher{
-		client: &http.Client{Timeout: timeout},
+		client:        &http.Client{Timeout: timeout},
+		teleVerifyURL: teleVerifyURL,
+		teleVerifyKey: teleVerifyKey,
 	}
 }
 
@@ -227,6 +261,78 @@ func MaskSensitivePhone(phone string) string {
 		return phone
 	}
 	return phone[:4] + "****" + phone[len(phone)-4:]
+}
+
+// VerifyTelebirrTransaction calls the Telebirr verification API to validate
+// a transaction and returns structured receipt data.
+// This is the preferred method over HTML page scraping.
+func (f *ReceiptFetcher) VerifyTelebirrTransaction(ctx context.Context, reference string) (*ReceiptData, error) {
+	reqBody := TelebirrVerifyRequest{Reference: reference}
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.teleVerifyURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", f.teleVerifyKey)
+
+	resp, err := f.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("verification API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result TelebirrVerifyResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if !result.Success {
+		return nil, fmt.Errorf("verification API returned failure for reference %s", reference)
+	}
+
+	// Parse the settled amount (string like "100.00" or "8,858.92")
+	amountStr := strings.TrimSpace(result.Data.SettledAmount)
+	amountStr = strings.ReplaceAll(amountStr, ",", "")
+	var parsedAmount float64
+	if amountStr != "" {
+		parsed, err := strconv.ParseFloat(amountStr, 64)
+		if err == nil {
+			parsedAmount = parsed
+		}
+	}
+
+	// Parse the payment date
+	var parsedDate time.Time
+	dateStr := strings.TrimSpace(result.Data.PaymentDate)
+	if dateStr != "" {
+		// Try common formats: "30/06/2026 09:37:49" or "12-08-2025 12:39:06"
+		parsed, err := time.Parse("02/01/2006 15:04:05", dateStr)
+		if err != nil {
+			parsed, _ = time.Parse("02-01-2006 15:04:05", dateStr)
+		}
+		parsedDate = parsed
+	}
+
+	status := strings.TrimSpace(result.Data.TransactionStatus)
+
+	return &ReceiptData{
+		TransactionID:   reference,
+		Status:          status,
+		TotalPaidAmount: parsedAmount,
+		PayerName:       strings.TrimSpace(result.Data.PayerName),
+		PaymentDate:     parsedDate,
+	}, nil
 }
 
 // ReceiptRegex matches the receipt number from the URL or page content
