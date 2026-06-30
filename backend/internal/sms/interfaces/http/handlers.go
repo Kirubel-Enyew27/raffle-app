@@ -49,10 +49,14 @@ func (h *SMSHandler) HandleWebhook(c *gin.Context) {
 	}
 
 	sender, message := smsdomain.ParseRawSMS(smsText)
+	fmt.Printf("[SMS] Parsed: sender=%q, message_len=%d\n", sender, len(message))
+
 	ip := middleware.GetClientIP(c)
 	result := h.svc.ProcessWebhook(c.Request.Context(), sender, message, ip)
 
 	if result.Error != nil {
+		fmt.Printf("[SMS] Result: ERROR - credited=%v, verified=%v, tx=%s, amount=%.2f, err=%v\n",
+			result.Credited, result.Verified, result.TransactionID, result.Amount, result.Error)
 		if result.Verified {
 			// Transaction was verified via receipt but couldn't be credited
 			// (e.g. user not found, duplicate, DB error)
@@ -82,6 +86,7 @@ func (h *SMSHandler) HandleWebhook(c *gin.Context) {
 		return
 	}
 
+	fmt.Printf("[SMS] Result: SUCCESS - credited=%v, tx=%s, amount=%.2f\n", result.Credited, result.TransactionID, result.Amount)
 	c.JSON(http.StatusOK, smsdomain.WebhookResponse{
 		Status:        "success",
 		TransactionID: result.TransactionID,
