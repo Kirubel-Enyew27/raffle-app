@@ -18,16 +18,24 @@ func NewSMSHandler(svc *smsapp.SMSService) *SMSHandler {
 }
 
 // HandleWebhook processes incoming SMS from the SMS Forwarder app.
+// The SMS Forwarder app sends the raw SMS text as the POST body.
 // POST /api/sms/webhook
 func (h *SMSHandler) HandleWebhook(c *gin.Context) {
-	var req smsdomain.WebhookRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "error", "message": "invalid request body: " + err.Error()})
+	rawBody, err := c.GetRawData()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "error", "message": "failed to read request body"})
 		return
 	}
 
+	raw := string(rawBody)
+	if raw == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "error", "message": "empty request body"})
+		return
+	}
+
+	sender, message := smsdomain.ParseRawSMS(raw)
 	ip := middleware.GetClientIP(c)
-	result := h.svc.ProcessWebhook(c.Request.Context(), req.Sender, req.Message, ip)
+	result := h.svc.ProcessWebhook(c.Request.Context(), sender, message, ip)
 
 	if result.Error != nil {
 		if result.Verified {

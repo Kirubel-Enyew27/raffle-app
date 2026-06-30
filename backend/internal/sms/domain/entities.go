@@ -20,7 +20,6 @@ type WebhookResponse struct {
 	Verified      bool    `json:"verified"`
 }
 
-// IsTelebirrSMS checks whether a message is a valid Telebirr payment SMS.
 // Accepts if sender is "127" OR the message contains the known Telebirr phrase.
 func IsTelebirrSMS(sender, message string) bool {
 	sender = strings.TrimSpace(sender)
@@ -31,7 +30,6 @@ func IsTelebirrSMS(sender, message string) bool {
 	return strings.Contains(message, "Your transaction number is")
 }
 
-// ExtractTransactionID extracts the Telebirr transaction/receipt number from an SMS.
 // The SMS contains: "Your transaction number is DFM26GE790."
 func ExtractTransactionID(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
@@ -47,6 +45,29 @@ func ExtractTransactionID(raw string) (string, error) {
 		return "", ErrTransactionIDNotFound
 	}
 	return txID, nil
+}
+
+// Returns the sender number and the remaining message text.
+func ParseRawSMS(raw string) (sender, message string) {
+	raw = strings.TrimSpace(raw)
+	prefix := "from : "
+	if strings.HasPrefix(strings.ToLower(raw), prefix) {
+		rest := strings.TrimSpace(raw[len(prefix):])
+		// The sender is the first word after "From : "
+		parts := strings.SplitN(rest, " ", 2)
+		if len(parts) >= 2 {
+			sender = parts[0]
+			message = parts[1]
+		} else {
+			sender = parts[0]
+			message = ""
+		}
+	} else {
+		// No "From : " prefix — use full body as message
+		sender = ""
+		message = raw
+	}
+	return sender, message
 }
 
 // ErrTransactionIDNotFound is returned when no transaction ID can be extracted.
