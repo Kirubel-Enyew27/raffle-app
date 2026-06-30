@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -25,6 +26,10 @@ func NewSMSHandler(svc *smsapp.SMSService) *SMSHandler {
 //     with the SMS text in "key", "message", "text", or "body" field
 //  2. Raw text body: the entire POST body is the SMS text
 // POST /api/sms/webhook
+//
+// IMPORTANT: The SMS Forwarder app expects a quick 200 OK response, or it
+// shows "failed due to no response from the server". So we respond immediately
+// and process the SMS asynchronously.
 func (h *SMSHandler) HandleWebhook(c *gin.Context) {
 	rawBody, err := c.GetRawData()
 	if err != nil {
@@ -51,48 +56,13 @@ func (h *SMSHandler) HandleWebhook(c *gin.Context) {
 	sender, message := smsdomain.ParseRawSMS(smsText)
 	fmt.Printf("[SMS] Parsed: sender=%q, message_len=%d\n", sender, len(message))
 
+	// Respond immediately with 200 OK — the SMS Forwarder app expects a quick response
+	// or it shows "failed due to no response from the server".
+	c.JSON(http.StatusOK, gin.H{"status": "received"})
+
+	// Process the SMS asynchronously
 	ip := middleware.GetClientIP(c)
-	result := h.svc.ProcessWebhook(c.Request.Context(), sender, message, ip)
-
-	if result.Error != nil {
-		fmt.Printf("[SMS] Result: ERROR - credited=%v, verified=%v, tx=%s, amount=%.2f, err=%v\n",
-			result.Credited, result.Verified, result.TransactionID, result.Amount, result.Error)
-		if result.Verified {
-			// Transaction was verified via receipt but couldn't be credited
-			// (e.g. user not found, duplicate, DB error)
-			c.JSON(http.StatusOK, smsdomain.WebhookResponse{
-				Status:        "verified",
-				TransactionID: result.TransactionID,
-				Amount:        result.Amount,
-				Verified:      true,
-			})
-			return
-		}
-		if result.TransactionID != "" {
-			// Duplicate / already processed
-			c.JSON(http.StatusOK, smsdomain.WebhookResponse{
-				Status:        "duplicate",
-				TransactionID: result.TransactionID,
-				Amount:        result.Amount,
-				Verified:      false,
-			})
-			return
-		}
-		// Not a valid Telebirr SMS or parsing failed
-		c.JSON(http.StatusOK, smsdomain.WebhookResponse{
-			Status:   "ignored",
-			Verified: false,
-		})
-		return
-	}
-
-	fmt.Printf("[SMS] Result: SUCCESS - credited=%v, tx=%s, amount=%.2f\n", result.Credited, result.TransactionID, result.Amount)
-	c.JSON(http.StatusOK, smsdomain.WebhookResponse{
-		Status:        "success",
-		TransactionID: result.TransactionID,
-		Amount:        result.Amount,
-		Verified:      true,
-	})
+	go h.svc.ProcessWebhook(context.Background(), sender, message, ip)
 }
 
 // extractSMSText tries to parse the body as form-urlencoded and extract
