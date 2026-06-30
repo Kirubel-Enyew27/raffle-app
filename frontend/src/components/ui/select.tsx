@@ -90,7 +90,7 @@ const Select = React.forwardRef<HTMLDivElement, SelectProps>(
     }
 
     return (
-      <div ref={containerRef} className={cn('relative', className)} {...props}>
+      <div ref={containerRef} className={cn('relative', className)}>
         <button
           ref={triggerRef}
           type="button"
