@@ -53,12 +53,13 @@ func ParseRawSMS(raw string) (sender, message string) {
 	prefix := "from : "
 	if strings.HasPrefix(strings.ToLower(raw), prefix) {
 		rest := strings.TrimSpace(raw[len(prefix):])
-		// The sender is the first word after "From : "
-		parts := strings.SplitN(rest, " ", 2)
+		// Use Fields to split on any whitespace (spaces, newlines, tabs)
+		// The sender is the first word after "From : " — e.g. "127" from "127\nDear..."
+		parts := strings.Fields(rest)
 		if len(parts) >= 2 {
 			sender = parts[0]
-			message = parts[1]
-		} else {
+			message = strings.Join(parts[1:], " ")
+		} else if len(parts) == 1 {
 			sender = parts[0]
 			message = ""
 		}

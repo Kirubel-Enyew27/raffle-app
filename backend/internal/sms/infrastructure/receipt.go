@@ -301,8 +301,11 @@ func (f *ReceiptFetcher) VerifyTelebirrTransaction(ctx context.Context, referenc
 		return nil, fmt.Errorf("verification API returned failure for reference %s", reference)
 	}
 
-	// Parse the settled amount (string like "100.00" or "8,858.92")
+	// Parse the amount — try SettledAmount first, fall back to TotalPaidAmount
 	amountStr := strings.TrimSpace(result.Data.SettledAmount)
+	if amountStr == "" {
+		amountStr = strings.TrimSpace(result.Data.TotalPaidAmount)
+	}
 	amountStr = strings.ReplaceAll(amountStr, ",", "")
 	var parsedAmount float64
 	if amountStr != "" {
