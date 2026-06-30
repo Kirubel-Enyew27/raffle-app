@@ -310,7 +310,13 @@ func (f *ReceiptFetcher) VerifyTelebirrTransaction(ctx context.Context, referenc
 	if amountStr == "" {
 		amountStr = strings.TrimSpace(result.Data.TotalPaidAmount)
 	}
+	// Remove " Birr" or "birr" suffix (API returns "1 Birr", "2 Birr", etc.)
+	amountStr = strings.TrimSuffix(amountStr, " Birr")
+	amountStr = strings.TrimSuffix(amountStr, " birr")
+	amountStr = strings.TrimSuffix(amountStr, "Birr")
+	amountStr = strings.TrimSuffix(amountStr, "birr")
 	amountStr = strings.ReplaceAll(amountStr, ",", "")
+	amountStr = strings.TrimSpace(amountStr)
 	var parsedAmount float64
 	if amountStr != "" {
 		parsed, err := strconv.ParseFloat(amountStr, 64)
