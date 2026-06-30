@@ -292,8 +292,12 @@ func (f *ReceiptFetcher) VerifyTelebirrTransaction(ctx context.Context, referenc
 		return nil, fmt.Errorf("verification API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
+	// Read and log the raw API response for debugging
+	rawBody, _ := io.ReadAll(resp.Body)
+	fmt.Printf("[SMS] API raw response: %s\n", string(rawBody))
+
 	var result TelebirrVerifyResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(rawBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 

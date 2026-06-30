@@ -130,9 +130,15 @@ func (s *SMSService) ProcessWebhook(ctx context.Context, sender, message, ipAddr
 	// Verify the transaction — try the API first, fall back to HTML scraping
 	fmt.Printf("[SMS] Attempting API verification for %s\n", transactionID)
 	receipt, err := s.receiptFetcher.VerifyTelebirrTransaction(ctx, transactionID)
-	if err != nil {
-		fmt.Printf("[SMS] API verification failed: %v - falling back to HTML scraping\n", err)
-		// API verification failed; fall back to HTML page scraping
+	if err != nil || receipt == nil || receipt.TotalPaidAmount <= 0 {
+		if err != nil {
+			fmt.Printf("[SMS] API verification failed: %v - falling back to HTML scraping\n", err)
+		} else if receipt == nil {
+			fmt.Printf("[SMS] API returned nil receipt - falling back to HTML scraping\n")
+		} else {
+			fmt.Printf("[SMS] API returned amount=%.2f - falling back to HTML scraping\n", receipt.TotalPaidAmount)
+		}
+		// API verification failed or returned bad data; fall back to HTML page scraping
 		receipt, err = s.receiptFetcher.Fetch(transactionID)
 		if err != nil {
 			fmt.Printf("[SMS] HTML scraping also failed: %v\n", err)
