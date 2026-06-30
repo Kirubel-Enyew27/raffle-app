@@ -9,7 +9,7 @@ interface SelectProps extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>
 }
 
 const Select = React.forwardRef<HTMLDivElement, SelectProps>(
-  ({ className, children, value, onChange, placeholder, disabled, ...props }, ref) => {
+  ({ className, children, value, onChange, placeholder, disabled }, ref) => {
     const [open, setOpen] = React.useState(false)
     const containerRef = React.useRef<HTMLDivElement>(null)
     const triggerRef = React.useRef<HTMLButtonElement>(null)
