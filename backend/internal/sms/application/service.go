@@ -4,8 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
+
+	apperrors "github.com/raffle-app/backend/pkg/errors"
 
 	identitydomain "github.com/raffle-app/backend/internal/identity/domain"
 	smsdomain "github.com/raffle-app/backend/internal/sms/domain"
@@ -177,17 +181,53 @@ func (s *SMSService) ProcessWebhook(ctx context.Context, sender, message, ipAddr
 	fmt.Printf("[SMS] Receipt validated OK\n")
 
 	// Find the user by payer name from the receipt page
+	// The API may return a longer name than what's stored (e.g. "tewodros tadese fenta"
+	// vs "tewodros tadese"). Try the full name first, then progressively shorter versions.
 	fmt.Printf("[SMS] Looking up user by payer name: %q\n", receipt.PayerName)
-	user, err := s.userRepo.FindByName(ctx, receipt.PayerName)
-	if err != nil {
-		fmt.Printf("[SMS] User not found for payer name %q: %v\n", receipt.PayerName, err)
+	var user *identitydomain.User
+	nameToTry := receipt.PayerName
+	for {
+		user, err = s.userRepo.FindByName(ctx, nameToTry)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, apperrors.ErrNotFound) {
+			// Real DB error — return immediately
+			fmt.Printf("[SMS] DB error looking up user: %v\n", err)
+			logEntry := buildLogEntry(sender, message, transactionID, ipAddress)
+			logEntry.Credited = false
+			logEntry.ReceiptVerified = true
+			logEntry.ReceiptAmount = &receipt.TotalPaidAmount
+			logEntry.ReceiptPayerName = &receipt.PayerName
+			logEntry.ReceiptStatus = &receipt.Status
+			errMsg := fmt.Sprintf("DB error looking up user: %v", err)
+			logEntry.ErrorMessage = &errMsg
+			_ = s.smsLogRepo.Create(ctx, logEntry)
+			return &ProcessResult{
+				TransactionID: transactionID,
+				Amount:        receipt.TotalPaidAmount,
+				Verified:      true,
+				Error:         fmt.Errorf("DB error looking up user by name: %w", err),
+			}
+		}
+		parts := strings.Fields(nameToTry)
+		if len(parts) <= 1 {
+			// Can't shorten further
+			break
+		}
+		// Remove the last word and try again
+		nameToTry = strings.Join(parts[:len(parts)-1], " ")
+		fmt.Printf("[SMS] Full name not found, trying shorter name: %q\n", nameToTry)
+	}
+	if user == nil {
+		fmt.Printf("[SMS] User not found for payer name %q after all attempts\n", receipt.PayerName)
 		logEntry := buildLogEntry(sender, message, transactionID, ipAddress)
 		logEntry.Credited = false
 		logEntry.ReceiptVerified = true
 		logEntry.ReceiptAmount = &receipt.TotalPaidAmount
 		logEntry.ReceiptPayerName = &receipt.PayerName
 		logEntry.ReceiptStatus = &receipt.Status
-		errMsg := fmt.Sprintf("user not found for payer name %q: %v", receipt.PayerName, err)
+		errMsg := fmt.Sprintf("user not found for payer name %q after all attempts", receipt.PayerName)
 		logEntry.ErrorMessage = &errMsg
 		_ = s.smsLogRepo.Create(ctx, logEntry)
 		return &ProcessResult{
@@ -197,7 +237,7 @@ func (s *SMSService) ProcessWebhook(ctx context.Context, sender, message, ipAddr
 			Error:         fmt.Errorf("no user matches payer name %q", receipt.PayerName),
 		}
 	}
-	fmt.Printf("[SMS] Found user: id=%s, name=%s, email=%s\n", user.ID, user.FullName, user.Email)
+	fmt.Printf("[SMS] Found user: id=%s, name=%s, email=%s (matched via %q)\n", user.ID, user.FullName, user.Email, nameToTry)
 
 	// Atomic wallet credit within a DB transaction
 	fmt.Printf("[SMS] Beginning DB transaction for wallet credit\n")
