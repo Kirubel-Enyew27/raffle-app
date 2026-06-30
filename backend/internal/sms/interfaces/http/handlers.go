@@ -1,6 +1,7 @@
 package http
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -32,6 +33,8 @@ func (h *SMSHandler) HandleWebhook(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "error", "message": "empty request body"})
 		return
 	}
+
+	fmt.Printf("Received raw SMS: %s\n", raw)
 
 	sender, message := smsdomain.ParseRawSMS(raw)
 	ip := middleware.GetClientIP(c)
