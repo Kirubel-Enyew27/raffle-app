@@ -60,9 +60,16 @@ func (h *SMSHandler) HandleWebhook(c *gin.Context) {
 	// or it shows "failed due to no response from the server".
 	c.JSON(http.StatusOK, gin.H{"status": "received"})
 
-	// Process the SMS asynchronously
+	// Process the SMS asynchronously with panic recovery
 	ip := middleware.GetClientIP(c)
-	go h.svc.ProcessWebhook(context.Background(), sender, message, ip)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("[SMS] PANIC in ProcessWebhook: %v\n", r)
+			}
+		}()
+		h.svc.ProcessWebhook(context.Background(), sender, message, ip)
+	}()
 }
 
 // extractSMSText tries to parse the body as form-urlencoded and extract

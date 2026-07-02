@@ -88,7 +88,22 @@ func (s *SMSService) APIKey() string {
 // 3. Verify transaction is completed, extract confirmed amount and payer name
 // 4. Find user by payer name
 // 5. Atomically credit wallet with verified amount
-func (s *SMSService) ProcessWebhook(ctx context.Context, sender, message, ipAddress string) *ProcessResult {
+func (s *SMSService) ProcessWebhook(ctx context.Context, sender, message, ipAddress string) (result *ProcessResult) {
+	// Always log the final result, even on panic
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("[SMS] PANIC in ProcessWebhook: %v\n", r)
+			result = &ProcessResult{Credited: false, Error: fmt.Errorf("panic: %v", r)}
+			fmt.Printf("[SMS] FINISHED: credited=NO panic=%v\n", r)
+		} else if result != nil {
+			if result.Credited {
+				fmt.Printf("[SMS] FINISHED: credited=OK amount=%.2f tx=%s\n", result.Amount, result.TransactionID)
+			} else if result.Error != nil {
+				fmt.Printf("[SMS] FINISHED: credited=NO error=%v\n", result.Error)
+			}
+		}
+	}()
+
 	fmt.Printf("[SMS] ProcessWebhook: sender=%q, message_len=%d\n", sender, len(message))
 
 	// Validate it's a Telebirr SMS
