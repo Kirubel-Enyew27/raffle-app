@@ -1,7 +1,9 @@
 package domain
 
 import (
+	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -73,6 +75,43 @@ func ParseRawSMS(raw string) (sender, message string) {
 
 // ErrTransactionIDNotFound is returned when no transaction ID can be extracted.
 var ErrTransactionIDNotFound = &ParseError{Message: "transaction ID not found in SMS"}
+
+// ErrAmountNotFound is returned when the amount cannot be extracted from the SMS.
+var ErrAmountNotFound = &ParseError{Message: "amount not found in SMS"}
+
+// ErrPayerNameNotFound is returned when the payer name cannot be extracted from the SMS.
+var ErrPayerNameNotFound = &ParseError{Message: "payer name not found in SMS"}
+
+// ExtractAmount extracts the ETB amount from a Telebirr SMS message.
+// Example: "You have received ETB 1.00 from ..." → 1.00
+func ExtractAmount(message string) (float64, error) {
+	re := regexp.MustCompile(`received\s+ETB\s+([0-9,]+(?:\.[0-9]+)?)`)
+	match := re.FindStringSubmatch(message)
+	if len(match) < 2 {
+		return 0, ErrAmountNotFound
+	}
+	amountStr := strings.ReplaceAll(match[1], ",", "")
+	amount, err := strconv.ParseFloat(amountStr, 64)
+	if err != nil || amount <= 0 {
+		return 0, fmt.Errorf("invalid amount in SMS: %q", match[1])
+	}
+	return amount, nil
+}
+
+// ExtractPayerName extracts the sender's name from a Telebirr SMS message.
+// Example: "from Tewodros Misawoy(2519****5426)" → "Tewodros Misawoy"
+func ExtractPayerName(message string) (string, error) {
+	re := regexp.MustCompile(`from\s+([^(]+)`)
+	match := re.FindStringSubmatch(message)
+	if len(match) < 2 {
+		return "", ErrPayerNameNotFound
+	}
+	name := strings.TrimSpace(match[1])
+	if name == "" {
+		return "", ErrPayerNameNotFound
+	}
+	return name, nil
+}
 
 // ParseError represents an SMS parsing error.
 type ParseError struct {

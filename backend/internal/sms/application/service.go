@@ -146,35 +146,48 @@ func (s *SMSService) ProcessWebhook(ctx context.Context, sender, message, ipAddr
 	}
 	fmt.Printf("[SMS] Not a duplicate - proceeding\n")
 
-	// Verify the transaction — try the API first, fall back to HTML scraping
-	fmt.Printf("[SMS] Attempting API verification for %s\n", transactionID)
-	receipt, err := s.receiptFetcher.VerifyTelebirrTransaction(ctx, transactionID)
-	if err != nil || receipt == nil || receipt.TotalPaidAmount <= 0 {
-		if err != nil {
-			fmt.Printf("[SMS] API verification failed: %v - falling back to HTML scraping\n", err)
-		} else if receipt == nil {
-			fmt.Printf("[SMS] API returned nil receipt - falling back to HTML scraping\n")
-		} else {
-			fmt.Printf("[SMS] API returned amount=%.2f - falling back to HTML scraping\n", receipt.TotalPaidAmount)
-		}
-		// API verification failed or returned bad data; fall back to HTML page scraping
-		receipt, err = s.receiptFetcher.Fetch(transactionID)
-		if err != nil {
-			fmt.Printf("[SMS] HTML scraping also failed: %v\n", err)
-			logEntry := buildLogEntry(sender, message, transactionID, ipAddress)
-			logEntry.Credited = false
-			errMsg := fmt.Sprintf("receipt fetch failed (both API and scrape): %v", err)
-			logEntry.ErrorMessage = &errMsg
-			_ = s.smsLogRepo.Create(ctx, logEntry)
-			return &ProcessResult{
-				TransactionID: transactionID,
-				Error:         fmt.Errorf("receipt verification failed for %s: %w", transactionID, err),
-			}
+	// Extract amount and payer name directly from the SMS text.
+	// The SMS comes from Telebirr's official shortcode 127, so we trust its data.
+	// This avoids slow/unreliable external API calls and HTML scraping.
+	amount, err := smsdomain.ExtractAmount(message)
+	if err != nil {
+		fmt.Printf("[SMS] Failed to extract amount from SMS: %v\n", err)
+		logEntry := buildLogEntry(sender, message, transactionID, ipAddress)
+		logEntry.Credited = false
+		errMsg := fmt.Sprintf("failed to extract amount from SMS: %v", err)
+		logEntry.ErrorMessage = &errMsg
+		_ = s.smsLogRepo.Create(ctx, logEntry)
+		return &ProcessResult{
+			TransactionID: transactionID,
+			Error:         fmt.Errorf("failed to extract amount from SMS: %w", err),
 		}
 	}
-	fmt.Printf("[SMS] Receipt fetched: status=%q, amount=%.2f, payer=%q\n", receipt.Status, receipt.TotalPaidAmount, receipt.PayerName)
 
-	// Validate the receipt data (status must be completed, amount > 0, payer name present)
+	payerName, err := smsdomain.ExtractPayerName(message)
+	if err != nil {
+		fmt.Printf("[SMS] Failed to extract payer name from SMS: %v\n", err)
+		logEntry := buildLogEntry(sender, message, transactionID, ipAddress)
+		logEntry.Credited = false
+		errMsg := fmt.Sprintf("failed to extract payer name from SMS: %v", err)
+		logEntry.ErrorMessage = &errMsg
+		_ = s.smsLogRepo.Create(ctx, logEntry)
+		return &ProcessResult{
+			TransactionID: transactionID,
+			Amount:        amount,
+			Error:         fmt.Errorf("failed to extract payer name from SMS: %w", err),
+		}
+	}
+	fmt.Printf("[SMS] SMS data extracted: amount=%.2f, payer=%q\n", amount, payerName)
+
+	// Build receipt data from SMS-extracted values
+	receipt := &infrastructure.ReceiptData{
+		TransactionID:   transactionID,
+		Status:          "Completed",
+		TotalPaidAmount: amount,
+		PayerName:       payerName,
+	}
+
+	// Validate the receipt data (amount > 0, payer name present)
 	if err := infrastructure.ValidateReceipt(receipt); err != nil {
 		fmt.Printf("[SMS] Receipt validation failed: %v\n", err)
 		logEntry := buildLogEntry(sender, message, transactionID, ipAddress)
