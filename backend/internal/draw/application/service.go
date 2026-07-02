@@ -7,6 +7,7 @@ import (
 
 	auditapp "github.com/raffle-app/backend/internal/audit/application"
 	"github.com/raffle-app/backend/internal/draw/domain"
+	realtime "github.com/raffle-app/backend/internal/realtime"
 	ticketdomain "github.com/raffle-app/backend/internal/ticket/domain"
 	winnerdomain "github.com/raffle-app/backend/internal/winner/domain"
 	appcontext "github.com/raffle-app/backend/pkg/context"
@@ -26,6 +27,7 @@ type DrawService struct {
 	randomService domain.RandomService
 	auditService  *auditapp.AuditService
 	winnerService WinnerService
+	realtimeSvc   *realtime.Service
 }
 
 func NewDrawService(
@@ -46,6 +48,10 @@ func NewDrawService(
 		auditService:  auditService,
 		winnerService: winnerService,
 	}
+}
+
+func (s *DrawService) SetRealtimeService(realtimeSvc *realtime.Service) {
+	s.realtimeSvc = realtimeSvc
 }
 
 func (s *DrawService) CommitDrawSeed(ctx context.Context, raffleID string) (*domain.DrawCommitment, error) {
@@ -152,6 +158,24 @@ func (s *DrawService) ExecuteDraw(ctx context.Context, raffleID string) (*domain
 		}
 		newVal := fmt.Sprintf("executed draw for raffle %s winning ticket number %d", raffleID, winningTicket.TicketNumber)
 		_ = s.auditService.Record(ctx, &actorID, actorType, "draw_execution", "draw", &result.ID, "", nil, &newVal)
+	}
+
+	if s.realtimeSvc != nil {
+		_ = s.realtimeSvc.Publish(ctx, "draw_completed", "", "", map[string]interface{}{
+			"raffle_id":             raffleID,
+			"status":                "completed",
+			"winning_ticket_id":     winningTicket.ID,
+			"winning_ticket_number": winningTicket.TicketNumber,
+		})
+		_ = s.realtimeSvc.Publish(ctx, "winner_announcement", "", "", map[string]interface{}{
+			"raffle_id":      raffleID,
+			"winner_user_id": winningTicket.UserID,
+			"prize_amount":   raffle.PrizePool,
+		})
+		_ = s.realtimeSvc.Publish(ctx, "winner_notification", winningTicket.UserID, "", map[string]interface{}{
+			"raffle_id":    raffleID,
+			"prize_amount": raffle.PrizePool,
+		})
 	}
 
 	return result, nil

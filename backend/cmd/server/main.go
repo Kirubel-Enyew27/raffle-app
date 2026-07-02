@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -39,6 +40,7 @@ import (
 	smshttp "github.com/raffle-app/backend/internal/sms/interfaces/http"
 	smsinfra "github.com/raffle-app/backend/internal/sms/infrastructure"
 	smsrepo "github.com/raffle-app/backend/internal/sms/interfaces/repository"
+	realtime "github.com/raffle-app/backend/internal/realtime"
 	"github.com/raffle-app/backend/pkg/config"
 	"github.com/raffle-app/backend/pkg/database"
 	"github.com/raffle-app/backend/pkg/idempotency"
@@ -72,6 +74,10 @@ func main() {
 		panic(fmt.Errorf("failed to run migrations: %w", err))
 	}
 
+	// Real-time Service
+	realtimeSvc := realtime.NewService(rdb, logger.With())
+	go realtimeSvc.Start(context.Background())
+
 	// Services
 	auditSvc := auditapp.NewAuditService(auditrepo.NewAuditRepo(db))
 
@@ -83,6 +89,7 @@ func main() {
 	)
 
 	walletSvc := walletapp.NewWalletService(walletrepo.NewWalletRepo(db), auditSvc)
+	walletSvc.SetRealtimeService(realtimeSvc)
 
 	raffleSvc := raffleapp.NewRaffleService(rafflerepo.NewRaffleRepo(db), auditSvc)
 
@@ -95,6 +102,7 @@ func main() {
 		auditSvc,
 		idempotencyStore,
 	)
+	ticketSvc.SetRealtimeService(realtimeSvc)
 
 	winnerSvc := winnerapp.NewWinnerService(
 		winnerrepo.NewWinnerRepo(db),
@@ -114,6 +122,7 @@ func main() {
 		auditSvc,
 		winnerSvc,
 	)
+	drawSvc.SetRealtimeService(realtimeSvc)
 
 	notificationSvc := notificationapp.NewNotificationService(
 		notificationrepo.NewNotificationRepo(db),
@@ -154,6 +163,9 @@ func main() {
 	audithttp.RegisterAuditRoutes(api, audithttp.NewAuditHandler(auditSvc))
 	reporthttp.RegisterReportRoutes(api, reporthttp.NewReportHandler(reportSvc))
 	smshttp.RegisterSMSRoutes(api, smshttp.NewSMSHandler(smsSvc), cfg.SMSAPIKey)
+
+	realtimeHandler := realtime.NewHandler(realtimeSvc, cfg.JWT.Secret, logger.With())
+	api.GET("/realtime/stream", realtimeHandler.Stream)
 
 	if err := r.Run(fmt.Sprintf(":%d", cfg.AppPort)); err != nil {
 		panic(err)

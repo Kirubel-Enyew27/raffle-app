@@ -9,6 +9,7 @@ import (
 	"time"
 
 	auditapp "github.com/raffle-app/backend/internal/audit/application"
+	realtime "github.com/raffle-app/backend/internal/realtime"
 	ticketdomain "github.com/raffle-app/backend/internal/ticket/domain"
 	apperrors "github.com/raffle-app/backend/pkg/errors"
 	appcontext "github.com/raffle-app/backend/pkg/context"
@@ -26,6 +27,7 @@ type TicketService struct {
 	walletRepo     ticketdomain.WalletRepository
 	auditService   *auditapp.AuditService
 	idempotencyStore IdempotencyStore
+	realtimeSvc    *realtime.Service
 }
 
 func NewTicketService(
@@ -44,6 +46,10 @@ func NewTicketService(
 		auditService:   auditService,
 		idempotencyStore: idempotencyStore,
 	}
+}
+
+func (s *TicketService) SetRealtimeService(realtimeSvc *realtime.Service) {
+	s.realtimeSvc = realtimeSvc
 }
 
 func generateID() string {
@@ -163,6 +169,31 @@ func (s *TicketService) PurchaseTickets(ctx context.Context, input *ticketdomain
 		Tickets:    tickets,
 		WalletTxID: walletTxID,
 		TotalSpent: cost,
+	}
+
+	if s.realtimeSvc != nil {
+		_ = s.realtimeSvc.Publish(ctx, "wallet_update", input.UserID, "", map[string]interface{}{
+			"balance":  newBalance,
+			"currency": "ETB",
+		})
+		_ = s.realtimeSvc.Publish(ctx, "ticket_purchase", "", "", map[string]interface{}{
+			"raffle_id":     input.RaffleID,
+			"sold_tickets":  raffle.SoldTickets + input.Quantity,
+			"total_tickets": raffle.TotalTickets,
+		})
+		_ = s.realtimeSvc.Publish(ctx, "transaction_update", input.UserID, "", map[string]interface{}{
+			"id":             walletTxID,
+			"wallet_id":      wallet.ID,
+			"user_id":        input.UserID,
+			"type":           "ticket_purchase",
+			"status":         "completed",
+			"amount":         cost,
+			"balance_before": wallet.Balance,
+			"balance_after":  newBalance,
+			"reference":      input.RaffleID,
+			"description":    fmt.Sprintf("Purchased %d tickets", input.Quantity),
+			"created_at":     time.Now(),
+		})
 	}
 
 	if s.idempotencyStore != nil && input.IdempotencyKey != "" {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	auditapp "github.com/raffle-app/backend/internal/audit/application"
+	realtime "github.com/raffle-app/backend/internal/realtime"
 	"github.com/raffle-app/backend/internal/wallet/domain"
 	"github.com/raffle-app/backend/pkg/errors"
 )
@@ -14,6 +15,7 @@ import (
 type WalletService struct {
 	repo         domain.WalletRepository
 	auditService *auditapp.AuditService
+	realtimeSvc  *realtime.Service
 }
 
 func NewWalletService(repo domain.WalletRepository, auditService *auditapp.AuditService) *WalletService {
@@ -21,6 +23,10 @@ func NewWalletService(repo domain.WalletRepository, auditService *auditapp.Audit
 		repo:         repo,
 		auditService: auditService,
 	}
+}
+
+func (s *WalletService) SetRealtimeService(realtimeSvc *realtime.Service) {
+	s.realtimeSvc = realtimeSvc
 }
 
 func (s *WalletService) GetWallet(ctx context.Context, userID string) (*domain.Wallet, error) {
@@ -82,6 +88,14 @@ func (s *WalletService) Deposit(ctx context.Context, userID string, amount float
 		_ = s.auditService.Record(ctx, &userID, "user", "deposit", "wallet", &wallet.ID, "", &oldVal, &newVal)
 	}
 
+	if s.realtimeSvc != nil {
+		_ = s.realtimeSvc.Publish(ctx, "wallet_update", userID, "", map[string]interface{}{
+			"balance":  newBalance,
+			"currency": wallet.Currency,
+		})
+		_ = s.realtimeSvc.Publish(ctx, "transaction_update", userID, "", tx)
+	}
+
 	return tx, nil
 }
 
@@ -120,6 +134,11 @@ func (s *WalletService) Withdraw(ctx context.Context, userID string, amount floa
 		oldVal := fmt.Sprintf("%.2f", wallet.Balance)
 		newVal := "pending_withdrawal"
 		_ = s.auditService.Record(ctx, &userID, "user", "withdrawal_request", "wallet", &wallet.ID, "", &oldVal, &newVal)
+	}
+
+	if s.realtimeSvc != nil {
+		_ = s.realtimeSvc.Publish(ctx, "withdrawal_request", "", "admin", tx)
+		_ = s.realtimeSvc.Publish(ctx, "transaction_update", userID, "", tx)
 	}
 
 	return tx, nil
@@ -165,6 +184,15 @@ func (s *WalletService) ApproveWithdrawal(ctx context.Context, txID, adminUserID
 		_ = s.auditService.Record(ctx, &adminUserID, "admin", "withdrawal_approved", "wallet", &wallet.ID, "", &oldVal, &newVal)
 	}
 
+	if s.realtimeSvc != nil {
+		_ = s.realtimeSvc.Publish(ctx, "wallet_update", tx.UserID, "", map[string]interface{}{
+			"balance":  newBalance,
+			"currency": wallet.Currency,
+		})
+		_ = s.realtimeSvc.Publish(ctx, "withdrawal_status", tx.UserID, "", tx)
+		_ = s.realtimeSvc.Publish(ctx, "transaction_update", tx.UserID, "", tx)
+	}
+
 	return tx, nil
 }
 
@@ -185,6 +213,11 @@ func (s *WalletService) RejectWithdrawal(ctx context.Context, txID, adminUserID 
 
 	if s.auditService != nil {
 		_ = s.auditService.Record(ctx, &adminUserID, "admin", "withdrawal_rejected", "wallet", &tx.WalletID, "", nil, nil)
+	}
+
+	if s.realtimeSvc != nil {
+		_ = s.realtimeSvc.Publish(ctx, "withdrawal_status", tx.UserID, "", tx)
+		_ = s.realtimeSvc.Publish(ctx, "transaction_update", tx.UserID, "", tx)
 	}
 
 	return tx, nil
