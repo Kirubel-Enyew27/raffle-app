@@ -85,9 +85,10 @@ func (r *TicketWalletRepo) CreateTransactionTx(ctx context.Context, tx *sql.Tx, 
 }
 
 // marshalWalletMetadata converts a map to JSON bytes for database storage.
+// Returns []byte("null") for nil maps so lib/pq sends valid JSON to PostgreSQL.
 func marshalWalletMetadata(m map[string]interface{}) ([]byte, error) {
 	if m == nil {
-		return nil, nil
+		return []byte("null"), nil
 	}
 	b, err := json.Marshal(m)
 	if err != nil {

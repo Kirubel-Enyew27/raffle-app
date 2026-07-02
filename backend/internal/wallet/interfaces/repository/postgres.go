@@ -194,9 +194,12 @@ func (r *WalletRepo) UpdateTransactionStatus(ctx context.Context, id, status str
 }
 
 // marshalMetadata converts a map to a JSON byte slice for database storage.
+// Returns []byte("null") for nil maps so lib/pq sends valid JSON to PostgreSQL
+// instead of relying on nil→NULL driver conversion (which can produce empty strings
+// that JSONB rejects with "invalid input syntax for type json").
 func marshalMetadata(m map[string]interface{}) ([]byte, error) {
 	if m == nil {
-		return nil, nil
+		return []byte("null"), nil
 	}
 	b, err := json.Marshal(m)
 	if err != nil {
