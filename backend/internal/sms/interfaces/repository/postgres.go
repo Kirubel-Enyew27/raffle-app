@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/lib/pq"
+
 	"github.com/raffle-app/backend/internal/sms/domain"
 )
 
@@ -38,9 +40,14 @@ func (r *SMSLogRepo) Create(ctx context.Context, entry *domain.SMSLogEntry) erro
 
 func (r *SMSLogRepo) ExistsByTransactionID(ctx context.Context, transactionID string) (bool, error) {
 	var exists bool
-	err := r.db.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM sms_logs WHERE parsed_transaction_id = $1 AND credited = TRUE)`,
-		transactionID,
-	).Scan(&exists)
+	// Inline the transaction ID directly into the query (no args) so that
+	// database/sql uses the simple query protocol instead of creating an unnamed
+	// prepared statement. The extended query protocol's unnamed prepared statements
+	// conflict across different queries on the same pooled connection, causing:
+	//   pq: bind message supplies 1 parameters, but prepared statement "" requires 10
+	// pq.QuoteLiteral safely escapes the string for PostgreSQL.
+	query := `SELECT EXISTS(SELECT 1 FROM sms_logs WHERE parsed_transaction_id = ` +
+		pq.QuoteLiteral(transactionID) + ` AND credited = TRUE)`
+	err := r.db.QueryRowContext(ctx, query).Scan(&exists)
 	return exists, err
 }
