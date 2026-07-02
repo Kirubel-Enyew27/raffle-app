@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/raffle-app/backend/internal/wallet/domain"
@@ -88,7 +90,11 @@ func (r *WalletRepo) Debit(ctx context.Context, walletID string, amount float64)
 
 func (r *WalletRepo) CreateTransaction(ctx context.Context, tx *domain.WalletTransaction) error {
 	query := `INSERT INTO wallet_transactions (id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
-	_, err := r.db.ExecContext(ctx, query, tx.ID, tx.WalletID, tx.UserID, tx.Type, tx.Status, tx.Amount, tx.BalanceBefore, tx.BalanceAfter, tx.Reference, tx.Description, tx.Metadata, time.Now(), time.Now())
+	metaJSON, err := marshalMetadata(tx.Metadata)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, query, tx.ID, tx.WalletID, tx.UserID, tx.Type, tx.Status, tx.Amount, tx.BalanceBefore, tx.BalanceAfter, tx.Reference, tx.Description, metaJSON, time.Now(), time.Now())
 	return err
 }
 
@@ -101,8 +107,14 @@ func (r *WalletRepo) FindTransactionsByWalletID(ctx context.Context, walletID st
 	var txs []*domain.WalletTransaction
 	for rows.Next() {
 		tx := &domain.WalletTransaction{}
-		if err := rows.Scan(&tx.ID, &tx.WalletID, &tx.UserID, &tx.Type, &tx.Status, &tx.Amount, &tx.BalanceBefore, &tx.BalanceAfter, &tx.Reference, &tx.Description, &tx.Metadata, &tx.CreatedAt, &tx.UpdatedAt); err != nil {
+		var metaJSON []byte
+		if err := rows.Scan(&tx.ID, &tx.WalletID, &tx.UserID, &tx.Type, &tx.Status, &tx.Amount, &tx.BalanceBefore, &tx.BalanceAfter, &tx.Reference, &tx.Description, &metaJSON, &tx.CreatedAt, &tx.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if metaJSON != nil {
+			if err := json.Unmarshal(metaJSON, &tx.Metadata); err != nil {
+				return nil, err
+			}
 		}
 		txs = append(txs, tx)
 	}
@@ -116,7 +128,11 @@ func (r *WalletRepo) UpdateBalanceTx(ctx context.Context, tx *sql.Tx, walletID s
 
 func (r *WalletRepo) CreateTransactionTx(ctx context.Context, tx *sql.Tx, walletTx *domain.WalletTransaction) error {
 	query := `INSERT INTO wallet_transactions (id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
-	_, err := tx.ExecContext(ctx, query, walletTx.ID, walletTx.WalletID, walletTx.UserID, walletTx.Type, walletTx.Status, walletTx.Amount, walletTx.BalanceBefore, walletTx.BalanceAfter, walletTx.Reference, walletTx.Description, walletTx.Metadata, time.Now(), time.Now())
+	metaJSON, err := marshalMetadata(walletTx.Metadata)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, query, walletTx.ID, walletTx.WalletID, walletTx.UserID, walletTx.Type, walletTx.Status, walletTx.Amount, walletTx.BalanceBefore, walletTx.BalanceAfter, walletTx.Reference, walletTx.Description, metaJSON, time.Now(), time.Now())
 	return err
 }
 
@@ -137,8 +153,14 @@ func (r *WalletRepo) FindTransactionsByStatus(ctx context.Context, txType, statu
 	var txs []*domain.WalletTransaction
 	for rows.Next() {
 		tx := &domain.WalletTransaction{}
-		if err := rows.Scan(&tx.ID, &tx.WalletID, &tx.UserID, &tx.Type, &tx.Status, &tx.Amount, &tx.BalanceBefore, &tx.BalanceAfter, &tx.Reference, &tx.Description, &tx.Metadata, &tx.CreatedAt, &tx.UpdatedAt); err != nil {
+		var metaJSON []byte
+		if err := rows.Scan(&tx.ID, &tx.WalletID, &tx.UserID, &tx.Type, &tx.Status, &tx.Amount, &tx.BalanceBefore, &tx.BalanceAfter, &tx.Reference, &tx.Description, &metaJSON, &tx.CreatedAt, &tx.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if metaJSON != nil {
+			if err := json.Unmarshal(metaJSON, &tx.Metadata); err != nil {
+				return nil, err
+			}
 		}
 		txs = append(txs, tx)
 	}
@@ -150,12 +172,18 @@ func (r *WalletRepo) FindTransactionByID(ctx context.Context, id string) (*domai
 		`SELECT id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at
 		 FROM wallet_transactions WHERE id = $1`, id)
 	tx := &domain.WalletTransaction{}
-	err := row.Scan(&tx.ID, &tx.WalletID, &tx.UserID, &tx.Type, &tx.Status, &tx.Amount, &tx.BalanceBefore, &tx.BalanceAfter, &tx.Reference, &tx.Description, &tx.Metadata, &tx.CreatedAt, &tx.UpdatedAt)
+	var metaJSON []byte
+	err := row.Scan(&tx.ID, &tx.WalletID, &tx.UserID, &tx.Type, &tx.Status, &tx.Amount, &tx.BalanceBefore, &tx.BalanceAfter, &tx.Reference, &tx.Description, &metaJSON, &tx.CreatedAt, &tx.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.ErrNotFound
 		}
 		return nil, err
+	}
+	if metaJSON != nil {
+		if err := json.Unmarshal(metaJSON, &tx.Metadata); err != nil {
+			return nil, err
+		}
 	}
 	return tx, nil
 }
@@ -163,4 +191,16 @@ func (r *WalletRepo) FindTransactionByID(ctx context.Context, id string) (*domai
 func (r *WalletRepo) UpdateTransactionStatus(ctx context.Context, id, status string) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE wallet_transactions SET status = $1, updated_at = $2 WHERE id = $3`, status, time.Now(), id)
 	return err
+}
+
+// marshalMetadata converts a map to a JSON byte slice for database storage.
+func marshalMetadata(m map[string]interface{}) ([]byte, error) {
+	if m == nil {
+		return nil, nil
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+	return b, nil
 }
