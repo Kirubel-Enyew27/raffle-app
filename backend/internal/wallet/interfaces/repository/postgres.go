@@ -99,7 +99,7 @@ func (r *WalletRepo) CreateTransaction(ctx context.Context, tx *domain.WalletTra
 }
 
 func (r *WalletRepo) FindTransactionsByWalletID(ctx context.Context, walletID string, limit, offset int) ([]*domain.WalletTransaction, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at FROM wallet_transactions WHERE wallet_id = $1 LIMIT $2 OFFSET $3`, walletID, limit, offset)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at FROM wallet_transactions WHERE wallet_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, walletID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
