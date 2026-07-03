@@ -21,7 +21,11 @@ func NewTicketHandler(svc *ticketapplication.TicketService) *TicketHandler {
 func respondError(c *gin.Context, err error) {
 	var appErr *stderrors.AppError
 	if errors.As(err, &appErr) {
-		c.JSON(appErr.HTTPStatus, gin.H{"code": appErr.Code, "message": appErr.Message})
+		msg := appErr.Message
+		if appErr.Err != nil {
+			msg = msg + ": " + appErr.Err.Error()
+		}
+		c.JSON(appErr.HTTPStatus, gin.H{"code": appErr.Code, "message": msg})
 		return
 	}
 	c.JSON(http.StatusInternalServerError, gin.H{"code": "INTERNAL_ERROR", "message": err.Error()})
