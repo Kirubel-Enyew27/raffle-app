@@ -17,8 +17,8 @@ type WalletRepository interface {
 	Debit(ctx context.Context, walletID string, amount float64) error
 	CreateTransaction(ctx context.Context, tx *WalletTransaction) error
 	CreateTransactionTx(ctx context.Context, tx *sql.Tx, walletTx *WalletTransaction) error
-	FindTransactionsByWalletID(ctx context.Context, walletID string, limit, offset int) ([]*WalletTransaction, error)
-	CountTransactionsByWalletID(ctx context.Context, walletID string) (int64, error)
+	FindTransactionsByWalletID(ctx context.Context, walletID string, limit, offset int, txType string) ([]*WalletTransaction, error)
+	CountTransactionsByWalletID(ctx context.Context, walletID string, txType string) (int64, error)
 	FindTransactionsByStatus(ctx context.Context, txType, status string) ([]*WalletTransaction, error)
 	FindTransactionByID(ctx context.Context, id string) (*WalletTransaction, error)
 	UpdateTransactionStatus(ctx context.Context, id, status string) error

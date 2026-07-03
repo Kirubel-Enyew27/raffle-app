@@ -223,16 +223,16 @@ func (s *WalletService) RejectWithdrawal(ctx context.Context, txID, adminUserID 
 	return tx, nil
 }
 
-func (s *WalletService) GetTransactionHistory(ctx context.Context, userID string, limit, offset int) ([]*domain.WalletTransaction, int64, error) {
+func (s *WalletService) GetTransactionHistory(ctx context.Context, userID string, limit, offset int, txType string) ([]*domain.WalletTransaction, int64, error) {
 	wallet, err := s.GetWallet(ctx, userID)
 	if err != nil {
 		return nil, 0, err
 	}
-	txs, err := s.repo.FindTransactionsByWalletID(ctx, wallet.ID, limit, offset)
+	txs, err := s.repo.FindTransactionsByWalletID(ctx, wallet.ID, limit, offset, txType)
 	if err != nil {
 		return nil, 0, err
 	}
-	count, err := s.repo.CountTransactionsByWalletID(ctx, wallet.ID)
+	count, err := s.repo.CountTransactionsByWalletID(ctx, wallet.ID, txType)
 	if err != nil {
 		return nil, 0, err
 	}

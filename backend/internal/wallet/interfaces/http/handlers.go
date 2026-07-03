@@ -30,7 +30,8 @@ func (h *WalletHandler) GetTransactions(c *gin.Context) {
 	userID := c.GetString("user_id")
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-	txs, count, err := h.walletService.GetTransactionHistory(c.Request.Context(), userID, limit, offset)
+	txType := c.Query("type")
+	txs, count, err := h.walletService.GetTransactionHistory(c.Request.Context(), userID, limit, offset, txType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "error", "message": err.Error()})
 		return

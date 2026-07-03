@@ -98,8 +98,16 @@ func (r *WalletRepo) CreateTransaction(ctx context.Context, tx *domain.WalletTra
 	return err
 }
 
-func (r *WalletRepo) FindTransactionsByWalletID(ctx context.Context, walletID string, limit, offset int) ([]*domain.WalletTransaction, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at FROM wallet_transactions WHERE wallet_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, walletID, limit, offset)
+func (r *WalletRepo) FindTransactionsByWalletID(ctx context.Context, walletID string, limit, offset int, txType string) ([]*domain.WalletTransaction, error) {
+	var rows *sql.Rows
+	var err error
+	if txType == "deposit" {
+		rows, err = r.db.QueryContext(ctx, `SELECT id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at FROM wallet_transactions WHERE wallet_id = $1 AND type IN ('deposit', 'sms_deposit') ORDER BY created_at DESC LIMIT $2 OFFSET $3`, walletID, limit, offset)
+	} else if txType != "" {
+		rows, err = r.db.QueryContext(ctx, `SELECT id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at FROM wallet_transactions WHERE wallet_id = $1 AND type = $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4`, walletID, txType, limit, offset)
+	} else {
+		rows, err = r.db.QueryContext(ctx, `SELECT id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at FROM wallet_transactions WHERE wallet_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, walletID, limit, offset)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -136,9 +144,16 @@ func (r *WalletRepo) CreateTransactionTx(ctx context.Context, tx *sql.Tx, wallet
 	return err
 }
 
-func (r *WalletRepo) CountTransactionsByWalletID(ctx context.Context, walletID string) (int64, error) {
+func (r *WalletRepo) CountTransactionsByWalletID(ctx context.Context, walletID string, txType string) (int64, error) {
 	var count int64
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM wallet_transactions WHERE wallet_id = $1`, walletID).Scan(&count)
+	var err error
+	if txType == "deposit" {
+		err = r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM wallet_transactions WHERE wallet_id = $1 AND type IN ('deposit', 'sms_deposit')`, walletID).Scan(&count)
+	} else if txType != "" {
+		err = r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM wallet_transactions WHERE wallet_id = $1 AND type = $2`, walletID, txType).Scan(&count)
+	} else {
+		err = r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM wallet_transactions WHERE wallet_id = $1`, walletID).Scan(&count)
+	}
 	return count, err
 }
 

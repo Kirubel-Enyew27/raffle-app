@@ -2,13 +2,14 @@ import { useQuery } from '@tanstack/react-query'
 import { Wallet } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { dashboardApi } from './api'
+import { walletApi } from '@/features/wallet/api'
 import { formatCurrency } from '@/lib/utils'
 
 export function WalletCard() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['wallet'],
-    queryFn: dashboardApi.wallet,
+    queryFn: walletApi.balance,
+    staleTime: 0,
   })
 
   return (

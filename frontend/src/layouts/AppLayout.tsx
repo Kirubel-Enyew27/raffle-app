@@ -11,7 +11,7 @@ function Navbar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
-  const { data: wallet } = useQuery({ queryKey: ['wallet'], queryFn: walletApi.balance })
+  const { data: wallet } = useQuery({ queryKey: ['wallet'], queryFn: walletApi.balance, staleTime: 0 })
   const { data: unreadData } = useQuery({
     queryKey: ['notifications-unread'],
     queryFn: notificationsApi.unread,

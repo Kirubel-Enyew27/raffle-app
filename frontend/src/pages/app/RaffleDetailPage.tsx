@@ -71,6 +71,7 @@ export function Component() {
   const { data: wallet } = useQuery({
     queryKey: ['wallet'],
     queryFn: walletApi.balance,
+    staleTime: 0,
   })
 
   const { mutate: purchase, isPending, error: purchaseError } = useMutation({

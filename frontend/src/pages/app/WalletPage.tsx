@@ -16,7 +16,7 @@ const PAGE_SIZE = 10
 
 // ─── BalanceCard ──────────────────────────────────────────────────────────────
 function BalanceCard() {
-  const { data, isLoading } = useQuery({ queryKey: ['wallet'], queryFn: walletApi.balance })
+  const { data, isLoading } = useQuery({ queryKey: ['wallet'], queryFn: walletApi.balance, staleTime: 0 })
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -108,7 +108,7 @@ function WithdrawCard() {
   const [showForm, setShowForm] = useState(false)
   const qc = useQueryClient()
 
-  const { data: wallet } = useQuery({ queryKey: ['wallet'], queryFn: walletApi.balance })
+  const { data: wallet } = useQuery({ queryKey: ['wallet'], queryFn: walletApi.balance, staleTime: 0 })
 
   const withdrawMutation = useMutation({
     mutationFn: ({ amount, phone }: { amount: number; phone: string }) =>
