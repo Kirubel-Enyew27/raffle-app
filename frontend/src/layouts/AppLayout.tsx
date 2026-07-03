@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigate, Outlet, Link, useNavigate } from 'react-router-dom'
+import { Navigate, Outlet, Link, NavLink, useNavigate } from 'react-router-dom'
 import { LogOut, Bell, Menu, X, User as UserIcon, Wallet } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -43,13 +43,17 @@ function Navbar() {
           </button>
           <nav className="hidden gap-4 text-sm sm:flex" aria-label="Main navigation">
             {navLinks.map(link => (
-              <Link
+              <NavLink
                 key={link.to}
                 to={link.to}
-                className="text-muted-foreground hover:text-foreground transition-colors"
+                className={({ isActive }) => 
+                  isActive 
+                    ? "text-foreground font-bold transition-colors" 
+                    : "text-muted-foreground hover:text-foreground transition-colors"
+                }
               >
                 {link.label}
-              </Link>
+              </NavLink>
             ))}
           </nav>
         </div>
@@ -96,14 +100,18 @@ function Navbar() {
           )}
           <nav className="space-y-1 px-4 py-3" aria-label="Mobile navigation">
             {navLinks.map(link => (
-              <Link
+              <NavLink
                 key={link.to}
                 to={link.to}
                 onClick={() => setMenuOpen(false)}
-                className="block rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                className={({ isActive }) =>
+                  isActive
+                    ? "block rounded-md px-3 py-2 text-sm bg-accent text-foreground font-bold transition-colors"
+                    : "block rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                }
               >
                 {link.label}
-              </Link>
+              </NavLink>
             ))}
           </nav>
         </div>
