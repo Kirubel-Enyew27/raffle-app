@@ -110,6 +110,12 @@ func (s *RaffleService) UpdateRaffle(ctx context.Context, raffle *domain.Raffle)
 		}
 		existing.Status = raffle.Status
 	}
+	if raffle.PrizePool > 0 {
+		existing.PrizePool = raffle.PrizePool
+	}
+	if raffle.Currency != "" {
+		existing.Currency = raffle.Currency
+	}
 
 	existing.UpdatedAt = time.Now()
 	if err := s.repo.Update(ctx, existing); err != nil {
