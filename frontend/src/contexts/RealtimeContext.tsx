@@ -50,31 +50,34 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
           case 'transaction_update':
             queryClient.invalidateQueries({ queryKey: ['transactions'] })
-            if (ev.payload.type === 'deposit' && ev.payload.status === 'completed') {
-              toast({
-                title: 'Deposit Successful',
-                description: `Successfully deposited ${ev.payload.amount} ETB.`,
-                type: 'success',
-              })
-            } else if (ev.payload.type === 'withdrawal') {
-              if (ev.payload.status === 'pending') {
+            {
+              const txType = (ev.payload.type === 'deposit' || ev.payload.type === 'sms_deposit') ? 'deposit' : 'withdraw'
+              if (txType === 'deposit' && ev.payload.status === 'completed') {
                 toast({
-                  title: 'Withdrawal Requested',
-                  description: `Your request for ${ev.payload.amount} ETB is pending admin approval.`,
-                  type: 'info',
-                })
-              } else if (ev.payload.status === 'completed') {
-                toast({
-                  title: 'Withdrawal Processed',
-                  description: `Your withdrawal of ${ev.payload.amount} ETB was approved and completed.`,
+                  title: 'Deposit Successful',
+                  description: `Successfully deposited ${ev.payload.amount} ETB.`,
                   type: 'success',
                 })
-              } else if (ev.payload.status === 'rejected') {
-                toast({
-                  title: 'Withdrawal Rejected',
-                  description: `Your withdrawal request of ${ev.payload.amount} ETB was rejected.`,
-                  type: 'error',
-                })
+              } else if (txType === 'withdraw') {
+                if (ev.payload.status === 'pending') {
+                  toast({
+                    title: 'Withdrawal Requested',
+                    description: `Your request for ${ev.payload.amount} ETB is pending admin approval.`,
+                    type: 'info',
+                  })
+                } else if (ev.payload.status === 'completed') {
+                  toast({
+                    title: 'Withdrawal Processed',
+                    description: `Your withdrawal of ${ev.payload.amount} ETB was approved and completed.`,
+                    type: 'success',
+                  })
+                } else if (ev.payload.status === 'rejected') {
+                  toast({
+                    title: 'Withdrawal Rejected',
+                    description: `Your withdrawal request of ${ev.payload.amount} ETB was rejected.`,
+                    type: 'error',
+                  })
+                }
               }
             }
             break

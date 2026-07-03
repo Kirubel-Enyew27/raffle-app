@@ -64,7 +64,7 @@ export interface WalletTransaction {
   id: string
   wallet_id?: string
   user_id?: string
-  type: 'deposit' | 'withdrawal' | 'sms_deposit'
+  type: 'deposit' | 'withdraw'
   status: string
   amount: number
   balance_before: number

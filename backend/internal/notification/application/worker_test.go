@@ -45,7 +45,8 @@ func TestWorker_EmailSuccess(t *testing.T) {
 func TestWorker_EmailFailureSchedulesRetry(t *testing.T) {
 	repo := newFakeRepo()
 	n := singleNotification(domain.ChannelEmail)
-	repo.records["n-1"] = n
+	clone := *n
+	repo.records["n-1"] = &clone
 	q := &fakeQueue{}
 	w := NewWorker(repo, q, &fakeEmailSender{fail: true}, zap.NewNop())
 

@@ -1,5 +1,6 @@
 import { api } from '@/lib/api'
-import type { ApiResponse, Raffle, Ticket, WalletTransaction } from '@/types/api'
+import type { ApiResponse, Raffle, Ticket } from '@/types/api'
+import { mapTransaction } from '../wallet/api'
 
 export interface RevenueRow {
   period: string
@@ -158,14 +159,14 @@ export const adminApi = {
   // ─── Withdrawal Management ───────────────────────────────────────────────────
 
   pendingWithdrawals: () =>
-    api.get<ApiResponse<WalletTransaction[]>>('/admin/wallets/pending-withdrawals')
-      .then(r => r.data.data),
+    api.get<ApiResponse<any[]>>('/admin/wallets/pending-withdrawals')
+      .then(r => (r.data.data ?? []).map(mapTransaction)),
 
   approveWithdrawal: (id: string) =>
-    api.post<ApiResponse<WalletTransaction>>(`/admin/wallets/approve-withdrawal/${id}`)
-      .then(r => r.data.data),
+    api.post<ApiResponse<any>>(`/admin/wallets/approve-withdrawal/${id}`)
+      .then(r => mapTransaction(r.data.data)),
 
   rejectWithdrawal: (id: string) =>
-    api.post<ApiResponse<WalletTransaction>>(`/admin/wallets/reject-withdrawal/${id}`)
-      .then(r => r.data.data),
+    api.post<ApiResponse<any>>(`/admin/wallets/reject-withdrawal/${id}`)
+      .then(r => mapTransaction(r.data.data)),
 }

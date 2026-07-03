@@ -271,7 +271,7 @@ function TransactionHistory() {
           >
             <option value="all">All types</option>
             <option value="deposit">Deposits</option>
-            <option value="withdrawal">Withdrawals</option>
+            <option value="withdraw">Withdrawals</option>
           </Select>
         </div>
       </CardHeader>

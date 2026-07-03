@@ -54,7 +54,7 @@ func get(t *testing.T, r *gin.Engine, path string) (int, map[string]interface{})
 	t.Helper()
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", path, nil)
-	req.Header.Set("Authorization", "Bearer token")
+	req.Header.Set("Authorization", "Bearer admin")
 	r.ServeHTTP(w, req)
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
