@@ -10,6 +10,7 @@ import (
 	realtime "github.com/raffle-app/backend/internal/realtime"
 	ticketdomain "github.com/raffle-app/backend/internal/ticket/domain"
 	winnerdomain "github.com/raffle-app/backend/internal/winner/domain"
+	walletdomain "github.com/raffle-app/backend/internal/wallet/domain"
 	appcontext "github.com/raffle-app/backend/pkg/context"
 	apperrors "github.com/raffle-app/backend/pkg/errors"
 	"github.com/raffle-app/backend/pkg/crypto"
@@ -17,6 +18,11 @@ import (
 
 type WinnerService interface {
 	CreateWinner(ctx context.Context, raffleID, drawID, ticketID, userID string, prizeAmount float64) (*winnerdomain.Winner, error)
+	MarkPrizePaid(ctx context.Context, id string, paymentReference string) (*winnerdomain.Winner, error)
+}
+
+type WalletService interface {
+	Deposit(ctx context.Context, userID string, amount float64, reference, description string) (*walletdomain.WalletTransaction, error)
 }
 
 type DrawService struct {
@@ -27,6 +33,7 @@ type DrawService struct {
 	randomService domain.RandomService
 	auditService  *auditapp.AuditService
 	winnerService WinnerService
+	walletService WalletService
 	realtimeSvc   *realtime.Service
 }
 
@@ -38,6 +45,7 @@ func NewDrawService(
 	randomService domain.RandomService,
 	auditService *auditapp.AuditService,
 	winnerService WinnerService,
+	walletService WalletService,
 ) *DrawService {
 	return &DrawService{
 		drawRepo:      drawRepo,
@@ -47,6 +55,7 @@ func NewDrawService(
 		randomService: randomService,
 		auditService:  auditService,
 		winnerService: winnerService,
+		walletService: walletService,
 	}
 }
 
@@ -145,8 +154,16 @@ func (s *DrawService) ExecuteDraw(ctx context.Context, raffleID string) (*domain
 	}
 
 	if s.winnerService != nil {
-		if _, err := s.winnerService.CreateWinner(ctx, raffleID, result.ID, winningTicket.ID, winningTicket.UserID, raffle.PrizePool); err != nil {
+		winner, err := s.winnerService.CreateWinner(ctx, raffleID, result.ID, winningTicket.ID, winningTicket.UserID, raffle.PrizePool)
+		if err != nil {
 			return nil, apperrors.WithField("WINNER_ERROR", "failed to create winner record", 500, err)
+		}
+
+		if s.walletService != nil {
+			tx, err := s.walletService.Deposit(ctx, winningTicket.UserID, raffle.PrizePool, "draw_"+result.ID, "Raffle prize winning")
+			if err == nil && tx != nil {
+				_, _ = s.winnerService.MarkPrizePaid(ctx, winner.ID, tx.ID)
+			}
 		}
 	}
 

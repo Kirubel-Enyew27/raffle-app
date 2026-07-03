@@ -10,6 +10,7 @@ import (
 	"github.com/raffle-app/backend/internal/draw/domain"
 	ticketdomain "github.com/raffle-app/backend/internal/ticket/domain"
 	winnerdomain "github.com/raffle-app/backend/internal/winner/domain"
+	walletdomain "github.com/raffle-app/backend/internal/wallet/domain"
 	"github.com/raffle-app/backend/pkg/crypto"
 )
 
@@ -190,8 +191,21 @@ func (m *mockWinnerService) CreateWinner(ctx context.Context, raffleID, drawID, 
 	}, nil
 }
 
+func (m *mockWinnerService) MarkPrizePaid(ctx context.Context, id string, paymentReference string) (*winnerdomain.Winner, error) {
+	return &winnerdomain.Winner{ID: id, PrizePaid: true}, nil
+}
+
+type mockWalletService struct {
+	depositCalled bool
+}
+
+func (m *mockWalletService) Deposit(ctx context.Context, userID string, amount float64, reference, description string) (*walletdomain.WalletTransaction, error) {
+	m.depositCalled = true
+	return &walletdomain.WalletTransaction{ID: "tx-1"}, nil
+}
+
 func setupDrawService(drawRepo domain.DrawRepository, raffleRepo domain.RaffleRepository, ticketRepo ticketdomain.TicketRepository, seedService domain.SeedService, randomService domain.RandomService) *DrawService {
-	return NewDrawService(drawRepo, raffleRepo, ticketRepo, seedService, randomService, nil, &mockWinnerService{})
+	return NewDrawService(drawRepo, raffleRepo, ticketRepo, seedService, randomService, nil, &mockWinnerService{}, &mockWalletService{})
 }
 
 func TestCommitDrawSeed_Success(t *testing.T) {

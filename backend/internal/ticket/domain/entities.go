@@ -37,7 +37,7 @@ type WalletTransaction struct {
 }
 
 type PurchaseResult struct {
-	Tickets    []*Ticket
-	WalletTxID string
-	TotalSpent float64
+	Tickets    []*Ticket `json:"tickets"`
+	WalletTxID string    `json:"wallet_tx_id"`
+	TotalSpent float64   `json:"total_spent"`
 }

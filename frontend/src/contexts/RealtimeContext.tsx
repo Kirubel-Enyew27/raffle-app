@@ -51,6 +51,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           case 'transaction_update':
             queryClient.invalidateQueries({ queryKey: ['transactions'] })
             {
+              if (ev.payload.type === 'ticket_purchase') {
+                break
+              }
               const txType = (ev.payload.type === 'deposit' || ev.payload.type === 'sms_deposit') ? 'deposit' : 'withdraw'
               if (txType === 'deposit' && ev.payload.status === 'completed') {
                 toast({

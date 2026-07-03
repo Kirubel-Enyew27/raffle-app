@@ -121,6 +121,7 @@ func main() {
 		drawinfra.NewCryptoRandomService(),
 		auditSvc,
 		winnerSvc,
+		walletSvc,
 	)
 	drawSvc.SetRealtimeService(realtimeSvc)
 
