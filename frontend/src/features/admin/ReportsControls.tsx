@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 
@@ -30,6 +31,7 @@ export function exportCSV(filename: string, headers: string[], rows: (string | n
 }
 
 export function ReportsControls({ range, onRange, period, onPeriod, onExport }: Props) {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-wrap items-center gap-2">
       {[7, 30, 90].map(d => (
@@ -44,13 +46,13 @@ export function ReportsControls({ range, onRange, period, onPeriod, onExport }: 
         className="h-8 rounded-md border border-input bg-background px-2 text-sm" />
       {onPeriod && (
         <Select value={period} onChange={e => onPeriod(e.target.value)} className="w-28">
-          <option value="daily">Daily</option>
-          <option value="weekly">Weekly</option>
-          <option value="monthly">Monthly</option>
+          <option value="daily">{t('admin.daily')}</option>
+          <option value="weekly">{t('admin.weekly')}</option>
+          <option value="monthly">{t('admin.monthly')}</option>
         </Select>
       )}
       {onExport && (
-        <Button variant="outline" size="sm" onClick={onExport}>Export CSV</Button>
+        <Button variant="outline" size="sm" onClick={onExport}>{t('reports.exportCsv')}</Button>
       )}
     </div>
   )

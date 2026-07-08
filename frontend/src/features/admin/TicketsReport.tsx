@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -8,6 +9,7 @@ import { adminApi } from './api'
 interface Props { range: Range; onRange: (r: Range) => void; period: string; onPeriod: (p: string) => void }
 
 export function TicketsReport({ range, onRange, period, onPeriod }: Props) {
+  const { t } = useTranslation()
   const { data, isLoading } = useQuery({
     queryKey: ['reports', 'tickets', range, period],
     queryFn: () => adminApi.ticketSales(range.from, range.to, period, 90),
@@ -16,7 +18,7 @@ export function TicketsReport({ range, onRange, period, onPeriod }: Props) {
 
   function doExport() {
     exportCSV('ticket-sales.csv',
-      ['Period', 'Tickets Sold', 'Raffles Held'],
+      [t('reports.period'), t('reports.ticketsSold'), t('reports.rafflesHeld')],
       rows.map(r => [r.period, r.tickets_sold, r.raffles_held]),
     )
   }
@@ -27,10 +29,12 @@ export function TicketsReport({ range, onRange, period, onPeriod }: Props) {
         onExport={rows.length > 0 ? doExport : undefined} />
 
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">Tickets Sold</CardTitle></CardHeader>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">{t('reports.ticketsSold')}</CardTitle>
+        </CardHeader>
         <CardContent>
           {isLoading ? <Skeleton className="h-56 w-full" /> : rows.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">No data</p>
+            <p className="py-10 text-center text-sm text-muted-foreground">{t('reports.noData')}</p>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={rows} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
@@ -39,8 +43,8 @@ export function TicketsReport({ range, onRange, period, onPeriod }: Props) {
                 <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="tickets_sold" name="Tickets Sold" fill="#6366f1" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="raffles_held" name="Raffles Held" fill="#a5b4fc" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="tickets_sold" name={t('reports.ticketsSold')} fill="#6366f1" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="raffles_held" name={t('reports.rafflesHeld')} fill="#a5b4fc" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -53,7 +57,7 @@ export function TicketsReport({ range, onRange, period, onPeriod }: Props) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
-                  {['Period', 'Tickets Sold', 'Raffles Held'].map(h => (
+                  {[t('reports.period'), t('reports.ticketsSold'), t('reports.rafflesHeld')].map(h => (
                     <th key={h} className="pb-2 pr-4 font-medium">{h}</th>
                   ))}
                 </tr>

@@ -1,18 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
-} from 'recharts'
+import { useTranslation } from 'react-i18next'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ReportsControls, exportCSV, type Range } from './ReportsControls'
 import { adminApi } from './api'
-
 import { formatCurrency } from '@/lib/utils'
+
 const usd = (n: number) => formatCurrency(n)
 
 interface Props { range: Range; onRange: (r: Range) => void; period: string; onPeriod: (p: string) => void }
 
 export function RevenueReport({ range, onRange, period, onPeriod }: Props) {
+  const { t } = useTranslation()
   const { data, isLoading } = useQuery({
     queryKey: ['reports', 'revenue', range, period],
     queryFn: () => adminApi.revenue(range.from, range.to, period, 90),
@@ -21,7 +21,7 @@ export function RevenueReport({ range, onRange, period, onPeriod }: Props) {
 
   function doExport() {
     exportCSV('revenue.csv',
-      ['Period', 'Ticket Revenue', 'Deposit Volume', 'Withdraw Volume', 'Prize Paid', 'Profit'],
+      [t('reports.period'), t('reports.ticketRevenue'), t('reports.depositVolume'), t('reports.withdrawVolume'), t('reports.prizePaid'), t('reports.profit')],
       rows.map(r => [r.period, r.ticket_revenue, r.deposit_volume, r.withdraw_volume, r.prize_paid, r.profit]),
     )
   }
@@ -32,10 +32,12 @@ export function RevenueReport({ range, onRange, period, onPeriod }: Props) {
         onExport={rows.length > 0 ? doExport : undefined} />
 
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">Revenue & Profit</CardTitle></CardHeader>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">{t('admin.revenueProfit')}</CardTitle>
+        </CardHeader>
         <CardContent>
           {isLoading ? <Skeleton className="h-56 w-full" /> : rows.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">No data</p>
+            <p className="py-10 text-center text-sm text-muted-foreground">{t('reports.noData')}</p>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={rows} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
@@ -52,10 +54,10 @@ export function RevenueReport({ range, onRange, period, onPeriod }: Props) {
                 <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={v => `${(v/1000).toFixed(0)}k Br`} />
                 <Tooltip formatter={(v) => usd(Number(v))} />
                 <Legend />
-                <Area type="monotone" dataKey="ticket_revenue" name="Revenue" stroke="#6366f1" fill="url(#gRev)" strokeWidth={2} dot={false} />
-                <Area type="monotone" dataKey="deposit_volume" name="Deposits" stroke="#3b82f6" fill="none" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
-                <Area type="monotone" dataKey="withdraw_volume" name="Withdrawals" stroke="#f59e0b" fill="none" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
-                <Area type="monotone" dataKey="profit" name="Profit" stroke="#22c55e" fill="url(#gPro)" strokeWidth={2} dot={false} />
+                <Area type="monotone" dataKey="ticket_revenue" name={t('reports.ticketRevenue')} stroke="#6366f1" fill="url(#gRev)" strokeWidth={2} dot={false} />
+                <Area type="monotone" dataKey="deposit_volume" name={t('reports.deposits')} stroke="#3b82f6" fill="none" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
+                <Area type="monotone" dataKey="withdraw_volume" name={t('reports.withdrawals')} stroke="#f59e0b" fill="none" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
+                <Area type="monotone" dataKey="profit" name={t('reports.profit')} stroke="#22c55e" fill="url(#gPro)" strokeWidth={2} dot={false} />
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -68,7 +70,7 @@ export function RevenueReport({ range, onRange, period, onPeriod }: Props) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
-                  {['Period','Ticket Rev','Deposits','Withdrawals','Prize Paid','Profit'].map(h => (
+                  {[t('reports.period'), t('reports.ticketRev'), t('reports.deposits'), t('reports.withdrawals'), t('reports.prizePaid'), t('reports.profit')].map(h => (
                     <th key={h} className="pb-2 pr-4 font-medium">{h}</th>
                   ))}
                 </tr>
