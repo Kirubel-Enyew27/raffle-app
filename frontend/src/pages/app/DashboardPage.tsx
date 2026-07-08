@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useAuth } from '@/contexts/AuthContext'
 import { WalletCard } from '@/features/dashboard/WalletCard'
@@ -9,7 +10,8 @@ import { MyTickets } from '@/features/dashboard/MyTickets'
 import { User as UserIcon } from 'lucide-react'
 
 export function Component() {
-  usePageTitle('Dashboard')
+  const { t } = useTranslation()
+  usePageTitle(t('dashboard.title'))
   const { user } = useAuth()
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
@@ -22,8 +24,8 @@ export function Component() {
           )}
         </div>
         <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Welcome back, {user?.full_name || user?.email}</p>
+          <h1 className="text-2xl font-bold">{t('dashboard.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('dashboard.welcomeBack')}, {user?.full_name || user?.email}</p>
         </div>
       </div>
 

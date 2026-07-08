@@ -1,11 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Trophy } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn, formatCurrency } from '@/lib/utils'
 import { dashboardApi } from './api'
 
 export function PreviousWinnings() {
+  const { t } = useTranslation()
   // Fetch completed raffles then load winners for each
   const rafflesQuery = useQuery({
     queryKey: ['raffles', 'all'],
@@ -32,7 +34,7 @@ export function PreviousWinnings() {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">Previous Winnings</CardTitle>
+        <CardTitle className="text-sm font-medium text-muted-foreground">{t('dashboard.previousWinnings')}</CardTitle>
         <Trophy className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent className="space-y-3">
@@ -46,7 +48,7 @@ export function PreviousWinnings() {
         {!isLoading && winners.length === 0 && (
           <div className="py-4 text-center">
             <Trophy className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">No winnings yet</p>
+            <p className="text-sm text-muted-foreground">{t('winners.noWinners')}</p>
           </div>
         )}
 
@@ -64,7 +66,7 @@ export function PreviousWinnings() {
               'shrink-0 rounded-full px-2 py-0.5 text-xs font-medium',
               w.prize_paid ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700',
             )}>
-              {w.prize_paid ? 'Paid' : 'Pending'}
+              {w.prize_paid ? t('wallet.completed') : t('wallet.pending')}
             </span>
           </div>
         ))}

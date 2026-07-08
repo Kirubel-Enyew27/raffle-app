@@ -1,15 +1,161 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Navigate, Outlet, Link, NavLink, useNavigate } from 'react-router-dom'
-import { LogOut, Bell, Menu, X, User as UserIcon, Wallet } from 'lucide-react'
+import { LogOut, Bell, Menu, X, User as UserIcon, Wallet, Sun, Moon, Monitor, Globe, ChevronDown } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/contexts/AuthContext'
+import { useTheme } from '@/contexts/ThemeContext'
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import { useQuery } from '@tanstack/react-query'
 import { walletApi } from '@/features/wallet/api'
 import { notificationsApi } from '@/features/notifications/api'
 
-function Navbar() {
+type Theme = 'light' | 'dark' | 'system'
+
+const languages = [
+  { code: 'en', nativeName: 'English' },
+  { code: 'am', nativeName: 'አማርኛ' },
+]
+
+/** Inline theme toggle – three icon buttons, no text labels, compact */
+function ThemeToggle() {
+  const { theme, setTheme } = useTheme()
+  const { t } = useTranslation()
+
+  const options: { value: Theme; icon: React.ReactNode; label: string }[] = [
+    { value: 'light',  icon: <Sun     className="h-3.5 w-3.5" />, label: t('theme.light')  },
+    { value: 'dark',   icon: <Moon    className="h-3.5 w-3.5" />, label: t('theme.dark')   },
+    { value: 'system', icon: <Monitor className="h-3.5 w-3.5" />, label: t('theme.system') },
+  ]
+
+  return (
+    <div
+      role="group"
+      aria-label={t('theme.title')}
+      className="flex items-center rounded-md border border-border bg-muted/50 p-0.5 gap-0.5"
+    >
+      {options.map(({ value, icon, label }) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => setTheme(value)}
+          aria-label={label}
+          aria-pressed={theme === value}
+          title={label}
+          className={[
+            'flex h-6 w-6 items-center justify-center rounded transition-all',
+            theme === value
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground',
+          ].join(' ')}
+        >
+          {icon}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** User dropdown: avatar + name → panel with theme, language, logout */
+function UserMenu() {
   const { user, logout } = useAuth()
+  const { i18n, t } = useTranslation()
   const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [open])
+
+  const handleLogout = () => { setOpen(false); logout(); navigate('/login') }
+  const handleLangChange = (e: React.ChangeEvent<HTMLSelectElement>) => i18n.changeLanguage(e.target.value)
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        aria-haspopup="true"
+        aria-expanded={open}
+        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+      >
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted">
+          {user?.avatar_url
+            ? <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />
+            : <UserIcon className="h-3 w-3 text-muted-foreground" />}
+        </div>
+        <span className="hidden max-w-[120px] truncate sm:block">{user?.full_name || user?.email}</span>
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1.5 w-60 rounded-lg border border-border bg-popover shadow-lg z-50">
+          {/* User info header */}
+          <div className="px-3 py-2.5 border-b border-border">
+            <p className="text-sm font-medium truncate">{user?.full_name || user?.email}</p>
+            {user?.full_name && user?.email && (
+              <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+            )}
+          </div>
+
+          {/* Theme */}
+          <div className="px-3 py-2.5 border-b border-border space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t('theme.title')}</p>
+            <ThemeToggle />
+          </div>
+
+          {/* Language */}
+          <div className="px-3 py-2.5 border-b border-border space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t('nav.language')}</p>
+            <div className="flex items-center gap-2">
+              <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <Select
+                value={i18n.language.split('-')[0]}
+                onChange={handleLangChange}
+                className="flex-1"
+              >
+                {languages.map(l => (
+                  <option key={l.code} value={l.code}>{l.nativeName}</option>
+                ))}
+              </Select>
+            </div>
+          </div>
+
+          {/* Sign out */}
+          <div className="p-1">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              {t('nav.signOut')}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Navbar() {
+  const { user } = useAuth()
+  const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
   const { data: wallet } = useQuery({ queryKey: ['wallet'], queryFn: walletApi.balance, staleTime: 0 })
   const { data: unreadData } = useQuery({
@@ -19,37 +165,41 @@ function Navbar() {
   })
   const unreadCount = unreadData?.unread || 0
 
-  const handleLogout = () => { logout(); navigate('/login') }
-
   const navLinks = [
-    { to: '/raffles', label: 'Raffles' },
-    { to: '/tickets', label: 'My Tickets' },
-    { to: '/wallet', label: 'Wallet' },
-    { to: '/winners', label: 'Winners' },
-    { to: '/profile', label: 'Profile' },
+    { to: '/raffles',  label: t('nav.raffles')   },
+    { to: '/tickets',  label: t('nav.myTickets') },
+    { to: '/wallet',   label: t('nav.wallet')    },
+    { to: '/winners',  label: t('nav.winners')   },
+    { to: '/profile',  label: t('nav.profile')   },
   ]
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
+
+        {/* ── Left: logo + desktop nav ── */}
         <div className="flex items-center gap-6">
-          <Link to="/dashboard" className="font-bold tracking-tight">🎟 RaffleApp</Link>
+          <Link to="/dashboard" className="font-bold tracking-tight shrink-0">{t('app.title')}</Link>
+
+          {/* Hamburger – mobile only */}
           <button
-            onClick={() => setMenuOpen(!menuOpen)}
+            onClick={() => setMenuOpen(v => !v)}
             className="sm:hidden p-2 -ml-2 rounded-md hover:bg-accent transition-colors"
-            aria-label={menuOpen ? 'Close navigation' : 'Open navigation'}
+            aria-label={menuOpen ? t('nav.closeMenu') : t('nav.openMenu')}
+            aria-expanded={menuOpen}
           >
             {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
+
           <nav className="hidden gap-4 text-sm sm:flex" aria-label="Main navigation">
             {navLinks.map(link => (
               <NavLink
                 key={link.to}
                 to={link.to}
-                className={({ isActive }) => 
-                  isActive 
-                    ? "text-foreground font-bold transition-colors" 
-                    : "text-muted-foreground hover:text-foreground transition-colors"
+                className={({ isActive }) =>
+                  isActive
+                    ? 'text-foreground font-bold transition-colors'
+                    : 'text-muted-foreground hover:text-foreground transition-colors'
                 }
               >
                 {link.label}
@@ -57,47 +207,44 @@ function Navbar() {
             ))}
           </nav>
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* ── Right: wallet · bell · user menu ── */}
+        <div className="flex items-center gap-1">
+          {/* Wallet balance badge */}
           {wallet && (
-            <div className="mr-2 hidden items-center gap-1.5 rounded-lg border border-border/80 bg-accent/30 px-3 py-1 text-xs font-semibold text-foreground sm:flex transition-all hover:bg-accent/55">
-              <Wallet className="h-3.5 w-3.5 text-primary animate-pulse" />
-              <span>{wallet.balance.toLocaleString()} {wallet.currency || 'ETB'}</span>
+            <div className="hidden items-center gap-1.5 rounded-lg border border-border/80 bg-accent/30 px-2.5 py-1 text-xs font-semibold text-foreground sm:flex mr-1">
+              <Wallet className="h-3.5 w-3.5 text-primary" />
+              <span>{wallet.balance.toLocaleString()} {wallet.currency || t('common.currency')}</span>
             </div>
           )}
-          <Link to="/notifications" className="relative mr-1">
-            <Button variant="ghost" size="icon" aria-label="Notifications" className="relative">
+
+          {/* Notification bell */}
+          <Link to="/notifications" className="relative">
+            <Button variant="ghost" size="icon" aria-label={t('nav.notifications')}>
               <Bell className="h-4 w-4" />
             </Button>
             {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-destructive-foreground ring-2 ring-background animate-pulse">
+              <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-destructive-foreground ring-2 ring-background animate-pulse pointer-events-none">
                 {unreadCount}
               </span>
             )}
           </Link>
-          <div className="flex items-center gap-2">
-            <div className="hidden h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted sm:flex">
-              {user?.avatar_url ? (
-                <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <UserIcon className="h-3.5 w-3.5 text-muted-foreground" />
-              )}
-            </div>
-            <span className="hidden text-sm text-muted-foreground sm:block">{user?.full_name || user?.email}</span>
-          </div>
-          <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Sign out">
-            <LogOut className="h-4 w-4" />
-          </Button>
+
+          {/* User dropdown (avatar + name + chevron) */}
+          <UserMenu />
         </div>
       </div>
-      {/* Mobile drawer */}
+
+      {/* ── Mobile drawer ── */}
       {menuOpen && (
         <div className="border-t sm:hidden">
           {wallet && (
-            <div className="mx-4 mt-3 flex items-center gap-1.5 rounded-lg border border-border/80 bg-accent/30 px-3 py-2 text-sm font-semibold text-foreground">
-              <Wallet className="h-4 w-4 text-primary animate-pulse" />
-              <span>{wallet.balance.toLocaleString()} {wallet.currency || 'ETB'}</span>
+            <div className="mx-4 mt-3 flex items-center gap-1.5 rounded-lg border border-border/80 bg-accent/30 px-3 py-2 text-sm font-semibold">
+              <Wallet className="h-4 w-4 text-primary" />
+              <span>{wallet.balance.toLocaleString()} {wallet.currency || t('common.currency')}</span>
             </div>
           )}
+
           <nav className="space-y-1 px-4 py-3" aria-label="Mobile navigation">
             {navLinks.map(link => (
               <NavLink
@@ -106,8 +253,8 @@ function Navbar() {
                 onClick={() => setMenuOpen(false)}
                 className={({ isActive }) =>
                   isActive
-                    ? "block rounded-md px-3 py-2 text-sm bg-accent text-foreground font-bold transition-colors"
-                    : "block rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                    ? 'block rounded-md px-3 py-2 text-sm bg-accent text-foreground font-bold'
+                    : 'block rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground'
                 }
               >
                 {link.label}

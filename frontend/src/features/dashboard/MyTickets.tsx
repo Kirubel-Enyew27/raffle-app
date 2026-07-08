@@ -1,11 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Tag } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { dashboardApi } from './api'
 
 export function MyTickets() {
+  const { t } = useTranslation()
   // Load active raffles first, then fetch tickets for each
   const rafflesQuery = useQuery({
     queryKey: ['raffles', 'active'],
@@ -30,11 +32,18 @@ export function MyTickets() {
 
   const raffles = rafflesQuery.data?.raffles?.slice(0, 4) ?? []
 
+  const statusLabel: Record<string, string> = {
+    active: t('raffles.status.active'),
+    scheduled: t('raffles.status.upcoming'),
+    completed: t('raffles.status.completed'),
+    cancelled: t('raffles.status.cancelled'),
+  }
+
   return (
     <Card className="col-span-full lg:col-span-2">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">My Tickets</CardTitle>
-        <Link to="/tickets" className="text-xs text-primary hover:underline">View all</Link>
+        <CardTitle className="text-sm font-medium text-muted-foreground">{t('dashboard.myTickets')}</CardTitle>
+        <Link to="/tickets" className="text-xs text-primary hover:underline">{t('dashboard.viewAll')}</Link>
       </CardHeader>
       <CardContent className="space-y-2">
         {isLoading && Array.from({ length: 3 }).map((_, i) => (
@@ -48,9 +57,9 @@ export function MyTickets() {
         {!isLoading && raffles.length === 0 && (
           <div className="py-6 text-center">
             <Tag className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">No tickets yet</p>
+            <p className="text-sm text-muted-foreground">{t('tickets.noTickets')}</p>
             <Link to="/raffles" className="mt-1 inline-block text-xs text-primary hover:underline">
-              Browse raffles
+              {t('raffles.title')}
             </Link>
           </div>
         )}
@@ -63,7 +72,7 @@ export function MyTickets() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{r.title}</p>
-              <p className="text-xs text-muted-foreground capitalize">{r.status}</p>
+              <p className="text-xs text-muted-foreground capitalize">{statusLabel[r.status] || r.status}</p>
             </div>
             <span className="text-xs text-muted-foreground">
               {new Date(r.draw_date).toLocaleDateString()}

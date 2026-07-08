@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Ticket } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn, formatCurrency } from '@/lib/utils'
@@ -14,6 +15,7 @@ const statusColor: Record<string, string> = {
 }
 
 export function ActiveRaffles() {
+  const { t } = useTranslation()
   const { data, isLoading, error } = useQuery({
     queryKey: ['raffles', 'active'],
     queryFn: () => dashboardApi.raffles(6),
@@ -21,11 +23,18 @@ export function ActiveRaffles() {
 
   const raffles = data?.raffles?.filter(r => r.status === 'active' || r.status === 'scheduled') ?? []
 
+  const statusLabel: Record<string, string> = {
+    active: t('raffles.status.active'),
+    scheduled: t('raffles.status.upcoming'),
+    completed: t('raffles.status.completed'),
+    cancelled: t('raffles.status.cancelled'),
+  }
+
   return (
     <Card className="col-span-full">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">Active Raffles</CardTitle>
-        <Link to="/raffles" className="text-xs text-primary hover:underline">View all</Link>
+        <CardTitle className="text-sm font-medium text-muted-foreground">{t('dashboard.activeRaffles')}</CardTitle>
+        <Link to="/raffles" className="text-xs text-primary hover:underline">{t('dashboard.viewAll')}</Link>
       </CardHeader>
       <CardContent>
         {isLoading && (
@@ -33,9 +42,9 @@ export function ActiveRaffles() {
             {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-28 rounded-lg" />)}
           </div>
         )}
-        {error && <p className="text-sm text-destructive">Failed to load raffles</p>}
+        {error && <p className="text-sm text-destructive">{t('common.error')}</p>}
         {!isLoading && raffles.length === 0 && (
-          <p className="py-6 text-center text-sm text-muted-foreground">No active raffles at the moment</p>
+          <p className="py-6 text-center text-sm text-muted-foreground">{t('raffles.noRaffles')}</p>
         )}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {raffles.map(r => (
@@ -44,7 +53,7 @@ export function ActiveRaffles() {
               <div className="mb-2 flex items-start justify-between gap-2">
                 <p className="font-medium leading-tight group-hover:text-primary line-clamp-1">{r.title}</p>
                 <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-xs font-medium', statusColor[r.status])}>
-                  {r.status}
+                  {statusLabel[r.status] || r.status}
                 </span>
               </div>
               <p className="mb-3 text-xs text-muted-foreground line-clamp-2">{r.description}</p>

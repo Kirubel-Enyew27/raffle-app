@@ -3,6 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { AuthCard } from '@/features/auth/AuthCard'
 import { authApi } from '@/features/auth/api'
 import { useAuth } from '@/contexts/AuthContext'
@@ -28,7 +29,8 @@ const schema = z.object({
 type Fields = z.infer<typeof schema>
 
 export function Component() {
-  usePageTitle('Create account')
+  const { t } = useTranslation()
+  usePageTitle(t('auth.signUp'))
   const { login } = useAuth()
   const navigate = useNavigate()
 
@@ -48,7 +50,7 @@ export function Component() {
   })
 
   return (
-    <AuthCard title="Create account" subtitle="Start entering raffles today">
+    <AuthCard title={t('auth.signUp')} subtitle={t('auth.startEntering')}>
       <form onSubmit={handleSubmit(d => mutate(d))} className="space-y-4">
         {error && (
           <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -56,38 +58,38 @@ export function Component() {
           </p>
         )}
 
-        <FormField label="Full name" htmlFor="fullName" error={errors.fullName?.message}>
+        <FormField label={t('auth.fullName')} htmlFor="fullName" error={errors.fullName?.message}>
           <Input id="fullName" type="text" autoComplete="name" {...register('fullName')} />
           <p className="mt-2 flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
             <Smartphone className="h-3.5 w-3.5 shrink-0" />
-            Make sure the full name matches the name registered on Telebirr for automatic processing.
+            {t('auth.telebirrNotice')}
           </p>
         </FormField>
 
-        <FormField label="Phone" htmlFor="phone" error={errors.phone?.message}>
-          <Input id="phone" type="tel" autoComplete="tel" placeholder="e.g. +251912345678" {...register('phone')} />
+        <FormField label={t('auth.phone')} htmlFor="phone" error={errors.phone?.message}>
+          <Input id="phone" type="tel" autoComplete="tel" placeholder={t('auth.phonePlaceholder')} {...register('phone')} />
         </FormField>
 
-        <FormField label="Email" htmlFor="email" error={errors.email?.message}>
-          <Input id="email" type="email" autoComplete="email" placeholder="optional" {...register('email')} />
+        <FormField label={t('auth.email')} htmlFor="email" error={errors.email?.message}>
+          <Input id="email" type="email" autoComplete="email" placeholder={t('auth.optional')} {...register('email')} />
         </FormField>
 
-        <FormField label="Password" htmlFor="password" error={errors.password?.message}>
+        <FormField label={t('auth.password')} htmlFor="password" error={errors.password?.message}>
           <Input id="password" type="password" autoComplete="new-password" {...register('password')} />
         </FormField>
 
-        <FormField label="Confirm password" htmlFor="confirm" error={errors.confirm?.message}>
+        <FormField label={t('auth.confirmPassword')} htmlFor="confirm" error={errors.confirm?.message}>
           <Input id="confirm" type="password" autoComplete="new-password" {...register('confirm')} />
         </FormField>
 
         <Button type="submit" className="w-full" disabled={isPending}>
-          {isPending ? 'Creating account…' : 'Create account'}
+          {isPending ? t('auth.creatingAccount') : t('auth.signUp')}
         </Button>
 
         <p className="text-center text-sm text-muted-foreground">
-          Already have an account?{' '}
+          {t('auth.alreadyHaveAccount')}{' '}
           <Link to="/login" className="text-foreground underline underline-offset-4">
-            Sign in
+            {t('auth.signIn')}
           </Link>
         </p>
       </form>

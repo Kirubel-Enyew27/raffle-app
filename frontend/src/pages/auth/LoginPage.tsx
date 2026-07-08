@@ -3,6 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { AuthCard } from '@/features/auth/AuthCard'
 import { authApi } from '@/features/auth/api'
 import { useAuth } from '@/contexts/AuthContext'
@@ -18,7 +19,8 @@ const schema = z.object({
 type Fields = z.infer<typeof schema>
 
 export function Component() {
-  usePageTitle('Sign in')
+  const { t } = useTranslation()
+  usePageTitle(t('auth.signIn'))
   const { login } = useAuth()
   const navigate = useNavigate()
 
@@ -35,7 +37,7 @@ export function Component() {
   })
 
   return (
-    <AuthCard title="Sign in" subtitle="Welcome back">
+    <AuthCard title={t('auth.signIn')} subtitle={t('auth.welcomeBack')}>
       <form onSubmit={handleSubmit(d => mutate(d))} className="space-y-4">
         {error && (
           <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -43,28 +45,28 @@ export function Component() {
           </p>
         )}
 
-        <FormField label="Email or phone" htmlFor="identifier" error={errors.identifier?.message}>
-          <Input id="identifier" type="text" autoComplete="username" placeholder="email@example.com or +251912345678" {...register('identifier')} />
+        <FormField label={t('auth.emailOrPhone')} htmlFor="identifier" error={errors.identifier?.message}>
+          <Input id="identifier" type="text" autoComplete="username" placeholder={t('auth.emailPlaceholder')} {...register('identifier')} />
         </FormField>
 
-        <FormField label="Password" htmlFor="password" error={errors.password?.message}>
+        <FormField label={t('auth.password')} htmlFor="password" error={errors.password?.message}>
           <Input id="password" type="password" autoComplete="current-password" {...register('password')} />
         </FormField>
 
         <div className="flex justify-end">
           <Link to="/forgot-password" className="text-xs text-muted-foreground hover:text-foreground">
-            Forgot password?
+            {t('auth.forgotPassword')}
           </Link>
         </div>
 
         <Button type="submit" className="w-full" disabled={isPending}>
-          {isPending ? 'Signing in…' : 'Sign in'}
+          {isPending ? t('auth.signingIn') : t('auth.signIn')}
         </Button>
 
         <p className="text-center text-sm text-muted-foreground">
-          No account?{' '}
+          {t('auth.noAccount')}{' '}
           <Link to="/register" className="text-foreground underline underline-offset-4">
-            Register
+            {t('auth.register')}
           </Link>
         </p>
       </form>

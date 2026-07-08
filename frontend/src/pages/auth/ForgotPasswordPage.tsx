@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { AuthCard } from '@/features/auth/AuthCard'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { FormField } from '@/components/forms/FormField'
@@ -15,7 +16,8 @@ const schema = z.object({
 type Fields = z.infer<typeof schema>
 
 export function Component() {
-  usePageTitle('Forgot password')
+  const { t } = useTranslation()
+  usePageTitle(t('auth.forgotPasswordTitle'))
   const [submitted, setSubmitted] = useState(false)
 
   const { register, handleSubmit, formState: { errors } } = useForm<Fields>({
@@ -29,26 +31,25 @@ export function Component() {
 
   if (submitted) {
     return (
-      <AuthCard title="Check your email" subtitle="If an account exists, you'll receive instructions shortly.">
+      <AuthCard title={t('auth.checkEmail')} subtitle={t('auth.checkEmailMessage')}>
         <div className="space-y-4 text-center">
           <p className="text-sm text-muted-foreground">
-            Didn't receive an email?{' '}
+            {t('auth.didntReceiveEmail')}{' '}
             <button
               onClick={() => setSubmitted(false)}
               className="text-foreground underline underline-offset-4"
             >
-              Try again
+              {t('auth.tryAgain')}
             </button>
           </p>
           <p className="text-sm text-muted-foreground">
-            Know your password?{' '}
+            {t('auth.knowPassword')}{' '}
             <Link to="/login" className="text-foreground underline underline-offset-4">
-              Sign in
+              {t('auth.signIn')}
             </Link>
           </p>
           <div className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-            ⚠ Password reset email delivery is not yet configured.
-            Contact support if you're locked out.
+            {t('auth.resetNotConfigured')}
           </div>
         </div>
       </AuthCard>
@@ -56,19 +57,19 @@ export function Component() {
   }
 
   return (
-    <AuthCard title="Forgot password" subtitle="Enter your email and we'll send reset instructions">
+    <AuthCard title={t('auth.forgotPasswordTitle')} subtitle={t('auth.forgotPasswordSubtitle')}>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <FormField label="Email" htmlFor="email" error={errors.email?.message}>
+        <FormField label={t('auth.email')} htmlFor="email" error={errors.email?.message}>
           <Input id="email" type="email" autoComplete="email" {...register('email')} />
         </FormField>
 
         <Button type="submit" className="w-full">
-          Send instructions
+          {t('auth.sendInstructions')}
         </Button>
 
         <p className="text-center text-sm text-muted-foreground">
           <Link to="/login" className="text-foreground underline underline-offset-4">
-            Back to sign in
+            {t('auth.backToSignIn')}
           </Link>
         </p>
       </form>

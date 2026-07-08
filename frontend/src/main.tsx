@@ -8,6 +8,7 @@ import { ToastProvider } from '@/contexts/ToastContext'
 import { RealtimeProvider } from '@/contexts/RealtimeContext'
 import { queryClient } from '@/lib/queryClient'
 import { router } from '@/routes'
+import '@/lib/i18n'
 import './index.css'
 
 createRoot(document.getElementById('root')!).render(

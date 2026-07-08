@@ -3,6 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { AuthCard } from '@/features/auth/AuthCard'
 import { authApi } from '@/features/auth/api'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -21,7 +22,8 @@ const schema = z.object({
 type Fields = z.infer<typeof schema>
 
 export function Component() {
-  usePageTitle('Reset password')
+  const { t } = useTranslation()
+  usePageTitle(t('auth.resetPasswordTitle'))
   const navigate = useNavigate()
 
   const { register, handleSubmit, formState: { errors } } = useForm<Fields>({
@@ -35,16 +37,16 @@ export function Component() {
 
   if (isSuccess) {
     return (
-      <AuthCard title="Password updated" subtitle="Your password has been changed successfully.">
+      <AuthCard title={t('auth.passwordUpdated')} subtitle={t('auth.passwordUpdatedMessage')}>
         <Button className="w-full" onClick={() => navigate('/login')}>
-          Back to sign in
+          {t('auth.backToSignIn')}
         </Button>
       </AuthCard>
     )
   }
 
   return (
-    <AuthCard title="Reset password" subtitle="Enter your current password and choose a new one">
+    <AuthCard title={t('auth.resetPasswordTitle')} subtitle={t('auth.resetPasswordSubtitle')}>
       <form onSubmit={handleSubmit(d => mutate(d))} className="space-y-4">
         {error && (
           <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -52,25 +54,25 @@ export function Component() {
           </p>
         )}
 
-        <FormField label="Current password" htmlFor="old_password" error={errors.old_password?.message}>
+        <FormField label={t('auth.currentPassword')} htmlFor="old_password" error={errors.old_password?.message}>
           <Input id="old_password" type="password" autoComplete="current-password" {...register('old_password')} />
         </FormField>
 
-        <FormField label="New password" htmlFor="new_password" error={errors.new_password?.message}>
+        <FormField label={t('auth.newPassword')} htmlFor="new_password" error={errors.new_password?.message}>
           <Input id="new_password" type="password" autoComplete="new-password" {...register('new_password')} />
         </FormField>
 
-        <FormField label="Confirm new password" htmlFor="confirm" error={errors.confirm?.message}>
+        <FormField label={t('auth.confirmNewPassword')} htmlFor="confirm" error={errors.confirm?.message}>
           <Input id="confirm" type="password" autoComplete="new-password" {...register('confirm')} />
         </FormField>
 
         <Button type="submit" className="w-full" disabled={isPending}>
-          {isPending ? 'Updating…' : 'Update password'}
+          {isPending ? t('auth.updating') : t('auth.updatePassword')}
         </Button>
 
         <p className="text-center text-sm text-muted-foreground">
           <Link to="/login" className="text-foreground underline underline-offset-4">
-            Back to sign in
+            {t('auth.backToSignIn')}
           </Link>
         </p>
       </form>

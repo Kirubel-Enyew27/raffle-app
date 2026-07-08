@@ -1,13 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { notificationsApi } from '@/features/notifications/api'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useTranslation } from 'react-i18next'
 import { Bell, Check, Inbox } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
 export function Component() {
-  usePageTitle('Notifications')
+  const { t } = useTranslation()
+  usePageTitle(t('notifications.title'))
   const queryClient = useQueryClient()
 
   const { data, isLoading } = useQuery({
@@ -38,8 +40,8 @@ export function Component() {
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Notifications</h1>
-        <p className="text-sm text-muted-foreground">Stay updated on your draws, wins, and wallet activities.</p>
+        <h1 className="text-2xl font-bold tracking-tight">{t('notifications.title')}</h1>
+        <p className="text-sm text-muted-foreground">{t('common.noData')}</p>
       </div>
 
       {isLoading ? (
@@ -54,9 +56,9 @@ export function Component() {
             <div className="rounded-full bg-primary/10 p-3 text-primary">
               <Inbox className="h-8 w-8 animate-bounce" />
             </div>
-            <h3 className="mt-4 text-lg font-semibold">No notifications</h3>
+            <h3 className="mt-4 text-lg font-semibold">{t('notifications.noNotifications')}</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              You are all caught up! Real-time notifications will show up here.
+              {t('notifications.noNotifications')}
             </p>
           </CardContent>
         </Card>
@@ -83,7 +85,7 @@ export function Component() {
                     <h4 className="font-semibold text-sm leading-none text-foreground">{item.Subject}</h4>
                     {!isRead && (
                       <Badge variant="secondary" className="px-1.5 py-0.2 text-[10px] bg-primary text-primary-foreground">
-                        New
+                        {t('notifications.unread')}
                       </Badge>
                     )}
                   </div>
@@ -96,10 +98,10 @@ export function Component() {
                     size="sm"
                     className="h-8 shrink-0 px-2.5 text-xs font-medium hover:bg-accent/40"
                     onClick={() => markReadMutation.mutate(item.ID)}
-                    title="Mark as read"
+                    title={t('notifications.markAllRead')}
                   >
                     <Check className="mr-1 h-3.5 w-3.5 text-emerald-500" />
-                    Read
+                    {t('notifications.all')}
                   </Button>
                 )}
               </div>

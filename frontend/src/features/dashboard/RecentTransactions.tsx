@@ -1,11 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { ArrowDownLeft, ArrowUpRight } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn, formatCurrency } from '@/lib/utils'
 import { dashboardApi } from './api'
 
 export function RecentTransactions() {
+  const { t } = useTranslation()
   const { data, isLoading, error } = useQuery({
     queryKey: ['transactions', 5],
     queryFn: () => dashboardApi.transactions(5),
@@ -14,7 +16,7 @@ export function RecentTransactions() {
   return (
     <Card className="col-span-full lg:col-span-2">
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">Recent Transactions</CardTitle>
+        <CardTitle className="text-sm font-medium text-muted-foreground">{t('dashboard.recentTransactions')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {isLoading && Array.from({ length: 4 }).map((_, i) => (
@@ -28,10 +30,10 @@ export function RecentTransactions() {
           </div>
         ))}
 
-        {error && <p className="text-sm text-destructive">Failed to load transactions</p>}
+        {error && <p className="text-sm text-destructive">{t('common.error')}</p>}
 
         {data?.transactions?.length === 0 && (
-          <p className="py-4 text-center text-sm text-muted-foreground">No transactions yet</p>
+          <p className="py-4 text-center text-sm text-muted-foreground">{t('common.noData')}</p>
         )}
 
         {data?.transactions?.map(tx => (
@@ -45,7 +47,9 @@ export function RecentTransactions() {
                 : <ArrowUpRight className="h-4 w-4" />}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium capitalize">{tx.type}</p>
+              <p className="text-sm font-medium capitalize">
+                {tx.type === 'deposit' ? t('wallet.credit') : t('wallet.debit')}
+              </p>
               <p className="truncate text-xs text-muted-foreground">
                 {new Date(tx.created_at).toLocaleDateString()}
               </p>
