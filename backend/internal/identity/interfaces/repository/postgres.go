@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/raffle-app/backend/internal/identity/domain"
@@ -62,8 +63,17 @@ func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*domain.User,
 
 func (r *UserRepo) Create(ctx context.Context, user *domain.User) error {
 	query := `INSERT INTO users (id, email, phone, full_name, avatar_url, password_hash, role, is_banned, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
-	_, err := r.db.ExecContext(ctx, query, user.ID, user.Email, user.Phone, user.FullName, user.AvatarURL, user.PasswordHash, user.Role, user.IsBanned, time.Now(), time.Now())
+	// Optional profile fields must be NULL, not "". users.phone is UNIQUE, so
+	// storing '' makes every phone-less registration after the first fail.
+	_, err := r.db.ExecContext(ctx, query, user.ID, user.Email, nullIfEmpty(user.Phone), nullIfEmpty(user.FullName), nullIfEmpty(user.AvatarURL), user.PasswordHash, user.Role, user.IsBanned, time.Now(), time.Now())
 	return err
+}
+
+func nullIfEmpty(value string) sql.NullString {
+	if strings.TrimSpace(value) == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: value, Valid: true}
 }
 
 func (r *UserRepo) UpdatePassword(ctx context.Context, userID, passwordHash string) error {
@@ -98,7 +108,7 @@ func (r *UserRepo) Update(ctx context.Context, user *domain.User) error {
 		banReason.Valid = true
 		banReason.String = *user.BanReason
 	}
-	_, err := r.db.ExecContext(ctx, query, user.Email, user.Phone, user.FullName, user.AvatarURL, user.Role, user.IsBanned, banReason, time.Now(), user.ID)
+	_, err := r.db.ExecContext(ctx, query, user.Email, nullIfEmpty(user.Phone), nullIfEmpty(user.FullName), nullIfEmpty(user.AvatarURL), user.Role, user.IsBanned, banReason, time.Now(), user.ID)
 	return err
 }
 

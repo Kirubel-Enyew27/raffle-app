@@ -64,7 +64,11 @@ func (h *Handler) Stream(c *gin.Context) {
 	c.Header("Connection", "keep-alive")
 	c.Header("Transfer-Encoding", "chunked")
 
-	client := h.svc.Subscribe(userID, role)
+	// Optional channel subscription for shared game rooms (for example
+	// ?channel=crash). Absent or empty, behaviour is unchanged.
+	channel := c.Query("channel")
+
+	client := h.svc.SubscribeChannel(userID, role, channel)
 	defer h.svc.Unsubscribe(client)
 
 	// Send an initial connected event

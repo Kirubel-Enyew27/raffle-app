@@ -1,4 +1,5 @@
 import axios, { type AxiosError } from 'axios'
+import { authStorage } from '@/lib/authStorage'
 
 // In production (Vercel), VITE_API_URL points to the Render backend.
 // In development, Vite's proxy handles /api requests to localhost:8080.
@@ -11,7 +12,7 @@ export const api = axios.create({
 
 // Attach JWT token from storage on every request
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
+  const token = authStorage.getToken()
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
@@ -21,8 +22,7 @@ api.interceptors.response.use(
   (res) => res,
   (err: AxiosError<{ error?: { message?: string }; message?: string }>) => {
     if (err.response?.status === 401 && !err.config?.url?.includes('/auth/login')) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
+      authStorage.clear()
       // Redirect immediately and suppress the error from reaching components.
       // The never-settling promise prevents React Query from updating error state
       // before the page navigation takes over.

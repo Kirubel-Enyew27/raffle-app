@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
+import { authStorage } from '@/lib/authStorage'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -35,7 +36,7 @@ export function Component() {
       return res.data.data as User
     },
     onSuccess: (updatedUser) => {
-      login(localStorage.getItem('token')!, updatedUser)
+      login(authStorage.getToken()!, updatedUser)
       queryClient.invalidateQueries({ queryKey: ['user'] })
       setSuccessMsg(t('profile.updateSuccess'))
       setTimeout(() => setSuccessMsg(''), 3000)
@@ -50,7 +51,7 @@ export function Component() {
       return res.data.data as User
     },
     onSuccess: (updatedUser) => {
-      login(localStorage.getItem('token')!, updatedUser)
+      login(authStorage.getToken()!, updatedUser)
       setAvatarPreview(null)
       setSuccessMsg(t('profile.avatarUpdated'))
       setTimeout(() => setSuccessMsg(''), 3000)

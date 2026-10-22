@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { authStorage } from '@/lib/authStorage'
 import type { User } from '@/types/api'
 
 interface AuthState {
@@ -19,27 +20,25 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
-    token: localStorage.getItem('token'),
+    token: authStorage.getToken(),
     isLoading: true,
   })
 
-  // Hydrate user from localStorage on mount
+  // Hydrate user from storage on mount
   useEffect(() => {
-    const token = localStorage.getItem('token')
-    const raw = localStorage.getItem('user')
+    const token = authStorage.getToken()
+    const raw = authStorage.getUser()
     const user: User | null = raw ? (JSON.parse(raw) as User) : null
     setState({ token, user, isLoading: false })
   }, [])
 
   const login = (token: string, user: User) => {
-    localStorage.setItem('token', token)
-    localStorage.setItem('user', JSON.stringify(user))
+    authStorage.save(token, user)
     setState({ token, user, isLoading: false })
   }
 
   const logout = () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
+    authStorage.clear()
     setState({ token: null, user: null, isLoading: false })
   }
 

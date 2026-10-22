@@ -64,13 +64,157 @@ export interface WalletTransaction {
   id: string
   wallet_id?: string
   user_id?: string
-  type: 'deposit' | 'withdraw'
+  type: string
   status: string
   amount: number
   balance_before: number
   balance_after: number
   reference: string
   description?: string
+  metadata?: Record<string, any>
+  created_at: string
+}
+
+// P2P Multiplayer Games
+export interface P2PGame {
+  slug: string
+  title: string
+  description: string
+  min_players: number
+  max_players: number
+  is_active: boolean
+  min_stake_cents: number
+  max_stake_cents: number
+  default_fee_bp: number
+  default_turn_seconds: number
+  rules_json?: Record<string, any>
+}
+
+export interface P2PMatchPlayer {
+  id: string
+  match_id: string
+  user_id: string
+  display_name?: string
+  avatar_url?: string
+  player_index: number
+  symbol: string
+  status: 'reserved' | 'ready' | 'active' | 'forfeited' | 'disconnected'
+  score: number
+  debit_tx_id?: string
+  credit_tx_id?: string
+  fee_tx_id?: string
+  joined_at: string
+  ready_at?: string
+}
+
+export interface P2PMatch {
+  id: string
+  game_slug: string
+  status: 'waiting' | 'ready' | 'in_progress' | 'completed' | 'cancelled' | 'tied' | 'forfeited'
+  match_type: 'public_queue' | 'private_room'
+  invite_code?: string
+  stake_amount: number
+  prize_pool: number
+  service_fee_percent: number
+  total_fee: number
+  winner_user_id?: string
+  current_turn_user_id?: string
+  turn_seconds_left: number
+  current_round: number
+  max_rounds: number
+  scores: Record<string, number>
+  board_state: Record<string, any>
+  created_by: string
+  /** Set when a player asked for a return game; the opponent accepts from the result screen. */
+  rematch_requested_by?: string
+  /** The return match created once both players agreed to a rematch. */
+  rematch_match_id?: string
+  my_player_index?: number
+  players: P2PMatchPlayer[]
+  started_at?: string
+  completed_at?: string
+  created_at: string
+}
+
+export interface P2PRematchResult {
+  /** `requested`: waiting for the opponent. `started`: the return match is live. */
+  status: 'requested' | 'started'
+  match: P2PMatch
+}
+
+export type LeaderboardPeriod = 'all_time' | 'daily' | 'weekly' | 'monthly'
+export type LeaderboardSortBy = 'wins' | 'win_streak' | 'win_rate'
+
+export interface LeaderboardPlayer {
+  rank: number
+  player_id: string
+  display_name: string
+  avatar_url?: string | null
+  matches_played: number
+  wins: number
+  losses: number
+  draws: number
+  win_rate: number
+  current_win_streak: number
+  longest_win_streak: number
+}
+
+export interface LeaderboardPagination {
+  page: number
+  limit: number
+  total_players: number
+  total_pages: number
+}
+
+export interface LeaderboardData {
+  period: LeaderboardPeriod
+  game?: string | null
+  sort_by: LeaderboardSortBy
+  players: LeaderboardPlayer[]
+  current_player?: LeaderboardPlayer | null
+  pagination: LeaderboardPagination
+}
+
+export interface LeaderboardParams {
+  period?: LeaderboardPeriod
+  game?: string
+  sort_by?: LeaderboardSortBy
+  page?: number
+  limit?: number
+}
+
+export interface ReceiptInfo {
+  payment_method: string
+  amount: number
+  transaction_ref: string
+  transfer_date: string
+  receiver_name: string
+  status: string
+  receipt_url: string
+}
+
+export interface ReceiptDepositResult {
+  transaction: WalletTransaction
+  receipt: ReceiptInfo
+}
+
+export interface DepositIntent {
+  id: string
+  user_id: string
+  wallet_id: string
+  amount: number
+  currency: string
+  payment_method: string
+  status: string
+  external_reference?: string
+  receipt_token?: string
+  receipt_url?: string
+  payer_name?: string
+  receiver_name?: string
+  actual_amount_credited?: number
+  fee_amount?: number
+  error_message?: string
+  expires_at: string
   created_at: string
 }
 

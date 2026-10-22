@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/raffle-app/backend/internal/identity/application"
+	apperrors "github.com/raffle-app/backend/pkg/errors"
 )
 
 type IdentityHandler struct {
@@ -47,7 +48,7 @@ func (h *IdentityHandler) Register(c *gin.Context) {
 
 	user, err := h.service.Register(c.Request.Context(), req.ID, req.Email, req.Password, req.FullName, req.Phone)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "error", "message": err.Error()})
+		writeRegistrationError(c, err)
 		return
 	}
 
@@ -71,6 +72,17 @@ func (h *IdentityHandler) Login(c *gin.Context) {
 		"token": token,
 		"user":  user,
 	}})
+}
+
+// writeRegistrationError maps domain errors to their HTTP status and never
+// echoes raw driver messages (which can disclose constraint/schema details).
+func writeRegistrationError(c *gin.Context, err error) {
+	status := apperrors.HTTPStatus(err)
+	if status >= http.StatusInternalServerError {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "INTERNAL_ERROR", "message": "internal server error"})
+		return
+	}
+	c.JSON(status, gin.H{"code": "error", "message": err.Error()})
 }
 
 func (h *IdentityHandler) UpdateProfile(c *gin.Context) {

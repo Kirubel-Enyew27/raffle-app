@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Navigate, Outlet, Link, NavLink, useNavigate } from 'react-router-dom'
+import { Navigate, Outlet, Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { LogOut, Bell, Menu, X, User as UserIcon, Wallet, Sun, Moon, Monitor, Globe, ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/contexts/AuthContext'
@@ -153,10 +153,101 @@ function UserMenu() {
   )
 }
 
+/**
+ * Section groups for the navbar. Pages that only make sense as part of a
+ * section hang off its menu instead of sitting as separate top-level entries:
+ * the raffle section owns the raffle list, the tickets a user holds and the
+ * prizes a user has won; the games section owns the match lobby, crash and the
+ * leaderboard.
+ */
+function useSectionNav() {
+  const { t } = useTranslation()
+  const raffleItems = [
+    { to: '/raffles', label: t('raffles.allRaffles') },
+    { to: '/tickets', label: t('nav.myTickets') },
+    { to: '/winners', label: t('nav.winners') },
+  ]
+  const gameItems = [
+    { to: '/games', label: t('nav.allGames') },
+    { to: '/crash', label: t('nav.crash') },
+    { to: '/leaderboard', label: t('nav.leaderboard') },
+  ]
+  return { raffleItems, gameItems }
+}
+
+/** Desktop dropdown for a nav section (click to open; Escape / outside click closes) */
+function NavGroup({ label, items }: { label: string; items: { to: string; label: string }[] }) {
+  const location = useLocation()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const inSection = items.some(
+    i => location.pathname === i.to || location.pathname.startsWith(`${i.to}/`),
+  )
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={[
+          'flex items-center gap-1 transition-colors',
+          inSection ? 'text-foreground font-bold' : 'text-muted-foreground hover:text-foreground',
+        ].join(' ')}
+      >
+        {label}
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          aria-label={label}
+          className="absolute left-0 top-full z-50 w-44 rounded-lg border border-border bg-popover py-1 shadow-lg"
+        >
+          {items.map(item => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className={({ isActive }) => [
+                'block px-3 py-1.5 text-sm transition-colors',
+                isActive
+                  ? 'bg-accent font-semibold text-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+              ].join(' ')}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Navbar() {
   const { user } = useAuth()
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
+  const { raffleItems, gameItems } = useSectionNav()
   const { data: wallet } = useQuery({ queryKey: ['wallet'], queryFn: walletApi.balance, staleTime: 0 })
   const { data: unreadData } = useQuery({
     queryKey: ['notifications-unread'],
@@ -165,12 +256,14 @@ function Navbar() {
   })
   const unreadCount = unreadData?.unread || 0
 
+  const sections = [
+    { key: 'raffles', label: t('nav.raffles'), to: '/raffles', items: raffleItems },
+    { key: 'games',   label: t('nav.games'),   to: '/games',   items: gameItems   },
+  ]
+
   const navLinks = [
-    { to: '/raffles',  label: t('nav.raffles')   },
-    { to: '/tickets',  label: t('nav.myTickets') },
-    { to: '/wallet',   label: t('nav.wallet')    },
-    { to: '/winners',  label: t('nav.winners')   },
-    { to: '/profile',  label: t('nav.profile')   },
+    { to: '/wallet',  label: t('nav.wallet')  },
+    { to: '/profile', label: t('nav.profile') },
   ]
 
   return (
@@ -192,6 +285,9 @@ function Navbar() {
           </button>
 
           <nav className="hidden gap-4 text-sm sm:flex" aria-label="Main navigation">
+            {sections.map(section => (
+              <NavGroup key={section.key} label={section.label} items={section.items} />
+            ))}
             {navLinks.map(link => (
               <NavLink
                 key={link.to}
@@ -246,6 +342,40 @@ function Navbar() {
           )}
 
           <nav className="space-y-1 px-4 py-3" aria-label="Mobile navigation">
+            {sections.map(section => (
+              <div key={section.key} className="space-y-1">
+                <NavLink
+                  to={section.to}
+                  onClick={() => setMenuOpen(false)}
+                  className={({ isActive }) =>
+                    isActive
+                      ? 'block rounded-md px-3 py-2 text-sm bg-accent text-foreground font-bold'
+                      : 'block rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground'
+                  }
+                >
+                  {section.label}
+                </NavLink>
+                <div className="ml-3 space-y-1 border-l border-border pl-2">
+                  {section.items
+                    .filter(item => item.to !== section.to)
+                    .map(item => (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        onClick={() => setMenuOpen(false)}
+                        className={({ isActive }) =>
+                          isActive
+                            ? 'block rounded-md px-3 py-1.5 text-sm bg-accent text-foreground font-semibold'
+                            : 'block rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }
+                      >
+                        {item.label}
+                      </NavLink>
+                    ))}
+                </div>
+              </div>
+            ))}
+
             {navLinks.map(link => (
               <NavLink
                 key={link.to}

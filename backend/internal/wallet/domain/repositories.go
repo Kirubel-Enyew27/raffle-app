@@ -22,4 +22,22 @@ type WalletRepository interface {
 	FindTransactionsByStatus(ctx context.Context, txType, status string) ([]*WalletTransaction, error)
 	FindTransactionByID(ctx context.Context, id string) (*WalletTransaction, error)
 	UpdateTransactionStatus(ctx context.Context, id, status string) error
+	ExistsByReference(ctx context.Context, reference string) (bool, error)
 }
+
+type DepositRepository interface {
+	Create(ctx context.Context, deposit *Deposit) error
+	CreateTx(ctx context.Context, tx *sql.Tx, deposit *Deposit) error
+	FindByID(ctx context.Context, id string) (*Deposit, error)
+	FindByIDWithLock(ctx context.Context, tx *sql.Tx, id string) (*Deposit, error)
+	FindByExternalReference(ctx context.Context, ref string) (*Deposit, error)
+	Update(ctx context.Context, deposit *Deposit) error
+	UpdateTx(ctx context.Context, tx *sql.Tx, deposit *Deposit) error
+	ListByUserID(ctx context.Context, userID string, limit, offset int) ([]*Deposit, int64, error)
+	BeginTx(ctx context.Context) (*sql.Tx, error)
+}
+
+type PaymentVerifier interface {
+	Verify(ctx context.Context, req VerificationRequest) (*VerificationResult, error)
+}
+

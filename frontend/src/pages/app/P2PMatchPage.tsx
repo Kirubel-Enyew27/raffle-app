@@ -1,0 +1,564 @@
+import { useState, useEffect, useCallback } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  Users,
+  Swords,
+  Clock,
+  Copy,
+  Check,
+  Flag,
+  ArrowLeft,
+  Wifi,
+  WifiOff,
+  Sparkles,
+  Loader2,
+} from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { useAuth } from '@/contexts/AuthContext'
+import { useToast } from '@/contexts/ToastContext'
+import { p2pApi } from '@/features/p2p/api'
+import { useP2PStream, type P2PEvent } from '@/features/p2p/useP2PStream'
+import { TicTacToeBoard } from '@/features/p2p/TicTacToeBoard'
+import { ConnectFourBoard } from '@/features/p2p/ConnectFourBoard'
+import { RockPaperScissorsBoard } from '@/features/p2p/RockPaperScissorsBoard'
+import { useGameSounds } from '@/features/p2p/useGameSounds'
+import { SoundToggle } from '@/features/p2p/SoundToggle'
+import type { P2PMatch } from '@/types/api'
+
+// Surfaces the API's error message (axios error shape) without widening to any.
+function apiErrorMessage(err: unknown): string {
+  if (typeof err === 'object' && err !== null) {
+    const response = (err as { response?: { data?: { message?: string } } }).response
+    if (response?.data?.message) return response.data.message
+    const message = (err as { message?: string }).message
+    if (message) return message
+  }
+  return 'Something went wrong'
+}
+
+export function Component() {
+  const { id: matchId } = useParams<{ id: string }>()
+  const { user, token } = useAuth()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+
+  const [copied, setCopied] = useState(false)
+  const [secondsLeft, setSecondsLeft] = useState<number>(0)
+
+  // Fetch initial match state
+  const {
+    data: match,
+    isLoading,
+    refetch,
+  } = useQuery<P2PMatch>({
+    queryKey: ['p2p-match', matchId],
+    queryFn: () => p2pApi.getMatchState(matchId!),
+    enabled: !!matchId,
+    refetchInterval: (query) => {
+      // Poll slower if stream is healthy, faster if waiting
+      const data = query.state.data
+      if (data?.status === 'waiting') return 3000
+      return false
+    },
+  })
+
+  // Web Audio sound effects manager
+  const { isMuted, toggleMute } = useGameSounds({
+    match,
+    userId: user?.id,
+    secondsLeft,
+    timerThreshold: 5,
+  })
+
+  // Handle realtime events
+  const handleEvent = useCallback(
+    (event: P2PEvent) => {
+      if (event.type === 'p2p.move_made' && event.payload?.state) {
+        queryClient.setQueryData(['p2p-match', matchId], event.payload.state)
+      } else if (event.type === 'p2p.match_started' || event.type === 'p2p.match_completed') {
+        queryClient.setQueryData(['p2p-match', matchId], event.payload)
+      } else if (event.type === 'p2p.rematch_requested') {
+        // The requester is told separately; only the opponent needs a nudge.
+        if (event.payload?.user_id !== user?.id) {
+          toast({
+            title: 'Rematch requested',
+            description: 'Your opponent wants to play again.',
+            type: 'info',
+          })
+        }
+        refetch()
+      } else if (event.type === 'p2p.rematch_created' && event.payload?.next_match_id) {
+        toast({ title: 'Rematch started', description: 'Both players agreed — good luck!', type: 'success' })
+        navigate(`/games/match/${event.payload.next_match_id}`)
+      } else {
+        refetch()
+      }
+    },
+    [matchId, queryClient, refetch, toast, user?.id, navigate]
+  )
+
+  const { isLive } = useP2PStream({
+    matchId,
+    token,
+    enabled: !!matchId && !!token,
+    onEvent: handleEvent,
+    onReconnect: () => refetch(),
+  })
+
+  // Turn timer countdown locally
+  useEffect(() => {
+    if (!match || match.status !== 'in_progress') {
+      setSecondsLeft(0)
+      return
+    }
+
+    setSecondsLeft(match.turn_seconds_left || 0)
+
+    const timer = setInterval(() => {
+      setSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0))
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [match?.current_turn_user_id, match?.turn_seconds_left, match?.status])
+
+  // Move mutation
+  const moveMutation = useMutation({
+    mutationFn: (action: Record<string, unknown>) => p2pApi.submitMove(matchId!, action),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['p2p-match', matchId], updated)
+    },
+    onError: (err: unknown) => {
+      toast({
+        title: 'Move rejected',
+        description: apiErrorMessage(err),
+        type: 'error',
+      })
+    },
+  })
+
+  // Ready mutation
+  const readyMutation = useMutation({
+    mutationFn: () => p2pApi.readyUp(matchId!),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['p2p-match', matchId], updated)
+      toast({ title: 'Ready!', description: 'Waiting for opponent to ready up...', type: 'success' })
+    },
+    onError: (err: unknown) => {
+      toast({
+        title: 'Error',
+        description: apiErrorMessage(err),
+        type: 'error',
+      })
+    },
+  })
+
+  // Rematch mutation: the first request waits for the opponent, the second
+  // acceptance starts a fresh match and sends both players into it.
+  const rematchMutation = useMutation({
+    mutationFn: () => p2pApi.requestRematch(matchId!),
+    onSuccess: (result) => {
+      if (result.status === 'started' && result.match) {
+        queryClient.setQueryData(['p2p-match', result.match.id], result.match)
+        toast({ title: 'Rematch started', description: 'Both players agreed — good luck!', type: 'success' })
+        navigate(`/games/match/${result.match.id}`)
+        return
+      }
+      if (result.match) {
+        queryClient.setQueryData(['p2p-match', matchId], result.match)
+      }
+      toast({
+        title: 'Rematch requested',
+        description: 'Waiting for your opponent to accept…',
+        type: 'info',
+      })
+    },
+    onError: (err: unknown) => {
+      toast({
+        title: 'Rematch failed',
+        description: apiErrorMessage(err),
+        type: 'error',
+      })
+    },
+  })
+
+  // Resign mutation
+  const resignMutation = useMutation({
+    mutationFn: () => p2pApi.resignMatch(matchId!),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['p2p-match', matchId], updated)
+      toast({ title: 'You resigned the match', type: 'info' })
+    },
+  })
+
+  if (isLoading || !match) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Loading duel arena…</p>
+      </div>
+    )
+  }
+
+  const p0 = match.players?.[0]
+  const p1 = match.players?.[1]
+  const myPlayer = match.players?.find((p) => p.user_id === user?.id)
+  const isP0 = myPlayer?.player_index === 0
+  const isP1 = myPlayer?.player_index === 1
+
+  const isMyTurn = match.status === 'in_progress' && match.current_turn_user_id === user?.id
+  const isGameOver = ['completed', 'tied', 'forfeited', 'cancelled'].includes(match.status)
+  const iAmWinner = match.winner_user_id === user?.id
+
+  // Rematch state: a finished match either has the caller waiting on the
+  // opponent, or the opponent waiting on the caller to accept.
+  const iRequestedRematch = !!match.rematch_requested_by && match.rematch_requested_by === user?.id
+  const opponentRequestedRematch = !!match.rematch_requested_by && match.rematch_requested_by !== user?.id
+  const canRematch = (match.players?.length ?? 0) === 2
+
+  const handleCopyCode = () => {
+    if (!match.invite_code) return
+    navigator.clipboard.writeText(match.invite_code)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+    toast({ title: 'Code copied!', description: 'Share this 6-character code with your opponent.', type: 'info' })
+  }
+
+  const handleMoveAction = (action: Record<string, unknown>) => {
+    moveMutation.mutate(action)
+  }
+
+  return (
+    <div className="mx-auto max-w-4xl py-6 px-4 space-y-6">
+      {/* Top Navigation & Status Bar */}
+      <div className="flex items-center justify-between border-b border-border pb-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate('/games')}
+          className="gap-1.5 text-xs text-muted-foreground -ml-2"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Exit to Lobby</span>
+        </Button>
+
+        <div className="flex items-center gap-2">
+          <SoundToggle isMuted={isMuted} onToggle={toggleMute} />
+
+          {match.invite_code && (
+            <Badge variant="outline" className="font-mono text-xs px-2.5 py-0.5 gap-1.5 bg-muted/40">
+              <span>Code: {match.invite_code}</span>
+              <button
+                type="button"
+                onClick={handleCopyCode}
+                className="hover:text-primary transition-colors"
+                title="Copy code"
+              >
+                {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+              </button>
+            </Badge>
+          )}
+
+          <Badge variant="outline" className="text-xs px-2.5 py-0.5 gap-1 border-border">
+            {isLive ? (
+              <span className="flex items-center gap-1 text-emerald-500">
+                <Wifi className="w-3 h-3" />
+                Live
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-amber-500">
+                <WifiOff className="w-3 h-3" />
+                Connecting
+              </span>
+            )}
+          </Badge>
+        </div>
+      </div>
+
+      {/* Opponents Duel Header Card */}
+      <Card className="border-border/80 shadow-md bg-card/60 backdrop-blur overflow-hidden">
+        <CardContent className="p-4 sm:p-6">
+          <div className="grid grid-cols-3 items-center">
+            {/* Player 0 (Left) */}
+            <div className="flex flex-col items-center sm:items-start text-center sm:text-left space-y-1">
+              <div className="relative">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-sky-500/10 border-2 border-sky-500/40 flex items-center justify-center font-black text-xl text-sky-500">
+                  {p0?.symbol || 'P1'}
+                </div>
+                {p0?.user_id === user?.id && (
+                  <span className="absolute -top-1.5 -right-1.5 bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+                    YOU
+                  </span>
+                )}
+              </div>
+              <span className="font-bold text-sm truncate max-w-[120px] sm:max-w-[160px]">
+                {p0?.display_name || (isP0 ? 'You' : 'Host Player')}
+              </span>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span>Score:</span>
+                <span className="font-bold text-foreground text-sm">{match.scores?.['0'] ?? 0}</span>
+              </div>
+            </div>
+
+            {/* Duel Status / Timer (Center) */}
+            <div className="flex flex-col items-center justify-center text-center space-y-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {match.game_slug.replace('-', ' ')}
+              </span>
+
+              {match.status === 'in_progress' ? (
+                <div className="space-y-1">
+                  <div
+                    className={[
+                      'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all',
+                      isMyTurn
+                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 animate-pulse'
+                        : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30',
+                    ].join(' ')}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>{isMyTurn ? 'YOUR TURN' : 'OPPONENT TURN'}</span>
+                  </div>
+                  <div className="text-2xl font-black tabular-nums tracking-tight">
+                    {secondsLeft}s
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Round {match.current_round} of {match.max_rounds}
+                  </div>
+                </div>
+              ) : (
+                <div className="py-2">
+                  <Badge
+                    variant={isGameOver ? 'secondary' : 'default'}
+                    className="capitalize text-xs font-bold px-3 py-1"
+                  >
+                    {match.status.replace('_', ' ')}
+                  </Badge>
+                </div>
+              )}
+            </div>
+
+            {/* Player 1 (Right) */}
+            <div className="flex flex-col items-center sm:items-end text-center sm:text-right space-y-1">
+              <div className="relative">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 flex items-center justify-center font-black text-xl text-amber-500">
+                  {p1?.symbol || (p1 ? 'P2' : '?')}
+                </div>
+                {p1?.user_id === user?.id && (
+                  <span className="absolute -top-1.5 -left-1.5 bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+                    YOU
+                  </span>
+                )}
+              </div>
+              <span className="font-bold text-sm truncate max-w-[120px] sm:max-w-[160px]">
+                {p1?.display_name || (isP1 ? 'You' : p1 ? 'Challenger' : 'Waiting…')}
+              </span>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span>Score:</span>
+                <span className="font-bold text-foreground text-sm">{match.scores?.['1'] ?? 0}</span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Main Interactive Stage */}
+      <Card className="border-border/80 shadow-xl overflow-hidden min-h-[420px] flex flex-col justify-center">
+        <CardContent className="p-4 sm:p-8 flex flex-col items-center justify-center">
+          {/* State 1: WAITING FOR OPPONENT */}
+          {match.status === 'waiting' && (
+            <div className="text-center max-w-sm space-y-4 py-8 animate-in fade-in">
+              <div className="w-16 h-16 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center mx-auto animate-pulse text-primary">
+                <Users className="w-8 h-8" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold">Waiting for Challenger</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Share your room code with a friend or wait for another player to join through the lobby.
+                </p>
+              </div>
+
+              {match.invite_code && (
+                <div className="p-3 bg-muted/50 rounded-xl border border-border/80 flex items-center justify-between gap-3">
+                  <span className="font-mono text-lg font-black tracking-widest text-primary">
+                    {match.invite_code}
+                  </span>
+                  <Button size="sm" onClick={handleCopyCode} className="h-8 gap-1.5 font-semibold text-xs">
+                    {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copied ? 'Copied' : 'Copy Code'}</span>
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* State 2: READY UP */}
+          {match.status === 'ready' && (
+            <div className="text-center max-w-sm space-y-4 py-8 animate-in fade-in">
+              <div className="w-16 h-16 rounded-full bg-emerald-500/10 border-2 border-emerald-500/40 flex items-center justify-center mx-auto text-emerald-500">
+                <Swords className="w-8 h-8" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold">Both Players Joined!</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Click Ready Up when you are prepared to begin the duel.
+                </p>
+              </div>
+
+              {myPlayer?.status === 'ready' ? (
+                <div className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-4 py-2 rounded-full border border-emerald-500/20">
+                  <Sparkles className="w-4 h-4" />
+                  <span>You are ready! Waiting for opponent…</span>
+                </div>
+              ) : (
+                <Button
+                  size="lg"
+                  disabled={readyMutation.isPending}
+                  onClick={() => readyMutation.mutate()}
+                  className="w-full font-bold shadow-lg shadow-primary/20 text-base"
+                >
+                  {readyMutation.isPending ? 'Confirming…' : 'I am Ready! ⚔️'}
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* State 3: IN PROGRESS */}
+          {match.status === 'in_progress' && (
+            <div className="w-full flex flex-col items-center">
+              {match.game_slug === 'tic-tac-toe' && (
+                <TicTacToeBoard
+                  boardState={match.board_state}
+                  isMyTurn={isMyTurn}
+                  mySymbol={myPlayer?.symbol}
+                  onMove={(cell) => handleMoveAction({ cell })}
+                  disabled={moveMutation.isPending}
+                />
+              )}
+
+              {match.game_slug === 'connect-four' && (
+                <ConnectFourBoard
+                  boardState={match.board_state}
+                  isMyTurn={isMyTurn}
+                  mySymbol={myPlayer?.symbol}
+                  onMove={(column) => handleMoveAction({ column })}
+                  disabled={moveMutation.isPending}
+                />
+              )}
+
+              {match.game_slug === 'rock-paper-scissors' && (
+                <RockPaperScissorsBoard
+                  boardState={match.board_state}
+                  isMyTurn={isMyTurn}
+                  myPlayerIndex={myPlayer?.player_index}
+                  onMove={(choice) => handleMoveAction({ choice })}
+                  disabled={moveMutation.isPending}
+                />
+              )}
+            </div>
+          )}
+
+          {/* State 4: MATCH FINISHED */}
+          {isGameOver && (
+            <div className="text-center max-w-sm space-y-4 py-8 animate-in zoom-in-95">
+              <div
+                className={[
+                  'w-20 h-20 rounded-full flex items-center justify-center mx-auto text-4xl shadow-xl',
+                  match.status === 'tied'
+                    ? 'bg-amber-500/20 border-2 border-amber-500/40 text-amber-500'
+                    : iAmWinner
+                      ? 'bg-emerald-500/20 border-2 border-emerald-500/40 text-emerald-500'
+                      : 'bg-rose-500/20 border-2 border-rose-500/40 text-rose-500',
+                ].join(' ')}
+              >
+                {match.status === 'tied' ? '🤝' : iAmWinner ? '🏆' : '💀'}
+              </div>
+
+              <div>
+                <h3 className="text-2xl font-black">
+                  {match.status === 'tied'
+                    ? 'Match Tied!'
+                    : iAmWinner
+                      ? 'Victory!'
+                      : match.status === 'forfeited'
+                        ? 'Match Forfeited'
+                        : 'Defeat'}
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Final Score: {match.scores?.['0'] ?? 0} to {match.scores?.['1'] ?? 0}
+                </p>
+              </div>
+
+              {opponentRequestedRematch && (
+                <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                  Your opponent wants a rematch!
+                </p>
+              )}
+
+              <div className="flex items-center gap-3 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => navigate('/games')}
+                  className="flex-1 font-semibold text-xs h-10"
+                >
+                  Back to Lobby
+                </Button>
+                {canRematch ? (
+                  <Button
+                    onClick={() => rematchMutation.mutate()}
+                    disabled={rematchMutation.isPending || iRequestedRematch}
+                    className="flex-1 font-semibold text-xs h-10"
+                  >
+                    {iRequestedRematch ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                        Waiting for Opponent…
+                      </>
+                    ) : opponentRequestedRematch ? (
+                      'Accept Rematch'
+                    ) : (
+                      'Play Another Match'
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => navigate('/games')}
+                    className="flex-1 font-semibold text-xs h-10"
+                  >
+                    Find New Match
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Surrender / Resign Button during Active Play */}
+      {match.status === 'in_progress' && (
+        <div className="flex justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (window.confirm('Are you sure you want to resign and forfeit this match?')) {
+                resignMutation.mutate()
+              }
+            }}
+            disabled={resignMutation.isPending}
+            className="text-muted-foreground hover:text-destructive text-xs gap-1.5"
+          >
+            <Flag className="w-3.5 h-3.5" />
+            <span>Surrender Match</span>
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default Component

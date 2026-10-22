@@ -43,6 +43,14 @@ services:
     container_name: raffle-backend
     ports:
       - "8080:8080"
+    # Local secrets and integration keys (GEMINI_API_KEY for receipt OCR,
+    # TELE_VERIFY_KEY, ...) live in backend/.env, which is gitignored. Values
+    # under `environment` below override the file, so the database and redis
+    # hosts stay the compose service names. `required: false` lets a fresh
+    # clone boot without a .env.
+    env_file:
+      - path: ./backend/.env
+        required: false
     environment:
       APP_ENV: development
       APP_PORT: 8080

@@ -14,6 +14,7 @@ type Event struct {
 	Type      string      `json:"type"`
 	UserID    string      `json:"user_id,omitempty"`
 	Role      string      `json:"role,omitempty"`
+	Channel   string      `json:"channel,omitempty"`
 	Payload   interface{} `json:"payload"`
 	CreatedAt time.Time   `json:"created_at"`
 }
@@ -21,7 +22,10 @@ type Event struct {
 type Client struct {
 	UserID string
 	Role   string
-	Ch     chan Event
+	// Channel is an optional extra subscription (for example the shared crash
+	// game room). A client with no channel behaves exactly as before.
+	Channel string
+	Ch      chan Event
 }
 
 type Service struct {
@@ -71,35 +75,60 @@ func (s *Service) Start(ctx context.Context) {
 
 // Publish sends an event to Redis Pub/Sub for distribution.
 func (s *Service) Publish(ctx context.Context, eventType string, userID string, role string, payload interface{}) error {
-	ev := Event{
+	return s.publish(ctx, Event{
 		Type:      eventType,
 		UserID:    userID,
 		Role:      role,
 		Payload:   payload,
 		CreatedAt: time.Now(),
-	}
+	})
+}
 
+// PublishToChannel publishes an event that is only delivered to clients
+// subscribed to the given channel (for example every player watching the
+// shared crash game room).
+func (s *Service) PublishToChannel(ctx context.Context, channel, eventType string, payload interface{}) error {
+	if channel == "" {
+		return s.Publish(ctx, eventType, "", "", payload)
+	}
+	return s.publish(ctx, Event{
+		Type:      eventType,
+		Channel:   channel,
+		Payload:   payload,
+		CreatedAt: time.Now(),
+	})
+}
+
+func (s *Service) publish(ctx context.Context, ev Event) error {
 	data, err := json.Marshal(ev)
 	if err != nil {
 		return err
 	}
-
 	return s.rdb.Publish(ctx, s.channel, data).Err()
 }
 
 // Subscribe registers a local client for receiving filtered events.
 func (s *Service) Subscribe(userID, role string) *Client {
+	return s.SubscribeChannel(userID, role, "")
+}
+
+// SubscribeChannel registers a local client that additionally receives events
+// published to the given channel. Passing an empty channel is identical to
+// Subscribe, so existing connections are unaffected.
+func (s *Service) SubscribeChannel(userID, role, channel string) *Client {
 	c := &Client{
-		UserID: userID,
-		Role:   role,
-		Ch:     make(chan Event, 64),
+		UserID:  userID,
+		Role:    role,
+		Channel: channel,
+		Ch:      make(chan Event, 64),
 	}
 
 	s.mu.Lock()
 	s.clients[c] = true
 	s.mu.Unlock()
 
-	s.log.Debug("Client subscribed to real-time events", zap.String("user_id", userID), zap.String("role", role))
+	s.log.Debug("Client subscribed to real-time events",
+		zap.String("user_id", userID), zap.String("role", role), zap.String("channel", channel))
 	return c
 }
 
@@ -118,15 +147,14 @@ func (s *Service) broadcastLocal(ev Event) {
 
 	for client := range s.clients {
 		match := false
-		if ev.UserID != "" {
-			if client.UserID == ev.UserID {
-				match = true
-			}
-		} else if ev.Role != "" {
-			if client.Role == ev.Role {
-				match = true
-			}
-		} else {
+		switch {
+		case ev.UserID != "":
+			match = client.UserID == ev.UserID
+		case ev.Role != "":
+			match = client.Role == ev.Role
+		case ev.Channel != "":
+			match = client.Channel == ev.Channel
+		default:
 			match = true // Broadcast to all
 		}
 

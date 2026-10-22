@@ -1,7 +1,26 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { ArrowDownLeft, ArrowUpRight, Wallet, Smartphone, Copy, Check, Clock } from 'lucide-react'
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  Wallet,
+  Smartphone,
+  Building2,
+  Copy,
+  Check,
+  Clock,
+  Upload,
+  Camera,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  ExternalLink,
+  ImageIcon,
+  X,
+  FileCheck,
+  Sparkles,
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,9 +29,13 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { walletApi } from '@/features/wallet/api'
+import type { ReceiptDepositResult } from '@/types/api'
 import { cn, formatCurrency } from '@/lib/utils'
 
 const TELEBIRR_PHONE = '+251948260013'
+const TELEBIRR_ACCOUNT_NAME = 'Kirubel Enyew'
+const CBE_ACCOUNT_NUMBER = '1000249277383'
+const CBE_ACCOUNT_NAME = 'Kirubel Enyew'
 const PAGE_SIZE = 10
 
 function BalanceCard() {
@@ -36,54 +59,373 @@ function BalanceCard() {
   )
 }
 
-function TelebirrDepositCard() {
+/** Message from a failed API call — the server message when present, else a fallback. */
+function apiErrorMessage(err: unknown, fallback: string): string {
+  if (typeof err === 'object' && err !== null) {
+    const response = (err as { response?: { data?: { message?: string } } }).response
+    if (response?.data?.message) return response.data.message
+    const message = (err as { message?: string }).message
+    if (message) return message
+  }
+  return fallback
+}
+
+function DepositCard() {
   const { t } = useTranslation()
+  const [method, setMethod] = useState<'telebirr' | 'cbe'>('telebirr')
   const [copied, setCopied] = useState(false)
+  const [transactionId, setTransactionId] = useState('')
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [isExtracting, setIsExtracting] = useState(false)
+  const [extractSuccess, setExtractSuccess] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [depositResult, setDepositResult] = useState<ReceiptDepositResult | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const qc = useQueryClient()
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(TELEBIRR_PHONE)
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-    qc.invalidateQueries({ queryKey: ['wallet'] })
-    qc.invalidateQueries({ queryKey: ['transactions'] })
+  }
+
+  const handleFileChange = async (file: File) => {
+    setSelectedFile(file)
+    const url = URL.createObjectURL(file)
+    setPreviewUrl(url)
+    setErrorMessage(null)
+    setExtractSuccess(null)
+    setIsExtracting(true)
+
+    try {
+      const data = await walletApi.extractReceipt(file, method)
+      if (data?.transaction_id) {
+        setTransactionId(data.transaction_id)
+        setExtractSuccess(data.transaction_id)
+      }
+    } catch (err) {
+      setErrorMessage(apiErrorMessage(err, t('wallet.depositFailed')))
+    } finally {
+      setIsExtracting(false)
+    }
+  }
+
+  const handleRemoveFile = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setSelectedFile(null)
+    setPreviewUrl(null)
+    setExtractSuccess(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const depositMutation = useMutation({
+    // The uploaded receipt is the source of truth: the server reads the amount
+    // off it, verifies the transaction and credits the wallet straight away.
+    mutationFn: () => {
+      setErrorMessage(null)
+      return walletApi.verifyAndDeposit({
+        method,
+        transaction_id: transactionId.trim() || undefined,
+        file: selectedFile || undefined,
+      })
+    },
+    onSuccess: (res) => {
+      setDepositResult(res)
+      qc.invalidateQueries({ queryKey: ['wallet'] })
+      qc.invalidateQueries({ queryKey: ['transactions'] })
+    },
+    onError: (err: unknown) => {
+      setErrorMessage(apiErrorMessage(err, t('wallet.depositFailed')))
+    },
+  })
+
+  const resetForm = () => {
+    handleRemoveFile()
+    setTransactionId('')
+    setDepositResult(null)
+    setErrorMessage(null)
+    setExtractSuccess(null)
   }
 
   return (
-    <Card className="border-primary/20 bg-primary/5">
+    <Card className="border-primary/20 bg-card">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-base">
-            <Smartphone className="h-4 w-4 text-green-600" />
-            {t('wallet.depositViaTelebirr')}
+            <ArrowDownLeft className="h-5 w-5 text-green-600" />
+            {t('wallet.depositTitle')}
           </CardTitle>
-          <ArrowDownLeft className="h-4 w-4 text-green-600" />
+          <div className="flex gap-1 rounded-lg bg-muted p-1">
+            <button
+              type="button"
+              onClick={() => { setMethod('telebirr'); setErrorMessage(null); setExtractSuccess(null) }}
+              className={cn(
+                'flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-all',
+                method === 'telebirr'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <Smartphone className="h-3.5 w-3.5 text-green-600" />
+              {t('wallet.telebirr')}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMethod('cbe'); setErrorMessage(null); setExtractSuccess(null) }}
+              className={cn(
+                'flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-all',
+                method === 'cbe'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <Building2 className="h-3.5 w-3.5 text-purple-600" />
+              {t('wallet.cbe')}
+            </button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="rounded-lg border bg-card p-4 text-center">
-          <p className="mb-1 text-xs text-muted-foreground">{t('wallet.sendMoneyTo')}</p>
-          <p className="text-xl font-bold tracking-wide">{TELEBIRR_PHONE}</p>
-          <Button variant="outline" size="sm" onClick={handleCopy} className="mt-2 gap-1.5">
-            {copied
-              ? <><Check className="h-3.5 w-3.5" /> {t('wallet.copied')}</>
-              : <><Copy className="h-3.5 w-3.5" /> {t('wallet.copyNumber')}</>}
-          </Button>
-        </div>
-        <div className="space-y-2 text-sm text-muted-foreground">
-          <h4 className="font-medium text-foreground">{t('wallet.howItWorks')}</h4>
-          <ol className="list-inside list-decimal space-y-1.5">
-            <li>{t('wallet.depositStep1')}</li>
-            <li>{t('wallet.depositStep2', { phone: TELEBIRR_PHONE })}</li>
-            <li>{t('wallet.depositStep3')}</li>
-            <li>{t('wallet.depositStep4')}</li>
-            <li>{t('wallet.depositStep5')}</li>
-          </ol>
-          <p className="mt-3 flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
-            <Smartphone className="h-3.5 w-3.5 shrink-0" />
-            {t('wallet.telebirrNameNotice')}
-          </p>
-        </div>
+        {depositResult ? (
+          <div className="space-y-4 rounded-xl border border-green-200 bg-green-50/70 p-5 text-center dark:border-green-900/50 dark:bg-green-950/40">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400">
+              <CheckCircle2 className="h-7 w-7" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-green-800 dark:text-green-300">
+                {t('wallet.depositSuccess', { amount: formatCurrency(depositResult.receipt.amount) })}
+              </h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {depositResult.receipt.receiver_name && `${t('wallet.accountHolderName')}: ${depositResult.receipt.receiver_name}`}
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-2 pt-2 text-xs">
+              <Badge variant="outline" className="font-mono">
+                Ref: {depositResult.receipt.transaction_ref}
+              </Badge>
+              {depositResult.receipt.transfer_date && (
+                <Badge variant="outline">
+                  {depositResult.receipt.transfer_date}
+                </Badge>
+              )}
+              {depositResult.receipt.receipt_url && (
+                <a
+                  href={depositResult.receipt.receipt_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 rounded-md border border-input bg-background px-2.5 py-0.5 font-medium text-primary hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  {t('wallet.viewReceipt')}
+                </a>
+              )}
+            </div>
+            <Button onClick={resetForm} variant="outline" className="mt-4">
+              {t('wallet.requestAnotherDeposit', { defaultValue: 'Make another deposit' })}
+            </Button>
+          </div>
+        ) : (
+          <>
+            {/* Payment Destination Details */}
+            <div className="rounded-lg border bg-muted/40 p-3.5 sm:p-4">
+              {method === 'telebirr' ? (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t('wallet.sendMoneyToTelebirr')}</p>
+                    <div className="flex items-baseline gap-2">
+                      <p className="text-lg font-bold tracking-wide font-mono">{TELEBIRR_PHONE}</p>
+                      <span className="text-xs font-medium text-muted-foreground">({TELEBIRR_ACCOUNT_NAME})</span>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCopy(TELEBIRR_PHONE)}
+                    className="gap-1.5 self-start sm:self-auto"
+                  >
+                    {copied ? (
+                      <><Check className="h-3.5 w-3.5 text-green-600" /> {t('wallet.copied')}</>
+                    ) : (
+                      <><Copy className="h-3.5 w-3.5" /> {t('wallet.copyNumber')}</>
+                    )}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t('wallet.sendMoneyToCbe')}</p>
+                    <div className="flex items-baseline gap-2">
+                      <p className="text-lg font-bold tracking-wide font-mono">{CBE_ACCOUNT_NUMBER}</p>
+                      <span className="text-xs font-medium text-muted-foreground">({CBE_ACCOUNT_NAME})</span>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCopy(CBE_ACCOUNT_NUMBER)}
+                    className="gap-1.5 self-start sm:self-auto"
+                  >
+                    {copied ? (
+                      <><Check className="h-3.5 w-3.5 text-green-600" /> {t('wallet.copied')}</>
+                    ) : (
+                      <><Copy className="h-3.5 w-3.5" /> {t('wallet.copyAccount')}</>
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Error Message */}
+            {errorMessage && (
+              <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-400">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            {/* Verification & Upload section */}
+            <div className="space-y-4">
+              {/* Screenshot instructions */}
+              <div className="rounded-lg border border-blue-200 bg-blue-50/70 p-3.5 text-xs text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-300">
+                <p className="flex items-center gap-1.5 font-semibold">
+                  <Camera className="h-3.5 w-3.5 shrink-0" />
+                  {t('wallet.uploadHowTo')}
+                </p>
+                <ol className="mt-1.5 list-decimal space-y-1 pl-4 leading-relaxed marker:font-semibold">
+                  <li>{t('wallet.uploadStep1', { method: method === 'cbe' ? t('wallet.cbe') : t('wallet.telebirr') })}</li>
+                  <li>{t('wallet.uploadStep2', { method: method === 'cbe' ? t('wallet.cbe') : t('wallet.telebirr') })}</li>
+                  <li>{t('wallet.uploadStep3')}</li>
+                </ol>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                  <span>{t('wallet.uploadScreenshot')}</span>
+                  {/* <span className="text-[11px] font-normal text-muted-foreground">{t('wallet.autoVerified')}</span> */}
+                </label>
+
+                {/* Dropzone / Preview */}
+                {!selectedFile ? (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
+                    onDrop={(e) => {
+                      e.preventDefault(); e.stopPropagation()
+                      if (e.dataTransfer.files?.[0]) handleFileChange(e.dataTransfer.files[0])
+                    }}
+                    className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/25 bg-muted/20 p-5 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/40 transition-colors"
+                  >
+                    <Upload className="h-6 w-6 text-muted-foreground" />
+                    <div>
+                      <p className="text-xs font-medium text-foreground">{t('wallet.uploadScreenshotPrompt')}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {method === 'cbe' ? 'Screenshot of the CBE transfer confirmation with QR code (PNG, JPG, WEBP)' : 'Screenshot of the Telebirr payment confirmation (PNG, JPG, JPEG, WEBP)'}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 rounded-lg border bg-muted/20 p-2.5">
+                    {previewUrl ? (
+                      <img src={previewUrl} alt="Receipt preview" className="h-14 w-14 rounded-md object-cover border" />
+                    ) : (
+                      <ImageIcon className="h-10 w-10 text-muted-foreground" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="truncate text-xs font-medium text-foreground">{selectedFile.name}</p>
+                      {isExtracting ? (
+                        <div className="flex items-center gap-1.5 text-xs text-primary mt-0.5">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <span>{t('wallet.extracting')}</span>
+                        </div>
+                      ) : extractSuccess ? (
+                        <div className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 mt-0.5">
+                          <Sparkles className="h-3 w-3" />
+                          <span>{t('wallet.extractedSuccess')}: <strong className="font-mono">{extractSuccess}</strong></span>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-muted-foreground">{(selectedFile.size / 1024).toFixed(0)} KB</p>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleRemoveFile}
+                      className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) handleFileChange(e.target.files[0])
+                  }}
+                />
+              </div>
+
+              {/* Transaction Number Input */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground" htmlFor="tx-number-input">
+                  {method === 'cbe' ? 'Receipt Token / QR Link / Reference' : t('wallet.transactionNumber')}
+                </label>
+                <div className="relative">
+                  <Input
+                    id="tx-number-input"
+                    value={transactionId}
+                    onChange={(e) => setTransactionId(e.target.value)}
+                    placeholder={method === 'telebirr' ? 'e.g. DGP88F2T36 or CJL1LJ4ROB' : 'e.g. v2-hfHCx... or https://mbreciept.cbe.com.et/...'}
+                    className="font-mono text-sm"
+                  />
+                  {extractSuccess && transactionId === extractSuccess && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-600">
+                      <Check className="h-4 w-4" />
+                    </span>
+                  )}
+                </div>
+                {method === 'cbe' ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Tip: Uploading your CBE receipt image (with QR code) automatically extracts the verification token! You can also paste the receipt link (e.g. https://mbreciept.cbe.com.et/v2-...).
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Tip: Uploading your Telebirr screenshot automatically extracts the transaction number (e.g. DGP88F2T36). You can also type or paste it directly.
+                  </p>
+                )}
+              </div>
+
+              {/* Submit button */}
+              <Button
+                className="w-full gap-2 font-medium"
+                disabled={(!transactionId.trim() && !selectedFile) || depositMutation.isPending || isExtracting}
+                onClick={() => depositMutation.mutate()}
+              >
+                {depositMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {t('wallet.verifying')}
+                  </>
+                ) : (
+                  <>
+                    <FileCheck className="h-4 w-4" />
+                    {t('wallet.verifyAndDeposit')}
+                  </>
+                )}
+              </Button>
+
+              {/* Notice */}
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                {t('wallet.verificationNotice')}
+              </p>
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   )
@@ -312,10 +654,14 @@ export function Component() {
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
       <h1 className="text-2xl font-bold">{t('wallet.title')}</h1>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <BalanceCard />
-        <TelebirrDepositCard />
-        <WithdrawCard />
+      <div className="grid gap-6 lg:grid-cols-12">
+        <div className="space-y-6 lg:col-span-4">
+          <BalanceCard />
+          <WithdrawCard />
+        </div>
+        <div className="lg:col-span-8">
+          <DepositCard />
+        </div>
       </div>
       <TransactionHistory />
     </div>

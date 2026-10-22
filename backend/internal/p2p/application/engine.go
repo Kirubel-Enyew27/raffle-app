@@ -1,0 +1,214 @@
+package application
+
+import (
+	"context"
+	"time"
+
+	"github.com/raffle-app/backend/internal/p2p/domain"
+	"github.com/raffle-app/backend/internal/realtime"
+	"go.uber.org/zap"
+)
+
+type P2PEngine struct {
+	matchRepo  domain.MatchRepository
+	playerRepo domain.PlayerRepository
+	escrowRepo domain.EscrowRepository
+	realtime   *realtime.Service
+	log        *zap.Logger
+}
+
+func NewP2PEngine(
+	matchRepo domain.MatchRepository,
+	playerRepo domain.PlayerRepository,
+	escrowRepo domain.EscrowRepository,
+	realtime *realtime.Service,
+	log *zap.Logger,
+) *P2PEngine {
+	return &P2PEngine{
+		matchRepo:  matchRepo,
+		playerRepo: playerRepo,
+		escrowRepo: escrowRepo,
+		realtime:   realtime,
+		log:        log,
+	}
+}
+
+// idleRoomTTL is how long an unjoined room may sit before it is cancelled.
+func idleRoomTTL(matchType string) time.Duration {
+	if matchType == domain.TypePublicQueue {
+		return 15 * time.Minute
+	}
+	return 5 * time.Minute
+}
+
+// Run starts the background workers for turn timeouts and idle room sweeps.
+func (e *P2PEngine) Run(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	cleanupTicker := time.NewTicker(30 * time.Second)
+	defer cleanupTicker.Stop()
+
+	e.log.Info("P2P background engine started")
+
+	for {
+		select {
+		case <-ctx.Done():
+			e.log.Info("P2P background engine stopping")
+			return
+		case <-ticker.C:
+			e.sweepTurnTimeouts(ctx)
+		case <-cleanupTicker.C:
+			e.sweepIdleRooms(ctx)
+		}
+	}
+}
+
+func (e *P2PEngine) sweepTurnTimeouts(ctx context.Context) {
+	now := time.Now()
+	expired, err := e.matchRepo.FindExpiredTurns(ctx, now)
+	if err != nil {
+		e.log.Error("failed to query expired P2P turns", zap.Error(err))
+		return
+	}
+
+	for _, m := range expired {
+		if err := e.handleTurnTimeout(ctx, m.ID); err != nil {
+			e.log.Error("failed to handle P2P turn timeout", zap.String("match_id", m.ID), zap.Error(err))
+		}
+	}
+}
+
+func (e *P2PEngine) handleTurnTimeout(ctx context.Context, matchID string) error {
+	tx, err := e.matchRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	match, err := e.matchRepo.FindByIDForUpdate(ctx, tx, matchID)
+	if err != nil {
+		return err
+	}
+
+	if match.Status != domain.StatusInProgress || match.TurnDeadline == nil || time.Now().Before(*match.TurnDeadline) {
+		return nil // state changed or refreshed
+	}
+
+	timedOutUserID := match.CurrentTurnUserID
+	if timedOutUserID == nil {
+		return nil
+	}
+
+	players, err := e.playerRepo.ListByMatchTx(ctx, tx, match.ID)
+	if err != nil {
+		return err
+	}
+
+	var winnerUserID string
+	for _, p := range players {
+		if p.UserID != *timedOutUserID {
+			winnerUserID = p.UserID
+			break
+		}
+	}
+
+	if winnerUserID == "" {
+		return nil
+	}
+
+	now := time.Now()
+	settlement := domain.CalculateSettlement(match.PrizePoolCents, match.ServiceFeeBP, false)
+	creditTxID, feeTxID, err := e.escrowRepo.SettleWinnerTx(ctx, tx, winnerUserID, match.PrizePoolCents, settlement.FeeCents, settlement.NetPayoutCents, match.ID)
+	if err != nil {
+		return err
+	}
+
+	if err := e.escrowRepo.FinalizeLoserTx(ctx, tx, *timedOutUserID, match.StakeCents, match.ID); err != nil {
+		return err
+	}
+
+	for _, p := range players {
+		if p.UserID == winnerUserID {
+			_ = e.playerRepo.SetLedgerTxIDs(ctx, tx, p.ID, nil, &creditTxID, &feeTxID)
+		}
+	}
+
+	if err := e.matchRepo.MarkCompletedTx(ctx, tx, match.ID, &winnerUserID, domain.StatusForfeited, settlement.FeeCents, now); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	e.log.Info("P2P match timed out and forfeited",
+		zap.String("match_id", match.ID),
+		zap.String("forfeited_user_id", *timedOutUserID),
+		zap.String("winner_user_id", winnerUserID))
+
+	if e.realtime != nil {
+		_ = e.realtime.PublishToChannel(ctx, "p2p_match:"+match.ID, "p2p.turn_timeout", map[string]interface{}{
+			"match_id":          match.ID,
+			"timed_out_user_id": *timedOutUserID,
+			"winner_user_id":    winnerUserID,
+			"status":            domain.StatusForfeited,
+		})
+	}
+
+	return nil
+}
+
+func (e *P2PEngine) sweepIdleRooms(ctx context.Context) {
+	now := time.Now()
+	// Private rooms are only useful while the host is sharing the code; public
+	// rooms live longer because an opponent may still match into them.
+	idle, err := e.matchRepo.FindIdleWaitingRooms(ctx, now.Add(-idleRoomTTL(domain.TypePublicQueue)))
+	if err != nil {
+		e.log.Error("failed to query idle waiting rooms", zap.Error(err))
+		return
+	}
+
+	for _, candidate := range idle {
+		tx, err := e.matchRepo.BeginTx(ctx)
+		if err != nil {
+			continue
+		}
+
+		// Re-read under a row lock. Between the sweep query and this point the
+		// room may have been joined, so cancelling (and refunding) must be based
+		// on the current locked state, never on the earlier snapshot.
+		r, err := e.matchRepo.FindByIDForUpdate(ctx, tx, candidate.ID)
+		if err != nil {
+			_ = tx.Rollback()
+			continue
+		}
+		if r.Status != domain.StatusWaiting || !r.CreatedAt.Before(now.Add(-idleRoomTTL(r.MatchType))) {
+			_ = tx.Rollback()
+			continue
+		}
+
+		if err := e.matchRepo.MarkCancelledTx(ctx, tx, r.ID, now); err != nil {
+			_ = tx.Rollback()
+			continue
+		}
+
+		if r.StakeCents > 0 {
+			if err := e.escrowRepo.ReleaseReservedFundsTx(ctx, tx, r.CreatedBy, r.StakeCents, r.ID, "idle room auto-cancelled"); err != nil {
+				_ = tx.Rollback()
+				e.log.Error("failed to refund idle room stake", zap.String("match_id", r.ID), zap.Error(err))
+				continue
+			}
+		}
+
+		if err := tx.Commit(); err == nil {
+			e.log.Info("idle match room auto-cancelled and refunded", zap.String("match_id", r.ID), zap.String("match_type", r.MatchType))
+			if e.realtime != nil {
+				_ = e.realtime.PublishToChannel(ctx, "p2p_match:"+r.ID, "p2p.match_cancelled", map[string]interface{}{
+					"match_id": r.ID,
+					"reason":   "idle timeout expired",
+				})
+			}
+		}
+	}
+}

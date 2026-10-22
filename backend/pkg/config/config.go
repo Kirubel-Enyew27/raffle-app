@@ -1,21 +1,37 @@
 package config
 
 import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/viper"
 )
 
 type Config struct {
-	AppEnv         string
-	AppPort        int
-	AppDebug       bool
-	Database       DatabaseConfig
-	Redis          RedisConfig
-	JWT            JWTConfig
-	SMSAPIKey      string
-	TeleVerifyURL  string
-	TeleVerifyKey  string
+	AppEnv              string
+	AppPort             int
+	AppDebug            bool
+	Database            DatabaseConfig
+	Redis               RedisConfig
+	JWT                 JWTConfig
+	Crash               CrashConfig
+	SMSAPIKey           string
+	TeleVerifyURL       string
+	TeleVerifyKey       string
+	CBEReceiptAPI       string
+	CBEAppID            string
+	CBEAppVersion       string
+	CBEAccountName      string
+	CBEAccountNumber    string
+	TelebirrAccountName string
+	TelebirrPhone       string
+	AutoCreditEnabled   bool
+	LinksETAPIKey       string
+	LinksETBaseURL      string
+	GeminiAPIKey        string
 }
 
 type DatabaseConfig struct {
@@ -40,7 +56,59 @@ type JWTConfig struct {
 	AccessExpiry time.Duration
 }
 
+// CrashConfig holds the multiplayer crash game tunables. Every timing and limit
+// is configurable so the engine never relies on hardcoded durations.
+type CrashConfig struct {
+	Enabled            bool
+	Room               string
+	WaitingSeconds     float64
+	BettingSeconds     float64
+	CrashedSeconds     float64
+	NextRoundSeconds   float64
+	GrowthRate         float64
+	HouseEdgeBP        int
+	MaxMultiplierBP    int
+	MinBet             float64
+	MaxBet             float64
+	TickInterval       time.Duration
+	BroadcastInterval  time.Duration
+	RateLimitPerSecond int
+	// P2P configuration
+	ServiceFeeBP    int
+	MinParticipants int
+	MaxParticipants int
+	PlatformUserID  string
+}
+
+// loadDotEnv fills values in from a local .env file so a plain `go run
+// ./cmd/server` (or the compiled binary started from the repo root) sees the
+// same secrets the compose stack injects. Real environment variables still win,
+// because viper resolves env before config-file values. A missing file is
+// normal — deployments get their configuration from the environment.
+func loadDotEnv() error {
+	for _, path := range []string{".env", filepath.Join("backend", ".env")} {
+		if _, err := os.Stat(path); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return fmt.Errorf("failed to check %s: %w", path, err)
+		}
+
+		viper.SetConfigFile(path)
+		viper.SetConfigType("dotenv")
+		if err := viper.ReadInConfig(); err != nil {
+			return fmt.Errorf("failed to read %s: %w", path, err)
+		}
+		return nil
+	}
+	return nil
+}
+
 func Load() (*Config, error) {
+	if err := loadDotEnv(); err != nil {
+		return nil, err
+	}
+
 	viper.SetDefault("APP_ENV", "development")
 	viper.SetDefault("APP_PORT", 8080)
 	viper.SetDefault("APP_DEBUG", true)
@@ -59,10 +127,54 @@ func Load() (*Config, error) {
 	viper.SetDefault("JWT_ACCESS_EXPIRY", 15*time.Minute)
 	viper.SetDefault("JWT_REFRESH_EXPIRY", 7*24*time.Hour)
 	viper.SetDefault("SMS_API_KEY", "dev-sms-api-key-123")
-	viper.SetDefault("TELE_VERIFY_URL", "")
+	viper.SetDefault("TELE_VERIFY_URL", "https://verifyapi.leulzenebe.pro/verify-telebirr")
+	// Credentials must come from the environment. Never commit live keys here.
 	viper.SetDefault("TELE_VERIFY_KEY", "")
+	viper.SetDefault("CBE_RECEIPT_API", "https://mb.cbe.com.et/api/v1/transactions/public/transaction-detail")
+	viper.SetDefault("CBE_APP_ID", "d1292e42-7400-49de-a2d3-9731caa4c819")
+	viper.SetDefault("CBE_APP_VERSION", "0a01980b-9859-1369-8198-59f403820000")
+	viper.SetDefault("CBE_ACCOUNT_NAME", "Kirubel Enyew")
+	viper.SetDefault("CBE_ACCOUNT_NUMBER", "1000249278242")
+	viper.SetDefault("TELEBIRR_ACCOUNT_NAME", "Kirubel Enyew")
+	viper.SetDefault("TELEBIRR_PHONE", "+251948260013")
+	viper.SetDefault("AUTO_CREDIT_ENABLED", true)
+	viper.SetDefault("LINKS_ET_API_KEY", "")
+	viper.SetDefault("LINKS_ET_BASE_URL", "https://links.et")
+	// Credentials must come from the environment. Never commit live keys here.
+	viper.SetDefault("GEMINI_API_KEY", "")
+
+	// Multiplayer crash game
+	viper.SetDefault("CRASH_ENABLED", true)
+	viper.SetDefault("CRASH_ROOM", "default")
+	viper.SetDefault("CRASH_WAITING_SECONDS", 5)
+	viper.SetDefault("CRASH_BETTING_SECONDS", 30)
+	viper.SetDefault("CRASH_CRASHED_SECONDS", 5)
+	viper.SetDefault("CRASH_NEXT_ROUND_SECONDS", 3)
+	viper.SetDefault("CRASH_GROWTH_RATE", 0.07)
+	viper.SetDefault("CRASH_HOUSE_EDGE_BP", 300)
+	viper.SetDefault("CRASH_MAX_MULTIPLIER_BP", 100000)
+	viper.SetDefault("CRASH_MIN_BET", 10.0)
+	viper.SetDefault("CRASH_MAX_BET", 10000.0)
+	viper.SetDefault("CRASH_TICK_INTERVAL", 50*time.Millisecond)
+	viper.SetDefault("CRASH_BROADCAST_INTERVAL", 250*time.Millisecond)
+	viper.SetDefault("CRASH_RATE_LIMIT_PER_SECOND", 20)
+	// P2P settings
+	viper.SetDefault("CRASH_SERVICE_FEE_BP", 500)
+	viper.SetDefault("CRASH_MIN_PARTICIPANTS", 2)
+	viper.SetDefault("CRASH_MAX_PARTICIPANTS", 100)
+	viper.SetDefault("CRASH_PLATFORM_USER_ID", "")
 
 	viper.AutomaticEnv()
+
+	// Fail closed in production when the signing secret is still the shipped
+	// development placeholder. Tokens signed with it are forgeable by anyone
+	// who has read the repository.
+	if viper.GetString("APP_ENV") == "production" {
+		secret := viper.GetString("JWT_SECRET")
+		if secret == "" || secret == "change-me-in-production" {
+			return nil, fmt.Errorf("JWT_SECRET must be set to a strong, unique value when APP_ENV=production")
+		}
+	}
 
 	return &Config{
 		AppEnv:   viper.GetString("APP_ENV"),
@@ -87,8 +199,39 @@ func Load() (*Config, error) {
 			Secret:       viper.GetString("JWT_SECRET"),
 			AccessExpiry: viper.GetDuration("JWT_ACCESS_EXPIRY"),
 		},
-		SMSAPIKey:     viper.GetString("SMS_API_KEY"),
-		TeleVerifyURL: viper.GetString("TELE_VERIFY_URL"),
-		TeleVerifyKey: viper.GetString("TELE_VERIFY_KEY"),
+		SMSAPIKey:           viper.GetString("SMS_API_KEY"),
+		TeleVerifyURL:       viper.GetString("TELE_VERIFY_URL"),
+		TeleVerifyKey:       viper.GetString("TELE_VERIFY_KEY"),
+		CBEReceiptAPI:       viper.GetString("CBE_RECEIPT_API"),
+		CBEAppID:            viper.GetString("CBE_APP_ID"),
+		CBEAppVersion:       viper.GetString("CBE_APP_VERSION"),
+		CBEAccountName:      viper.GetString("CBE_ACCOUNT_NAME"),
+		CBEAccountNumber:    viper.GetString("CBE_ACCOUNT_NUMBER"),
+		TelebirrAccountName: viper.GetString("TELEBIRR_ACCOUNT_NAME"),
+		TelebirrPhone:       viper.GetString("TELEBIRR_PHONE"),
+		AutoCreditEnabled:   viper.GetBool("AUTO_CREDIT_ENABLED"),
+		LinksETAPIKey:       viper.GetString("LINKS_ET_API_KEY"),
+		LinksETBaseURL:      viper.GetString("LINKS_ET_BASE_URL"),
+		GeminiAPIKey:        viper.GetString("GEMINI_API_KEY"),
+		Crash: CrashConfig{
+			Enabled:            viper.GetBool("CRASH_ENABLED"),
+			Room:               viper.GetString("CRASH_ROOM"),
+			WaitingSeconds:     viper.GetFloat64("CRASH_WAITING_SECONDS"),
+			BettingSeconds:     viper.GetFloat64("CRASH_BETTING_SECONDS"),
+			CrashedSeconds:     viper.GetFloat64("CRASH_CRASHED_SECONDS"),
+			NextRoundSeconds:   viper.GetFloat64("CRASH_NEXT_ROUND_SECONDS"),
+			GrowthRate:         viper.GetFloat64("CRASH_GROWTH_RATE"),
+			HouseEdgeBP:        viper.GetInt("CRASH_HOUSE_EDGE_BP"),
+			MaxMultiplierBP:    viper.GetInt("CRASH_MAX_MULTIPLIER_BP"),
+			MinBet:             viper.GetFloat64("CRASH_MIN_BET"),
+			MaxBet:             viper.GetFloat64("CRASH_MAX_BET"),
+			TickInterval:       viper.GetDuration("CRASH_TICK_INTERVAL"),
+			BroadcastInterval:  viper.GetDuration("CRASH_BROADCAST_INTERVAL"),
+			RateLimitPerSecond: viper.GetInt("CRASH_RATE_LIMIT_PER_SECOND"),
+			ServiceFeeBP:       viper.GetInt("CRASH_SERVICE_FEE_BP"),
+			MinParticipants:    viper.GetInt("CRASH_MIN_PARTICIPANTS"),
+			MaxParticipants:    viper.GetInt("CRASH_MAX_PARTICIPANTS"),
+			PlatformUserID:     viper.GetString("CRASH_PLATFORM_USER_ID"),
+		},
 	}, nil
 }
