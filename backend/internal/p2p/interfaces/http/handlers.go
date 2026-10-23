@@ -346,7 +346,7 @@ func handleError(c *gin.Context, err error) {
 		c.JSON(http.StatusPaymentRequired, gin.H{"code": "INSUFFICIENT_FUNDS", "message": "Insufficient available wallet balance for match stake"})
 	case errors.Is(err, domain.ErrInvalidStake) || errors.Is(err, domain.ErrInvalidMove) || errors.Is(err, domain.ErrUnsupportedGame):
 		c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_ACTION", "message": err.Error()})
-	case errors.Is(err, domain.ErrNotYourTurn) || errors.Is(err, domain.ErrTurnTimeout) || errors.Is(err, domain.ErrMatchNotInProgress) || errors.Is(err, domain.ErrMatchNotFinished) || errors.Is(err, domain.ErrMatchFull) || errors.Is(err, domain.ErrCannotJoinOwnMatch) || errors.Is(err, domain.ErrMatchNotJoinable):
+	case errors.Is(err, domain.ErrNotYourTurn) || errors.Is(err, domain.ErrTurnTimeout) || errors.Is(err, domain.ErrStaleMove) || errors.Is(err, domain.ErrMatchNotInProgress) || errors.Is(err, domain.ErrMatchNotFinished) || errors.Is(err, domain.ErrMatchFull) || errors.Is(err, domain.ErrCannotJoinOwnMatch) || errors.Is(err, domain.ErrMatchNotJoinable):
 		c.JSON(http.StatusConflict, gin.H{"code": "MATCH_CONFLICT", "message": err.Error()})
 	default:
 		// Never echo raw driver/query errors to clients.

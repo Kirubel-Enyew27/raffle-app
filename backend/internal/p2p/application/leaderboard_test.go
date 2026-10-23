@@ -3,12 +3,28 @@ package application
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
 	p2pdomain "github.com/raffle-app/backend/internal/p2p/domain"
 	p2prepo "github.com/raffle-app/backend/internal/p2p/interfaces/repository"
 )
+
+// createLeaderboardTestGame isolates a leaderboard test from data left behind
+// by earlier runs against the shared development database. Without it, enough
+// historic connect-four matches can push fresh users off the first page and
+// make an otherwise deterministic assertion depend on test order.
+func createLeaderboardTestGame(t *testing.T, db *sql.DB) string {
+	t.Helper()
+	slug := "leaderboard-test-" + strings.ToLower(generateInviteCode()+generateInviteCode())
+	// is_active=false keeps the synthetic slug out of the public catalogue.
+	_, err := db.Exec(`INSERT INTO p2p_games (slug, title, description, is_active) VALUES ($1, 'Leaderboard Test', 'test-only game slug', FALSE)`, slug)
+	if err != nil {
+		t.Fatalf("failed to create isolated leaderboard game: %v", err)
+	}
+	return slug
+}
 
 func insertFinalizedMatch(t *testing.T, db *sql.DB, gameSlug string, user1, user2 string, winnerUserID *string, status string, completedAt time.Time) string {
 	t.Helper()
@@ -64,31 +80,32 @@ func TestP2PService_LeaderboardStatisticsAndStreaks(t *testing.T) {
 	svc := NewP2PService(gameRepo, matchRepo, playerRepo, moveRepo, settingsRepo, escrowRepo, nil, nil)
 
 	baseTime := time.Now().UTC().Add(-2 * time.Hour)
+	gameSlug := createLeaderboardTestGame(t, db)
 
 	// User A vs User B:
 	// M1: User A wins
-	insertFinalizedMatch(t, db, "connect-four", userA, userB, &userA, p2pdomain.StatusCompleted, baseTime.Add(10*time.Minute))
+	insertFinalizedMatch(t, db, gameSlug, userA, userB, &userA, p2pdomain.StatusCompleted, baseTime.Add(10*time.Minute))
 	// M2: User A wins
-	insertFinalizedMatch(t, db, "connect-four", userA, userB, &userA, p2pdomain.StatusCompleted, baseTime.Add(20*time.Minute))
+	insertFinalizedMatch(t, db, gameSlug, userA, userB, &userA, p2pdomain.StatusCompleted, baseTime.Add(20*time.Minute))
 	// M3: User A wins (via forfeit)
-	insertFinalizedMatch(t, db, "connect-four", userA, userB, &userA, p2pdomain.StatusForfeited, baseTime.Add(30*time.Minute))
+	insertFinalizedMatch(t, db, gameSlug, userA, userB, &userA, p2pdomain.StatusForfeited, baseTime.Add(30*time.Minute))
 	// M4: Tied match (Draw - breaks streak)
-	insertFinalizedMatch(t, db, "connect-four", userA, userB, nil, p2pdomain.StatusTied, baseTime.Add(40*time.Minute))
+	insertFinalizedMatch(t, db, gameSlug, userA, userB, nil, p2pdomain.StatusTied, baseTime.Add(40*time.Minute))
 	// M5: User A wins
-	insertFinalizedMatch(t, db, "connect-four", userA, userB, &userA, p2pdomain.StatusCompleted, baseTime.Add(50*time.Minute))
+	insertFinalizedMatch(t, db, gameSlug, userA, userB, &userA, p2pdomain.StatusCompleted, baseTime.Add(50*time.Minute))
 
 	// User B vs User C:
 	// M6: User B wins
-	insertFinalizedMatch(t, db, "connect-four", userB, userC, &userB, p2pdomain.StatusCompleted, baseTime.Add(60*time.Minute))
+	insertFinalizedMatch(t, db, gameSlug, userB, userC, &userB, p2pdomain.StatusCompleted, baseTime.Add(60*time.Minute))
 
 	// Also insert an unfinished match and a cancelled match (must be excluded)
 	_, _ = db.Exec(`INSERT INTO p2p_matches (id, game_slug, status, match_type, created_by, created_at, updated_at)
-		VALUES (uuid_generate_v4(), 'connect-four', 'in_progress', 'public_queue', $1, NOW(), NOW())`, userA)
+		VALUES (uuid_generate_v4(), $1, 'in_progress', 'public_queue', $2, NOW(), NOW())`, gameSlug, userA)
 	_, _ = db.Exec(`INSERT INTO p2p_matches (id, game_slug, status, match_type, created_by, created_at, updated_at)
-		VALUES (uuid_generate_v4(), 'connect-four', 'cancelled', 'public_queue', $1, NOW(), NOW())`, userA)
+		VALUES (uuid_generate_v4(), $1, 'cancelled', 'public_queue', $2, NOW(), NOW())`, gameSlug, userA)
 
-	// Fetch all_time leaderboard for connect-four
-	cf := "connect-four"
+	// Fetch all_time leaderboard for the isolated game
+	cf := gameSlug
 	res, err := svc.GetLeaderboard(ctx, p2pdomain.LeaderboardFilter{
 		Period: p2pdomain.PeriodAllTime,
 		Game:   &cf,

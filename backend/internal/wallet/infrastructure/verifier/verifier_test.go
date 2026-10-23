@@ -355,3 +355,59 @@ func TestRecipientMatching(t *testing.T) {
 	}
 }
 
+func TestTelebirrRecipientValidation(t *testing.T) {
+	// The receipt page returns the credited party name and the credited party
+	// account number, but the account number is a masked Telebirr phone
+	// number, so it is validated against the configured Telebirr phone.
+	mockTelebirr := &mockVerifier{
+		result: &domain.VerificationResult{
+			Provider:        "telebirr",
+			TransactionID:   "DGP88F2T36",
+			Status:          "COMPLETED",
+			AmountCredited:  385.00,
+			Currency:        "ETB",
+			ReceiverName:    "Kirubel Enyew",
+			ReceiverAccount: "2519****0013",
+		},
+	}
+
+	mgr := NewVerificationManager(
+		nil,
+		mockTelebirr,
+		nil,
+		"", "",
+		"Kirubel Enyew", // expected account holder
+		"+251948260013", // configured Telebirr phone
+		true,            // auto-credit enabled
+	)
+
+	// Success: masked phone number matches configured Telebirr phone
+	res, err := mgr.Verify(context.Background(), domain.VerificationRequest{
+		Method:         "telebirr",
+		ExpectedAmount: 385.00,
+	})
+	if err != nil {
+		t.Fatalf("expected successful verification, got error: %v", err)
+	}
+	if res.AmountCredited != 385.00 {
+		t.Errorf("expected 385, got %.2f", res.AmountCredited)
+	}
+
+	// Wrong masked phone must still be rejected
+	mgrWrongPhone := NewVerificationManager(
+		nil,
+		mockTelebirr,
+		nil,
+		"", "",
+		"Kirubel Enyew",
+		"+251948260099", // wrong phone suffix
+		true,
+	)
+	_, err = mgrWrongPhone.Verify(context.Background(), domain.VerificationRequest{
+		Method:         "telebirr",
+		ExpectedAmount: 385.00,
+	})
+	if err == nil {
+		t.Fatal("expected error for wrong masked phone, got nil")
+	}
+}

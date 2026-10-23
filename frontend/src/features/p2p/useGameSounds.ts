@@ -38,6 +38,8 @@ export function useGameSounds({
       playVictory: () => soundManager.playVictory(),
       playDefeat: () => soundManager.playDefeat(),
       playDraw: () => soundManager.playDraw(),
+      playCapture: () => soundManager.playCapture(),
+      playPromotion: () => soundManager.playPromotion(),
     }),
     []
   )

@@ -185,6 +185,34 @@ test('SoundManager - Synthesis of Move Placement', () => {
   assert.equal(osc.frequency.exponentialRampCalls[0].value, 90)
 })
 
+test('SoundManager - Synthesis of Capture', () => {
+  soundManager.setMuted(false)
+  createdOscillators = []
+
+  soundManager.playCapture()
+  assert.equal(createdOscillators.length, 1)
+  const osc = createdOscillators[0]
+  assert.equal(osc.type, 'sawtooth')
+  assert.equal(osc.frequency.setValueAtTimeCalls[0].value, 260)
+  assert.equal(osc.frequency.exponentialRampCalls[0].value, 85)
+  assert.equal(osc.started, true)
+  assert.equal(osc.stopped, true)
+})
+
+test('SoundManager - Synthesis of Promotion', () => {
+  soundManager.setMuted(false)
+  createdOscillators = []
+
+  soundManager.playPromotion()
+  assert.equal(createdOscillators.length, 1)
+  const osc = createdOscillators[0]
+  assert.equal(osc.type, 'sine')
+  assert.equal(osc.frequency.setValueAtTimeCalls[0].value, 520)
+  assert.equal(osc.frequency.exponentialRampCalls[0].value, 1040)
+  assert.equal(osc.started, true)
+  assert.equal(osc.stopped, true)
+})
+
 test('SoundManager - Synthesis of Timer Tick', () => {
   soundManager.setMuted(false)
   createdOscillators = []

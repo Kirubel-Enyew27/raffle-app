@@ -93,6 +93,7 @@ func NewP2PService(
 		"tic-tac-toe":         domain.NewTicTacToeEngine(),
 		"connect-four":        domain.NewConnectFourEngine(),
 		"rock-paper-scissors": domain.NewRockPaperScissorsEngine(),
+		"ethiopian-dama":      domain.NewDamaEngine(),
 	}
 
 	return &P2PService{
@@ -487,10 +488,7 @@ func (s *P2PService) ReadyUp(ctx context.Context, userID, matchID string) (*Matc
 			return nil, errors.New("unsupported game rule engine")
 		}
 
-		turnSeconds := 20
-		if match.GameSlug == "tic-tac-toe" || match.GameSlug == "rock-paper-scissors" {
-			turnSeconds = 15
-		}
+		turnSeconds := turnSecondsFor(match.GameSlug)
 
 		deadline := now.Add(time.Duration(turnSeconds) * time.Second)
 		p0ID := players[0].UserID
@@ -585,22 +583,34 @@ func (s *P2PService) SubmitMove(ctx context.Context, userID, matchID string, act
 
 	match.BoardState = newBoard
 
-	// Record move log
-	moveCount := 0
-	if mc, ok := newBoard["move_count"].(int); ok {
-		moveCount = mc
+	// Record the move log. move_number must increase across a whole round, even
+	// after the board has round-tripped through JSONB (where numbers arrive as
+	// float64). The previous int-only assertion silently recorded every move as
+	// number 0 and the unique constraint discarded all but the first.
+	moveCount := boardMoveCount(newBoard)
+	if moveCount <= 0 {
+		moveCount = 1
 	}
-	_ = s.moveRepo.RecordMoveTx(ctx, tx, &domain.MatchMove{
+	if err := s.moveRepo.RecordMoveTx(ctx, tx, &domain.MatchMove{
 		MatchID:       match.ID,
 		RoundNumber:   match.CurrentRound,
 		MoveNumber:    moveCount,
 		UserID:        userID,
 		Action:        action,
 		BoardSnapshot: newBoard,
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("failed to record move: %w", err)
+	}
 
 	var isMatchOver bool
 	var matchWinnerIdx *int
+
+	// A multi-capture chain keeps the turn with the same player. Ask the engine
+	// before switching seats; engines without this capability always switch.
+	turnComplete := true
+	if continuation, ok := engine.(domain.TurnContinuation); ok {
+		turnComplete = continuation.TurnComplete(newBoard)
+	}
 
 	if isRoundOver {
 		if roundWinnerIdx != nil {
@@ -629,22 +639,19 @@ func (s *P2PService) SubmitMove(ctx context.Context, userID, matchID string, act
 			// Switch starter for next round
 			nextTurn := opponentPlayer.UserID
 			match.CurrentTurnUserID = &nextTurn
-			turnDuration := 20
-			if match.GameSlug == "tic-tac-toe" || match.GameSlug == "rock-paper-scissors" {
-				turnDuration = 15
-			}
-			deadline := now.Add(time.Duration(turnDuration) * time.Second)
+			deadline := now.Add(time.Duration(turnSecondsFor(match.GameSlug)) * time.Second)
 			match.TurnDeadline = &deadline
 		}
+	} else if !turnComplete {
+		// Same player must continue capturing. Refresh the clock so a long chain
+		// is not punished by the time spent on earlier hops.
+		deadline := now.Add(time.Duration(turnSecondsFor(match.GameSlug)) * time.Second)
+		match.TurnDeadline = &deadline
 	} else {
 		// Switch turn
 		nextTurn := opponentPlayer.UserID
 		match.CurrentTurnUserID = &nextTurn
-		turnDuration := 20
-		if match.GameSlug == "tic-tac-toe" || match.GameSlug == "rock-paper-scissors" {
-			turnDuration = 15
-		}
-		deadline := now.Add(time.Duration(turnDuration) * time.Second)
+		deadline := now.Add(time.Duration(turnSecondsFor(match.GameSlug)) * time.Second)
 		match.TurnDeadline = &deadline
 	}
 
@@ -922,11 +929,7 @@ func (s *P2PService) createRematchTx(ctx context.Context, tx *sql.Tx, prev *doma
 	}
 
 	now := time.Now()
-	turnSeconds := 20
-	if prev.GameSlug == "tic-tac-toe" || prev.GameSlug == "rock-paper-scissors" {
-		turnSeconds = 15
-	}
-	deadline := now.Add(time.Duration(turnSeconds) * time.Second)
+	deadline := now.Add(time.Duration(turnSecondsFor(prev.GameSlug)) * time.Second)
 	firstUserID := prevPlayers[1].UserID
 
 	next := &domain.Match{
@@ -1103,6 +1106,8 @@ func symbolFor(gameSlug string, playerIndex int) string {
 			return "RED"
 		case "rock-paper-scissors":
 			return "P1"
+		case "ethiopian-dama":
+			return "LIGHT"
 		default:
 			return "X"
 		}
@@ -1112,8 +1117,45 @@ func symbolFor(gameSlug string, playerIndex int) string {
 		return "YELLOW"
 	case "rock-paper-scissors":
 		return "P2"
+	case "ethiopian-dama":
+		return "DARK"
 	default:
 		return "O"
+	}
+}
+
+// turnSecondsFor is the server-enforced move clock for each game. Dama gets a
+// slightly longer clock because capture chains require several hops.
+func turnSecondsFor(gameSlug string) int {
+	switch gameSlug {
+	case "tic-tac-toe", "rock-paper-scissors":
+		return 15
+	case "ethiopian-dama":
+		return 30
+	default:
+		return 20
+	}
+}
+
+// boardMoveCount reads move_count from a board snapshot. Boards restored from
+// JSONB store numbers as float64, while freshly produced boards use int.
+func boardMoveCount(boardState map[string]interface{}) int {
+	if boardState == nil {
+		return 0
+	}
+	value, ok := boardState["move_count"]
+	if !ok {
+		return 0
+	}
+	switch count := value.(type) {
+	case int:
+		return count
+	case int64:
+		return int(count)
+	case float64:
+		return int(count)
+	default:
+		return 0
 	}
 }
 

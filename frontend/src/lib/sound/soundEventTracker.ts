@@ -30,6 +30,10 @@ export interface SoundSink {
   playVictory(): void
   playDefeat(): void
   playDraw(): void
+  // Optional: games with richer moves (Dama captures/promotions) can provide
+  // dedicated cues. Sinks without them keep the ordinary placement sound.
+  playCapture?(): void
+  playPromotion?(): void
 }
 
 const GAME_OVER_STATUSES = ['completed', 'tied', 'forfeited', 'cancelled']
@@ -44,6 +48,25 @@ function moveSignature(match: MatchSnapshot): string | null {
   } catch {
     // Circular/degenerate payloads must not break gameplay sound handling.
     return null
+  }
+}
+
+/**
+ * Reads the game-agnostic move hints used by Dama. Other games' last_move
+ * shapes (a cell number, a column, null) simply produce no flags.
+ */
+function moveSoundFlags(boardState: unknown): { capture: boolean; promotion: boolean } {
+  if (!boardState || typeof boardState !== 'object') {
+    return { capture: false, promotion: false }
+  }
+  const lastMove = (boardState as { last_move?: unknown }).last_move
+  if (!lastMove || typeof lastMove !== 'object') {
+    return { capture: false, promotion: false }
+  }
+  const captures = (lastMove as { captures?: unknown }).captures
+  return {
+    capture: Array.isArray(captures) && captures.length > 0,
+    promotion: (lastMove as { promotion?: unknown }).promotion === true,
   }
 }
 
@@ -154,7 +177,14 @@ export class SoundEventTracker {
     this.lastMoveSignature = signature
 
     if (previous !== null && signature !== null && previous !== signature) {
-      this.play(() => this.sink.playMove())
+      const flags = moveSoundFlags(match.board_state)
+      if (flags.promotion && this.sink.playPromotion) {
+        this.play(() => this.sink.playPromotion?.())
+      } else if (flags.capture && this.sink.playCapture) {
+        this.play(() => this.sink.playCapture?.())
+      } else {
+        this.play(() => this.sink.playMove())
+      }
     }
   }
 

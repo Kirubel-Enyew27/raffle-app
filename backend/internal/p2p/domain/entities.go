@@ -16,6 +16,7 @@ var (
 	ErrNotYourTurn         = errors.New("not your turn")
 	ErrTurnTimeout         = errors.New("turn deadline has passed")
 	ErrInvalidMove         = errors.New("invalid move")
+	ErrStaleMove           = errors.New("stale or duplicate move request")
 	ErrMatchNotInProgress  = errors.New("match is not in progress")
 	ErrMatchNotFinished    = errors.New("match is not finished")
 	ErrAlreadyJoined       = errors.New("already joined this match")

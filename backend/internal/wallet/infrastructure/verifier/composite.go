@@ -132,9 +132,10 @@ func (m *VerificationManager) validateRecipientIdentity(method string, result *d
 			}
 		}
 	case "telebirr":
-		if !namesMatch(result.ReceiverName, m.telebirrAccountName) {
-			return fmt.Errorf("recipient party %q does not match application designated account %q", result.ReceiverName, m.telebirrAccountName)
-		}
+		// The receipt page returns the credited party name and the credited
+		// party account number, but the account number on the receipt is a
+		// masked phone number, so it is validated against the configured
+		// Telebirr phone instead of the account holder name.
 		if m.telebirrPhone != "" && result.ReceiverAccount != "" {
 			if !maskedPhoneMatches(m.telebirrPhone, result.ReceiverAccount) {
 				return fmt.Errorf("receiving phone number does not match designated account")

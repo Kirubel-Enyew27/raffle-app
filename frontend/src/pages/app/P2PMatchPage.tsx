@@ -25,6 +25,8 @@ import { useP2PStream, type P2PEvent } from '@/features/p2p/useP2PStream'
 import { TicTacToeBoard } from '@/features/p2p/TicTacToeBoard'
 import { ConnectFourBoard } from '@/features/p2p/ConnectFourBoard'
 import { RockPaperScissorsBoard } from '@/features/p2p/RockPaperScissorsBoard'
+import { DamaBoard, DamaMoveHistory } from '@/features/p2p/DamaBoard'
+import { resultLabel, type DamaBoardState, type DamaHistoryEntry, type DamaResult } from '@/features/p2p/dama'
 import { useGameSounds } from '@/features/p2p/useGameSounds'
 import { SoundToggle } from '@/features/p2p/SoundToggle'
 import type { P2PMatch } from '@/types/api'
@@ -49,11 +51,14 @@ export function Component() {
 
   const [copied, setCopied] = useState(false)
   const [secondsLeft, setSecondsLeft] = useState<number>(0)
+  const [resignDialogOpen, setResignDialogOpen] = useState(false)
 
   // Fetch initial match state
   const {
     data: match,
     isLoading,
+    isError,
+    error,
     refetch,
   } = useQuery<P2PMatch>({
     queryKey: ['p2p-match', matchId],
@@ -102,7 +107,7 @@ export function Component() {
     [matchId, queryClient, refetch, toast, user?.id, navigate]
   )
 
-  const { isLive } = useP2PStream({
+  const { isLive, status: streamStatus } = useP2PStream({
     matchId,
     token,
     enabled: !!matchId && !!token,
@@ -193,7 +198,42 @@ export function Component() {
       queryClient.setQueryData(['p2p-match', matchId], updated)
       toast({ title: 'You resigned the match', type: 'info' })
     },
+    onError: (err: unknown) => {
+      toast({
+        title: 'Could not resign',
+        description: apiErrorMessage(err),
+        type: 'error',
+      })
+    },
   })
+
+  // Escape closes the resignation dialog without resigning.
+  useEffect(() => {
+    if (!resignDialogOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setResignDialogOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [resignDialogOpen])
+
+  if (isError) {
+    return (
+      <div className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center gap-3 px-4 text-center">
+        <div className="rounded-full bg-destructive/10 p-3 text-destructive">
+          <WifiOff className="h-6 w-6" />
+        </div>
+        <h1 className="text-lg font-bold">Could not load this match</h1>
+        <p className="text-sm text-muted-foreground">{apiErrorMessage(error)}</p>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => navigate('/games')}>
+            Back to lobby
+          </Button>
+          <Button onClick={() => refetch()}>Try again</Button>
+        </div>
+      </div>
+    )
+  }
 
   if (isLoading || !match) {
     return (
@@ -213,6 +253,8 @@ export function Component() {
   const isMyTurn = match.status === 'in_progress' && match.current_turn_user_id === user?.id
   const isGameOver = ['completed', 'tied', 'forfeited', 'cancelled'].includes(match.status)
   const iAmWinner = match.winner_user_id === user?.id
+  const damaResult = (match.board_state?.result ?? null) as DamaResult | null
+  const damaHistory = (match.board_state?.move_history ?? []) as DamaHistoryEntry[]
 
   // Rematch state: a finished match either has the caller waiting on the
   // opponent, or the opponent waiting on the caller to accept.
@@ -279,6 +321,16 @@ export function Component() {
         </div>
       </div>
 
+      {streamStatus === 'reconnecting' && !isGameOver && (
+        <div
+          role="status"
+          className="flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-700 dark:text-amber-300"
+        >
+          <WifiOff className="h-4 w-4 shrink-0" />
+          <span>Reconnecting to the live match… your moves are safe on the server.</span>
+        </div>
+      )}
+
       {/* Opponents Duel Header Card */}
       <Card className="border-border/80 shadow-md bg-card/60 backdrop-blur overflow-hidden">
         <CardContent className="p-4 sm:p-6">
@@ -286,8 +338,12 @@ export function Component() {
             {/* Player 0 (Left) */}
             <div className="flex flex-col items-center sm:items-start text-center sm:text-left space-y-1">
               <div className="relative">
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-sky-500/10 border-2 border-sky-500/40 flex items-center justify-center font-black text-xl text-sky-500">
-                  {p0?.symbol || 'P1'}
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-sky-500/10 border-2 border-sky-500/40 flex items-center justify-center overflow-hidden font-black text-xl text-sky-500">
+                  {p0?.avatar_url ? (
+                    <img src={p0.avatar_url} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    p0?.symbol || 'P1'
+                  )}
                 </div>
                 {p0?.user_id === user?.id && (
                   <span className="absolute -top-1.5 -right-1.5 bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.2 rounded-full">
@@ -345,8 +401,12 @@ export function Component() {
             {/* Player 1 (Right) */}
             <div className="flex flex-col items-center sm:items-end text-center sm:text-right space-y-1">
               <div className="relative">
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 flex items-center justify-center font-black text-xl text-amber-500">
-                  {p1?.symbol || (p1 ? 'P2' : '?')}
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 flex items-center justify-center overflow-hidden font-black text-xl text-amber-500">
+                  {p1?.avatar_url ? (
+                    <img src={p1.avatar_url} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    p1?.symbol || (p1 ? 'P2' : '?')
+                  )}
                 </div>
                 {p1?.user_id === user?.id && (
                   <span className="absolute -top-1.5 -left-1.5 bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.2 rounded-full">
@@ -459,6 +519,21 @@ export function Component() {
                   disabled={moveMutation.isPending}
                 />
               )}
+
+              {match.game_slug === 'ethiopian-dama' && (
+                <div className="flex w-full flex-col items-center gap-4">
+                  <DamaBoard
+                    boardState={match.board_state as DamaBoardState}
+                    isMyTurn={isMyTurn}
+                    myPlayerIndex={myPlayer?.player_index}
+                    onMove={handleMoveAction}
+                    disabled={moveMutation.isPending}
+                  />
+                  <div className="w-full max-w-[560px]">
+                    <DamaMoveHistory history={damaHistory} />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -488,9 +563,16 @@ export function Component() {
                         ? 'Match Forfeited'
                         : 'Defeat'}
                 </h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Final Score: {match.scores?.['0'] ?? 0} to {match.scores?.['1'] ?? 0}
-                </p>
+                {match.game_slug === 'ethiopian-dama' ? (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {resultLabel(damaResult, myPlayer?.player_index)} · {match.board_state?.move_count ?? 0} moves
+                    {damaResult?.reason ? ` · ${String(damaResult.reason).replaceAll('_', ' ')}` : ''}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Final Score: {match.scores?.['0'] ?? 0} to {match.scores?.['1'] ?? 0}
+                  </p>
+                )}
               </div>
 
               {opponentRequestedRematch && (
@@ -544,17 +626,54 @@ export function Component() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => {
-              if (window.confirm('Are you sure you want to resign and forfeit this match?')) {
-                resignMutation.mutate()
-              }
-            }}
+            onClick={() => setResignDialogOpen(true)}
             disabled={resignMutation.isPending}
             className="text-muted-foreground hover:text-destructive text-xs gap-1.5"
           >
             <Flag className="w-3.5 h-3.5" />
             <span>Surrender Match</span>
           </Button>
+        </div>
+      )}
+
+      {resignDialogOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="resign-dialog-title"
+          onClick={() => setResignDialogOpen(false)}
+        >
+          <Card
+            className="w-full max-w-sm border-border/80 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <CardContent className="space-y-4 p-5">
+              <div>
+                <h2 id="resign-dialog-title" className="text-lg font-bold">
+                  Resign this match?
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Your opponent will be awarded the result. This cannot be undone.
+                </p>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setResignDialogOpen(false)} autoFocus>
+                  Keep playing
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={resignMutation.isPending}
+                  onClick={() => {
+                    setResignDialogOpen(false)
+                    resignMutation.mutate()
+                  }}
+                >
+                  {resignMutation.isPending ? 'Resigning…' : 'Resign'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

@@ -14,6 +14,8 @@ export type SoundEffectType =
   | 'defeat'
   | 'draw'
   | 'match_start'
+  | 'capture'
+  | 'promotion'
 
 const STORAGE_KEY = 'raffle_p2p_sound_enabled'
 const DEFAULT_VOLUME = 0.3
@@ -223,6 +225,69 @@ class SoundManager {
       gain.connect(this.masterGain)
       osc.start(now)
       osc.stop(now + 0.06)
+    } catch {
+      // Safe no-op
+    }
+  }
+
+  /**
+   * Capture: A heavier, lower double-thud for a jumped piece. Deliberately
+   * distinct from the ordinary placement pop so Dama players can hear that a
+   * mandatory capture happened.
+   */
+  public playCapture(): void {
+    if (this.muted) return
+    const ctx = this.getContext()
+    if (!ctx || !this.masterGain) return
+
+    try {
+      const now = ctx.currentTime
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.type = 'sawtooth'
+      osc.frequency.setValueAtTime(260, now)
+      osc.frequency.exponentialRampToValueAtTime(85, now + 0.14)
+
+      gain.gain.setValueAtTime(0, now)
+      gain.gain.linearRampToValueAtTime(0.32, now + 0.006)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14)
+
+      osc.connect(gain)
+      gain.connect(this.masterGain)
+      osc.start(now)
+      osc.stop(now + 0.14)
+    } catch {
+      // Safe no-op
+    }
+  }
+
+  /**
+   * Promotion: A bright rising chime when a man reaches the back rank and is
+   * crowned. Distinct from victory so it reads as "this piece changed".
+   */
+  public playPromotion(): void {
+    if (this.muted) return
+    const ctx = this.getContext()
+    if (!ctx || !this.masterGain) return
+
+    try {
+      const now = ctx.currentTime
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(520, now)
+      osc.frequency.exponentialRampToValueAtTime(1040, now + 0.22)
+
+      gain.gain.setValueAtTime(0, now)
+      gain.gain.linearRampToValueAtTime(0.24, now + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24)
+
+      osc.connect(gain)
+      gain.connect(this.masterGain)
+      osc.start(now)
+      osc.stop(now + 0.24)
     } catch {
       // Safe no-op
     }

@@ -94,6 +94,49 @@ test('turn alert fires only on transition to the local player, once per transiti
   assert.equal(calls.move, 1)
 })
 
+test('dama captures and promotions use their dedicated sounds', () => {
+  let moves = 0
+  let captures = 0
+  let promotions = 0
+  const sink: SoundSink = {
+    playMatchStart() {},
+    playMove() {
+      moves++
+    },
+    playTurnAlert() {},
+    playTimerTick() {},
+    playVictory() {},
+    playDefeat() {},
+    playDraw() {},
+    playCapture() {
+      captures++
+    },
+    playPromotion() {
+      promotions++
+    },
+  }
+  const tracker = new SoundEventTracker(sink)
+  tracker.setUser('alice')
+
+  tracker.update(inProgress({ board_state: { cells: [0], last_move: null } }))
+  tracker.update(
+    inProgress({ board_state: { cells: [1], last_move: { from: 1, to: 2, captures: [3] } } })
+  )
+  assert.equal(captures, 1)
+  assert.equal(moves, 0, 'a capture must not also play the plain placement cue')
+
+  tracker.update(
+    inProgress({
+      board_state: { cells: [1, 1], last_move: { from: 2, to: 3, captures: [4], promotion: true } },
+    })
+  )
+  assert.equal(promotions, 1)
+  assert.equal(captures, 1)
+
+  tracker.update(inProgress({ board_state: { cells: [1, 1, 1], last_move: { from: 3, to: 4 } } }))
+  assert.equal(moves, 1, 'ordinary moves keep the placement cue')
+})
+
 test('match start plays once when the match transitions into progress', () => {
   const { tracker, calls } = trackerFor('alice')
   tracker.update(inProgress({ status: 'ready', current_turn_user_id: null, board_state: {} }))

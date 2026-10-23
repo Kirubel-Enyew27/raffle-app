@@ -12,6 +12,13 @@ type RuleEngine interface {
 	CheckMatchOver(scores map[string]int, currentRound int, maxRounds int) (isMatchOver bool, matchWinnerIndex *int)
 }
 
+// TurnContinuation is implemented by engines that can keep the turn with the
+// same player after a move whose round is not over (for example a Dama
+// multi-capture chain). Engines that do not implement it always pass the turn.
+type TurnContinuation interface {
+	TurnComplete(boardState map[string]interface{}) bool
+}
+
 // ---------------------------------------------------------------------------
 // Tic-Tac-Toe Rule Engine (Blitz Best-of-3)
 // ---------------------------------------------------------------------------
