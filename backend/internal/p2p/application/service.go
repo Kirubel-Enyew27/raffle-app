@@ -293,15 +293,7 @@ func (s *P2PService) CreateMatch(ctx context.Context, userID string, req CreateM
 
 	match.Players = []*domain.MatchPlayer{player}
 
-	if s.realtime != nil {
-		_ = s.realtime.Publish(ctx, "p2p.match_created", "", "", map[string]interface{}{
-			"match_id":   match.ID,
-			"game_slug":  match.GameSlug,
-			"match_type": match.MatchType,
-			"stake":      match.StakeAmount,
-			"created_by": userID,
-		})
-	}
+	publishLobbyUpdate(ctx, s.realtime, "created", match)
 
 	return s.buildView(match, userID), nil
 }
@@ -446,6 +438,8 @@ func (s *P2PService) JoinMatch(ctx context.Context, userID, matchID, inviteCode 
 			"player":   p2,
 		})
 	}
+	// The room is no longer joinable, so it must leave every open lobby list.
+	publishLobbyUpdate(ctx, s.realtime, "joined", match)
 
 	return s.buildView(match, userID), nil
 }
@@ -1109,6 +1103,30 @@ func (s *P2PService) buildView(m *domain.Match, userID string) *MatchView {
 
 func matchChannel(matchID string) string {
 	return "p2p_match:" + matchID
+}
+
+// lobbyChannel is the shared channel for public matchmaking changes. Lobby
+// viewers subscribe to it so an open room appears or disappears immediately
+// instead of waiting for the next poll.
+const lobbyChannel = "p2p_lobby"
+
+// publishLobbyUpdate announces that the set of joinable rooms changed. Viewers
+// refetch the authoritative lobby list on receipt; the event only carries
+// enough context to log and filter, never the list itself.
+func publishLobbyUpdate(ctx context.Context, rt *realtime.Service, change string, m *domain.Match) {
+	// The lobby only lists public rooms, so private-room churn is not news.
+	if rt == nil || m == nil || m.MatchType != domain.TypePublicQueue {
+		return
+	}
+	_ = rt.PublishToChannel(ctx, lobbyChannel, "p2p.lobby_updated", map[string]interface{}{
+		"change":     change,
+		"match_id":   m.ID,
+		"game_slug":  m.GameSlug,
+		"match_type": m.MatchType,
+		"status":     m.Status,
+		"stake":      m.StakeAmount,
+		"created_by": m.CreatedBy,
+	})
 }
 
 // symbolFor is the single source of truth for the seat markers shown in the

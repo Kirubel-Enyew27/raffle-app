@@ -64,12 +64,8 @@ export function Component() {
     queryKey: ['p2p-match', matchId],
     queryFn: () => p2pApi.getMatchState(matchId!),
     enabled: !!matchId,
-    refetchInterval: (query) => {
-      // Poll slower if stream is healthy, faster if waiting
-      const data = query.state.data
-      if (data?.status === 'waiting') return 3000
-      return false
-    },
+    // No polling: the match channel pushes player_joined / match_started, and
+    // onReconnect refetches after a dropped stream.
   })
 
   // Web Audio sound effects manager

@@ -10,14 +10,17 @@ export interface P2PEvent<T = any> {
 export type P2PStreamStatus = 'connecting' | 'live' | 'reconnecting' | 'closed'
 
 interface Options {
-  matchId: string | undefined
+  /** Subscribes to `p2p_match:<matchId>` when no explicit channel is given. */
+  matchId?: string
+  /** Explicit channel, e.g. the shared `p2p_lobby` room. */
+  channel?: string
   token: string | null
   enabled: boolean
   onEvent: (event: P2PEvent) => void
   onReconnect?: () => void
 }
 
-export function useP2PStream({ matchId, token, enabled, onEvent, onReconnect }: Options) {
+export function useP2PStream({ matchId, channel, token, enabled, onEvent, onReconnect }: Options) {
   const [status, setStatus] = useState<P2PStreamStatus>('connecting')
   const onEventRef = useRef(onEvent)
   const onReconnectRef = useRef(onReconnect)
@@ -28,15 +31,15 @@ export function useP2PStream({ matchId, token, enabled, onEvent, onReconnect }: 
   })
 
   useEffect(() => {
-    if (!enabled || !matchId || !token) {
+    const target = channel ?? (matchId ? `p2p_match:${matchId}` : '')
+    if (!enabled || !target || !token) {
       setStatus('closed')
       return
     }
 
     const baseURL = import.meta.env.VITE_API_URL || '/api/v1'
     const root = baseURL.startsWith('http') ? baseURL : `${window.location.origin}${baseURL}`
-    const channel = `p2p_match:${matchId}`
-    const url = `${root}/realtime/stream?channel=${encodeURIComponent(channel)}&token=${encodeURIComponent(token)}`
+    const url = `${root}/realtime/stream?channel=${encodeURIComponent(target)}&token=${encodeURIComponent(token)}`
 
     let opened = false
     const source = new EventSource(url)
@@ -68,7 +71,7 @@ export function useP2PStream({ matchId, token, enabled, onEvent, onReconnect }: 
       source.close()
       setStatus('closed')
     }
-  }, [matchId, token, enabled])
+  }, [matchId, channel, token, enabled])
 
   return { status, isLive: status === 'live' }
 }

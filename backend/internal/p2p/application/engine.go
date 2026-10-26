@@ -209,6 +209,8 @@ func (e *P2PEngine) sweepIdleRooms(ctx context.Context) {
 					"reason":   "idle timeout expired",
 				})
 			}
+			// Cancelled rooms must disappear from open lobby lists right away.
+			publishLobbyUpdate(ctx, e.realtime, "cancelled", r)
 		}
 	}
 }

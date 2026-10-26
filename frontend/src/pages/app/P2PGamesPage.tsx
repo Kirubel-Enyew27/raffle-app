@@ -22,9 +22,10 @@ import { Input } from '@/components/ui/input'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { p2pApi } from '@/features/p2p/api'
+import { useP2PStream } from '@/features/p2p/useP2PStream'
 
 export function Component() {
-  const { user } = useAuth()
+  const { user, token } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { toast } = useToast()
@@ -41,11 +42,23 @@ export function Component() {
     queryFn: p2pApi.listGames,
   })
 
-  // Fetch lobby waiting matches
+  // Fetch lobby waiting matches. Refreshes are pushed over the shared
+  // realtime channel below, so this query does not poll.
   const { data: lobbyMatches = [], isLoading: lobbyLoading, refetch: refetchLobby } = useQuery({
     queryKey: ['p2p-lobby'],
     queryFn: () => p2pApi.listLobby(),
-    refetchInterval: 5000,
+  })
+
+  useP2PStream({
+    channel: 'p2p_lobby',
+    token,
+    enabled: !!token,
+    onEvent: (event) => {
+      if (event.type === 'p2p.lobby_updated') {
+        queryClient.invalidateQueries({ queryKey: ['p2p-lobby'] })
+      }
+    },
+    onReconnect: () => refetchLobby(),
   })
 
   // Fetch user matches
