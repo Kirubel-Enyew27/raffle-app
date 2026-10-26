@@ -169,7 +169,8 @@ function useSectionNav() {
   ]
   const gameItems = [
     { to: '/games', label: t('nav.allGames') },
-    { to: '/crash', label: t('nav.crash') },
+    // Crash is hidden from the Games menu for now; the /crash route is still live.
+    // { to: '/crash', label: t('nav.crash') },
     { to: '/leaderboard', label: t('nav.leaderboard') },
   ]
   return { raffleItems, gameItems }

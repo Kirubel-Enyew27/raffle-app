@@ -115,7 +115,21 @@ func (s *P2PService) SetPaidMatchesEnabled(enabled bool) {
 }
 
 func (s *P2PService) ListGames(ctx context.Context) ([]*domain.Game, error) {
-	return s.gameRepo.ListActive(ctx)
+	games, err := s.gameRepo.ListActive(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Only advertise games this build can actually play: a p2p_games row without
+	// a compiled rule engine would show in the catalog and then fail on create
+	// with ErrUnsupportedGame.
+	playable := make([]*domain.Game, 0, len(games))
+	for _, g := range games {
+		if _, ok := s.ruleEngines[g.Slug]; ok {
+			playable = append(playable, g)
+		}
+	}
+	return playable, nil
 }
 
 func (s *P2PService) GetGame(ctx context.Context, slug string) (*domain.Game, error) {
