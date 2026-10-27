@@ -33,8 +33,8 @@ jobs:
       - name: Pull Vercel project settings
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
-      - name: Build frontend artifacts
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-
-      - name: Deploy prebuilt artifacts to Vercel
-        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+      # The build runs on Vercel, not on the runner: `vercel build` with a
+      # pnpm project adds Vercel-infrastructure-only binary paths to PATH and
+      # dies with "spawn pnpm ENOENT" on GitHub runners (vercel/vercel#15204).
+      - name: Deploy to Vercel (production)
+        run: vercel deploy --yes --prod --token=${{ secrets.VERCEL_TOKEN }}
