@@ -30,7 +30,7 @@ import { seatForPlayerIndex } from '@/features/p2p/ticTacToe'
 import { ConnectFourBoard } from '@/features/p2p/ConnectFourBoard'
 import { RockPaperScissorsBoard } from '@/features/p2p/RockPaperScissorsBoard'
 import { DamaBoard } from '@/features/p2p/DamaBoard'
-import { type DamaBoardState, type DamaHistoryEntry } from '@/features/p2p/dama'
+import { type DamaBoardState } from '@/features/p2p/dama'
 import { useGameSounds } from '@/features/p2p/useGameSounds'
 import { SoundToggle } from '@/features/p2p/SoundToggle'
 import {
