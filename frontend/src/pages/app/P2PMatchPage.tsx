@@ -23,6 +23,10 @@ import { useToast } from '@/contexts/ToastContext'
 import { p2pApi } from '@/features/p2p/api'
 import { useP2PStream, type P2PEvent } from '@/features/p2p/useP2PStream'
 import { TicTacToeBoard } from '@/features/p2p/TicTacToeBoard'
+import { PlayerOneMarker, PlayerTwoMarker, TicTacToeMarker } from '@/features/p2p/TicTacToeMarkers'
+import { ConnectFourToken } from '@/features/p2p/ConnectFourToken'
+import { DamaPiece } from '@/features/p2p/DamaPiece'
+import { seatForPlayerIndex } from '@/features/p2p/ticTacToe'
 import { ConnectFourBoard } from '@/features/p2p/ConnectFourBoard'
 import { RockPaperScissorsBoard } from '@/features/p2p/RockPaperScissorsBoard'
 import { DamaBoard, DamaMoveHistory } from '@/features/p2p/DamaBoard'
@@ -247,6 +251,9 @@ export function Component() {
   const isP1 = myPlayer?.player_index === 1
 
   const isMyTurn = match.status === 'in_progress' && match.current_turn_user_id === user?.id
+  // Tic-Tac-Toe identifies seats by shape; every other game keeps its symbol text.
+  const isTicTacToe = match.game_slug === 'tic-tac-toe'
+  const mySeat = isTicTacToe ? seatForPlayerIndex(myPlayer?.player_index) : null
   const isGameOver = ['completed', 'tied', 'forfeited', 'cancelled'].includes(match.status)
   const iAmWinner = match.winner_user_id === user?.id
   const damaResult = (match.board_state?.result ?? null) as DamaResult | null
@@ -337,6 +344,12 @@ export function Component() {
                 <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-sky-500/10 border-2 border-sky-500/40 flex items-center justify-center overflow-hidden font-black text-xl text-sky-500">
                   {p0?.avatar_url ? (
                     <img src={p0.avatar_url} alt="" className="h-full w-full object-cover" />
+                  ) : isTicTacToe && p0 ? (
+                    <PlayerOneMarker variant="plain" className="h-6 w-6 sm:h-7 sm:w-7" />
+                  ) : match.game_slug === 'connect-four' && p0 ? (
+                    <ConnectFourToken seat={1} className="h-7 w-7 sm:h-8 sm:w-8" />
+                  ) : match.game_slug === 'ethiopian-dama' && p0 ? (
+                    <DamaPiece side={0} className="h-7 w-7 sm:h-8 sm:w-8" />
                   ) : (
                     p0?.symbol || 'P1'
                   )}
@@ -372,6 +385,7 @@ export function Component() {
                         : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30',
                     ].join(' ')}
                   >
+                    {mySeat && <TicTacToeMarker seat={mySeat} variant="plain" className="h-3.5 w-3.5" />}
                     <Clock className="w-3.5 h-3.5" />
                     <span>{isMyTurn ? 'YOUR TURN' : 'OPPONENT TURN'}</span>
                   </div>
@@ -400,6 +414,12 @@ export function Component() {
                 <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 flex items-center justify-center overflow-hidden font-black text-xl text-amber-500">
                   {p1?.avatar_url ? (
                     <img src={p1.avatar_url} alt="" className="h-full w-full object-cover" />
+                  ) : isTicTacToe && p1 ? (
+                    <PlayerTwoMarker variant="plain" className="h-6 w-6 sm:h-7 sm:w-7" />
+                  ) : match.game_slug === 'connect-four' && p1 ? (
+                    <ConnectFourToken seat={2} className="h-7 w-7 sm:h-8 sm:w-8" />
+                  ) : match.game_slug === 'ethiopian-dama' && p1 ? (
+                    <DamaPiece side={1} className="h-7 w-7 sm:h-8 sm:w-8" />
                   ) : (
                     p1?.symbol || (p1 ? 'P2' : '?')
                   )}
@@ -511,6 +531,9 @@ export function Component() {
                   boardState={match.board_state}
                   isMyTurn={isMyTurn}
                   myPlayerIndex={myPlayer?.player_index}
+                  scores={match.scores}
+                  currentRound={match.current_round}
+                  maxRounds={match.max_rounds}
                   onMove={(choice) => handleMoveAction({ choice })}
                   disabled={moveMutation.isPending}
                 />

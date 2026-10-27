@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Crown } from 'lucide-react'
 
+import { DamaPiece } from './DamaPiece'
 import {
   displaySquares,
   findStep,
@@ -28,8 +28,8 @@ const LIGHT_SQUARE = 'bg-[#e9d6b8]'
 const DARK_SQUARE = 'bg-gradient-to-br from-[#7a4a25] to-[#4b2a13]'
 
 function pieceLabel(side: DamaSide, king: boolean): string {
-  const color = side === 0 ? 'light' : 'dark'
-  return king ? `${color} king` : `${color} man`
+  const color = side === 0 ? 'ivory' : 'obsidian'
+  return king ? `${color} king` : `${color} checker`
 }
 
 export function DamaBoard({
@@ -158,13 +158,16 @@ export function DamaBoard({
                   {squareName(index)}
                 </span>
 
+                {/* Destination markers are small rings, never discs, so they can
+                    never be mistaken for a piece. */}
                 {isTarget && (
                   <span
+                    aria-hidden="true"
                     className={[
-                      'pointer-events-none absolute inset-[30%] rounded-full',
+                      'pointer-events-none absolute rounded-full border-2 shadow-sm',
                       captureTarget
-                        ? 'bg-rose-500/70 ring-2 ring-rose-200 motion-safe:animate-pulse'
-                        : 'bg-emerald-400/80 ring-2 ring-emerald-100/70',
+                        ? 'inset-[34%] border-rose-100/85 bg-rose-500/35 motion-safe:animate-pulse'
+                        : 'inset-[37%] border-emerald-100/85 bg-emerald-400/30',
                     ].join(' ')}
                   />
                 )}
@@ -180,42 +183,19 @@ export function DamaBoard({
                 {value !== 0 && (
                   <span
                     className={[
-                      'pointer-events-none absolute inset-[12%] flex items-center justify-center rounded-full border shadow-lg',
+                      'pointer-events-none absolute inset-[11%] block rounded-full',
                       'transition-transform duration-150 motion-safe:group-hover:scale-105 motion-reduce:transition-none',
-                      side === 0
-                        ? 'border-[#8a5a2b] bg-gradient-to-br from-[#fff4dc] via-[#ecd3a8] to-[#c59a62] text-[#6b4423] shadow-black/40'
-                        : 'border-black/70 bg-gradient-to-br from-[#4b4b4f] via-[#232326] to-[#0b0b0d] text-[#f4e3c2] shadow-black/60',
-                      isSelected ? 'ring-2 ring-amber-300 scale-105' : '',
+                      isSelected ? 'scale-105 drop-shadow-[0_0_7px_rgba(252,211,77,0.65)]' : '',
+                      selectable && !isSelected ? 'ring-1 ring-amber-200/45' : '',
                     ].join(' ')}
                   >
-                    {king ? (
-                      <Crown
-                        className={[
-                          'h-1/2 w-1/2 motion-safe:animate-none',
-                          isLastTo && lastMove?.promotion ? 'motion-safe:animate-bounce' : '',
-                        ].join(' ')}
-                        strokeWidth={2.5}
-                        aria-hidden="true"
-                      />
-                    ) : (
-                      <span
-                        className={[
-                          'h-[28%] w-[28%] rounded-full',
-                          side === 0 ? 'bg-[#8a5a2b]/40' : 'bg-[#f4e3c2]/25',
-                        ].join(' ')}
-                        aria-hidden="true"
-                      />
-                    )}
+                    <DamaPiece side={side ?? 0} king={king} arriving={isLastTo} className="h-full w-full" />
                     {king && isLastTo && lastMove?.promotion && (
                       <span className="absolute -right-1 -top-1 rounded-full bg-amber-300 px-1 text-[8px] font-black text-black motion-safe:animate-bounce motion-reduce:animate-none">
                         K
                       </span>
                     )}
                   </span>
-                )}
-
-                {isSelected && (
-                  <span className="pointer-events-none absolute inset-0 rounded-sm ring-2 ring-inset ring-amber-200" />
                 )}
               </button>
             )
@@ -250,15 +230,7 @@ export function DamaMoveHistory({ history }: { history?: DamaHistoryEntry[] }) {
         {history.map((entry) => (
           <li key={`${entry.seq}-${entry.from}-${entry.to}`} className="flex items-center gap-2 rounded-md px-1.5 py-1 hover:bg-accent/40">
             <span className="w-6 shrink-0 text-right font-mono text-[10px] text-muted-foreground">{entry.seq}</span>
-            <span
-              className={[
-                'inline-block h-2.5 w-2.5 shrink-0 rounded-full border',
-                entry.player === 0
-                  ? 'border-[#8a5a2b] bg-[#f2ddb8]'
-                  : 'border-black/60 bg-[#26262a]',
-              ].join(' ')}
-              aria-hidden="true"
-            />
+            <DamaPiece side={entry.player === 0 ? 0 : 1} className="h-3.5 w-3.5 shrink-0" />
             <span className="font-mono">{moveNotation(entry)}</span>
             {entry.captures && entry.captures.length > 0 && (
               <span className="ml-auto text-[10px] font-semibold text-rose-500">×{entry.captures.length}</span>

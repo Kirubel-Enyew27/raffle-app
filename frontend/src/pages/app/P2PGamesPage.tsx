@@ -22,6 +22,33 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { p2pApi } from '@/features/p2p/api'
 import { useP2PStream } from '@/features/p2p/useP2PStream'
+import { TicTacToeMarkerPair } from '@/features/p2p/TicTacToeMarkers'
+import { RpsChoiceTrio } from '@/features/p2p/RockPaperScissorsIcons'
+import { ConnectFourTokenPair } from '@/features/p2p/ConnectFourToken'
+import { DamaPiecePair } from '@/features/p2p/DamaPiece'
+
+const ICON_SIZES = {
+  sm: { text: 'text-lg', marker: 'h-4 w-4' },
+  md: { text: 'text-xl', marker: 'h-5 w-5' },
+  lg: { text: 'text-3xl', marker: 'h-7 w-7' },
+} as const
+
+// Every catalogued game shows its real pieces rather than an emoji badge; the
+// controller glyph below only covers a game this build does not know.
+function GameIcon({ slug, size = 'md' }: { slug: string; size?: keyof typeof ICON_SIZES }) {
+  switch (slug) {
+    case 'tic-tac-toe':
+      return <TicTacToeMarkerPair className={ICON_SIZES[size].marker} />
+    case 'rock-paper-scissors':
+      return <RpsChoiceTrio className={ICON_SIZES[size].marker} />
+    case 'connect-four':
+      return <ConnectFourTokenPair className={ICON_SIZES[size].marker} />
+    case 'ethiopian-dama':
+      return <DamaPiecePair className={ICON_SIZES[size].marker} />
+    default:
+      return <span className={ICON_SIZES[size].text}>🎮</span>
+  }
+}
 
 export function Component() {
   const { user, token } = useAuth()
@@ -143,13 +170,6 @@ export function Component() {
     joinByCodeMutation.mutate(inviteCodeInput.trim())
   }
 
-  const gameIcons: Record<string, string> = {
-    'tic-tac-toe': '❌⭕',
-    'connect-four': '🔴🟡',
-    'rock-paper-scissors': '✊✋✌️',
-    'ethiopian-dama': '⚪⚫',
-  }
-
   return (
     <div className="mx-auto max-w-6xl py-8 px-4 space-y-8">
       {/* Hero Header */}
@@ -221,7 +241,6 @@ export function Component() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {games.map((g) => {
-            const icon = gameIcons[g.slug] || '🎮'
             return (
               <Card
                 key={g.slug}
@@ -229,7 +248,9 @@ export function Component() {
               >
                 <CardHeader className="space-y-3 pb-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-3xl p-2 rounded-xl bg-muted/60">{icon}</span>
+                    <span className="p-2 rounded-xl bg-muted/60">
+                      <GameIcon slug={g.slug} size="lg" />
+                    </span>
                     <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10">
                       Free Play
                     </Badge>
@@ -356,7 +377,7 @@ export function Component() {
                     <Card key={m.id} className="border-border/80 shadow-sm flex items-center justify-between p-4">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-xl">{gameIcons[m.game_slug] || '🎮'}</span>
+                          <GameIcon slug={m.game_slug} />
                           <span className="font-bold text-sm capitalize">{m.game_slug.replace('-', ' ')}</span>
                           <Badge variant="secondary" className="text-[10px]">
                             {m.max_rounds > 1 ? `Best of ${m.max_rounds}` : 'Single Round'}
@@ -416,7 +437,7 @@ export function Component() {
                   return (
                     <Card key={m.id} className="border-border/80 p-3.5 flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <span className="text-2xl">{gameIcons[m.game_slug] || '🎮'}</span>
+                        <GameIcon slug={m.game_slug} size="lg" />
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-sm capitalize">{m.game_slug.replace('-', ' ')}</span>
@@ -484,7 +505,7 @@ export function Component() {
                           : 'border-border/80 hover:bg-muted/50',
                       ].join(' ')}
                     >
-                      <span className="text-xl">{gameIcons[g.slug] || '🎮'}</span>
+                      <GameIcon slug={g.slug} />
                       <span className="truncate w-full">{g.title.split(' ')[0]}</span>
                     </button>
                   ))}
