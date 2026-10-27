@@ -168,14 +168,6 @@ export function Component() {
           <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
             Test your skills in fast-paced turn-based games. Join public matchmaking or create a private room to challenge your friends with a code.
           </p>
-
-          {/* Compliance & Responsible Gaming Notice */}
-          <div className="flex items-center gap-2.5 bg-emerald-950/60 border border-emerald-500/30 rounded-xl px-4 py-2.5 text-xs text-emerald-300 max-w-xl">
-            <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
-            <span>
-              <strong>Regulatory Compliance:</strong> Competitive games currently operate in 100% Free Play mode. Real-money stakes remain locked pending licensing clearance.
-            </span>
-          </div>
         </div>
 
         {/* Decorative background glow */}

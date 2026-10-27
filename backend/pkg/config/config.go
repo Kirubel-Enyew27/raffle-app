@@ -134,7 +134,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("CBE_APP_ID", "d1292e42-7400-49de-a2d3-9731caa4c819")
 	viper.SetDefault("CBE_APP_VERSION", "0a01980b-9859-1369-8198-59f403820000")
 	viper.SetDefault("CBE_ACCOUNT_NAME", "Kirubel Enyew")
-	viper.SetDefault("CBE_ACCOUNT_NUMBER", "1000249278242")
+	viper.SetDefault("CBE_ACCOUNT_NUMBER", "1000249277383")
 	viper.SetDefault("TELEBIRR_ACCOUNT_NAME", "Kirubel Enyew")
 	viper.SetDefault("TELEBIRR_PHONE", "+251948260013")
 	viper.SetDefault("AUTO_CREDIT_ENABLED", true)
