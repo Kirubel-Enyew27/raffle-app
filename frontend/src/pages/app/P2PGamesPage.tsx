@@ -5,7 +5,6 @@ import {
   Gamepad2,
   Swords,
   Users,
-  ShieldCheck,
   PlusCircle,
   KeyRound,
   RefreshCw,
