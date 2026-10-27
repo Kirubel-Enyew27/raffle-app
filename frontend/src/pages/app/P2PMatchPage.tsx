@@ -30,9 +30,15 @@ import { seatForPlayerIndex } from '@/features/p2p/ticTacToe'
 import { ConnectFourBoard } from '@/features/p2p/ConnectFourBoard'
 import { RockPaperScissorsBoard } from '@/features/p2p/RockPaperScissorsBoard'
 import { DamaBoard, DamaMoveHistory } from '@/features/p2p/DamaBoard'
-import { resultLabel, type DamaBoardState, type DamaHistoryEntry, type DamaResult } from '@/features/p2p/dama'
+import { type DamaBoardState, type DamaHistoryEntry } from '@/features/p2p/dama'
 import { useGameSounds } from '@/features/p2p/useGameSounds'
 import { SoundToggle } from '@/features/p2p/SoundToggle'
+import {
+  useGameOutcomeController,
+  GameOutcomeOverlay,
+  DecisiveBanner,
+  VictoryConfetti,
+} from '@/features/p2p/outcome'
 import type { P2PMatch } from '@/types/api'
 
 // Surfaces the API's error message (axios error shape) without widening to any.
@@ -78,6 +84,20 @@ export function Component() {
     userId: user?.id,
     secondsLeft,
     timerThreshold: 5,
+  })
+
+  // Staged decisive event & outcome controller
+  const {
+    outcome,
+    phase: outcomePhase,
+    isEffectsActive,
+    isAnnounced,
+    isReviewingBoard,
+    skipToAnnouncement,
+    toggleReviewBoard,
+  } = useGameOutcomeController({
+    match,
+    currentUserId: user?.id,
   })
 
   // Handle realtime events
@@ -255,8 +275,6 @@ export function Component() {
   const isTicTacToe = match.game_slug === 'tic-tac-toe'
   const mySeat = isTicTacToe ? seatForPlayerIndex(myPlayer?.player_index) : null
   const isGameOver = ['completed', 'tied', 'forfeited', 'cancelled'].includes(match.status)
-  const iAmWinner = match.winner_user_id === user?.id
-  const damaResult = (match.board_state?.result ?? null) as DamaResult | null
   const damaHistory = (match.board_state?.move_history ?? []) as DamaHistoryEntry[]
 
   // Rematch state: a finished match either has the caller waiting on the
@@ -397,13 +415,27 @@ export function Component() {
                   </div>
                 </div>
               ) : (
-                <div className="py-2">
+                <div className="py-2 flex flex-col items-center gap-1">
                   <Badge
-                    variant={isGameOver ? 'secondary' : 'default'}
-                    className="capitalize text-xs font-bold px-3 py-1"
+                    variant={outcome?.type === 'win' ? 'default' : outcome?.type === 'draw' ? 'outline' : 'secondary'}
+                    className={[
+                      'text-xs font-black px-3 py-1 uppercase tracking-wide',
+                      outcome?.type === 'win'
+                        ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30'
+                        : outcome?.type === 'loss'
+                          ? 'bg-rose-500 text-white shadow-sm shadow-rose-500/30'
+                          : outcome?.type === 'draw'
+                            ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/40'
+                            : '',
+                    ].join(' ')}
                   >
-                    {match.status.replace('_', ' ')}
+                    {outcome ? outcome.title : match.status.replace('_', ' ')}
                   </Badge>
+                  {outcome && (
+                    <span className="text-[10px] font-bold text-muted-foreground line-clamp-1 max-w-[130px]">
+                      {outcome.subtitle}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -503,16 +535,31 @@ export function Component() {
             </div>
           )}
 
-          {/* State 3: IN PROGRESS */}
-          {match.status === 'in_progress' && (
-            <div className="w-full flex flex-col items-center">
+          {/* State 3 & 4: BOARD STAGE (Active Play & Decisive Game-Ending Review) */}
+          {(match.status === 'in_progress' || isGameOver) && (
+            <div className="relative w-full flex flex-col items-center">
+              {/* Victory Celebration Confetti Particles */}
+              {isEffectsActive && outcome?.type === 'win' && <VictoryConfetti />}
+
+              {/* Decisive Event Banner with Skip button */}
+              {isGameOver && outcome && (
+                <DecisiveBanner
+                  outcome={outcome}
+                  phase={outcomePhase}
+                  onSkip={skipToAnnouncement}
+                />
+              )}
+
+              {/* The game board stays mounted and highlights decisive events */}
               {match.game_slug === 'tic-tac-toe' && (
                 <TicTacToeBoard
                   boardState={match.board_state}
                   isMyTurn={isMyTurn}
                   mySymbol={myPlayer?.symbol}
                   onMove={(cell) => handleMoveAction({ cell })}
-                  disabled={moveMutation.isPending}
+                  disabled={moveMutation.isPending || isGameOver}
+                  isGameOver={isGameOver}
+                  isTie={outcome?.type === 'draw'}
                 />
               )}
 
@@ -522,7 +569,9 @@ export function Component() {
                   isMyTurn={isMyTurn}
                   mySymbol={myPlayer?.symbol}
                   onMove={(column) => handleMoveAction({ column })}
-                  disabled={moveMutation.isPending}
+                  disabled={moveMutation.isPending || isGameOver}
+                  isGameOver={isGameOver}
+                  isTie={outcome?.type === 'draw'}
                 />
               )}
 
@@ -535,7 +584,8 @@ export function Component() {
                   currentRound={match.current_round}
                   maxRounds={match.max_rounds}
                   onMove={(choice) => handleMoveAction({ choice })}
-                  disabled={moveMutation.isPending}
+                  disabled={moveMutation.isPending || isGameOver}
+                  isGameOver={isGameOver}
                 />
               )}
 
@@ -546,94 +596,30 @@ export function Component() {
                     isMyTurn={isMyTurn}
                     myPlayerIndex={myPlayer?.player_index}
                     onMove={handleMoveAction}
-                    disabled={moveMutation.isPending}
+                    disabled={moveMutation.isPending || isGameOver}
+                    isGameOver={isGameOver}
+                    outcome={outcome}
                   />
-                  <div className="w-full max-w-[560px]">
+                  {/* <div className="w-full max-w-[560px]">
                     <DamaMoveHistory history={damaHistory} />
-                  </div>
+                  </div> */}
                 </div>
               )}
-            </div>
-          )}
 
-          {/* State 4: MATCH FINISHED */}
-          {isGameOver && (
-            <div className="text-center max-w-sm space-y-4 py-8 animate-in zoom-in-95">
-              <div
-                className={[
-                  'w-20 h-20 rounded-full flex items-center justify-center mx-auto text-4xl shadow-xl',
-                  match.status === 'tied'
-                    ? 'bg-amber-500/20 border-2 border-amber-500/40 text-amber-500'
-                    : iAmWinner
-                      ? 'bg-emerald-500/20 border-2 border-emerald-500/40 text-emerald-500'
-                      : 'bg-rose-500/20 border-2 border-rose-500/40 text-rose-500',
-                ].join(' ')}
-              >
-                {match.status === 'tied' ? '🤝' : iAmWinner ? '🏆' : '💀'}
-              </div>
-
-              <div>
-                <h3 className="text-2xl font-black">
-                  {match.status === 'tied'
-                    ? 'Match Tied!'
-                    : iAmWinner
-                      ? 'Victory!'
-                      : match.status === 'forfeited'
-                        ? 'Match Forfeited'
-                        : 'Defeat'}
-                </h3>
-                {match.game_slug === 'ethiopian-dama' ? (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {resultLabel(damaResult, myPlayer?.player_index)} · {match.board_state?.move_count ?? 0} moves
-                    {damaResult?.reason ? ` · ${String(damaResult.reason).replaceAll('_', ' ')}` : ''}
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Final Score: {match.scores?.['0'] ?? 0} to {match.scores?.['1'] ?? 0}
-                  </p>
-                )}
-              </div>
-
-              {opponentRequestedRematch && (
-                <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  Your opponent wants a rematch!
-                </p>
+              {/* Phase 3 Outcome Announcement Overlay */}
+              {isGameOver && outcome && isAnnounced && (
+                <GameOutcomeOverlay
+                  outcome={outcome}
+                  isReviewingBoard={isReviewingBoard}
+                  onToggleReviewBoard={toggleReviewBoard}
+                  onBackToLobby={() => navigate('/games')}
+                  canRematch={canRematch}
+                  onRematch={() => rematchMutation.mutate()}
+                  isRematchPending={rematchMutation.isPending}
+                  iRequestedRematch={iRequestedRematch}
+                  opponentRequestedRematch={opponentRequestedRematch}
+                />
               )}
-
-              <div className="flex items-center gap-3 pt-2">
-                <Button
-                  variant="outline"
-                  onClick={() => navigate('/games')}
-                  className="flex-1 font-semibold text-xs h-10"
-                >
-                  Back to Lobby
-                </Button>
-                {canRematch ? (
-                  <Button
-                    onClick={() => rematchMutation.mutate()}
-                    disabled={rematchMutation.isPending || iRequestedRematch}
-                    className="flex-1 font-semibold text-xs h-10"
-                  >
-                    {iRequestedRematch ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                        Waiting for Opponent…
-                      </>
-                    ) : opponentRequestedRematch ? (
-                      'Accept Rematch'
-                    ) : (
-                      'Play Another Match'
-                    )}
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={() => navigate('/games')}
-                    className="flex-1 font-semibold text-xs h-10"
-                  >
-                    Find New Match
-                  </Button>
-                )}
-              </div>
             </div>
           )}
         </CardContent>

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Lock, Sparkles } from 'lucide-react'
 
 import { DamaPiece } from './DamaPiece'
 import {
@@ -15,6 +16,7 @@ import {
   type DamaHistoryEntry,
   type DamaSide,
 } from './dama'
+import type { GameOutcome } from './outcome/outcomeTypes'
 
 interface DamaBoardProps {
   boardState: DamaBoardState
@@ -22,6 +24,8 @@ interface DamaBoardProps {
   myPlayerIndex?: number
   onMove: (action: Record<string, unknown>) => void
   disabled?: boolean
+  isGameOver?: boolean
+  outcome?: GameOutcome | null
 }
 
 const LIGHT_SQUARE = 'bg-[#e9d6b8]'
@@ -38,26 +42,25 @@ export function DamaBoard({
   myPlayerIndex,
   onMove,
   disabled = false,
+  isGameOver = false,
+  outcome = null,
 }: DamaBoardProps) {
   const [selected, setSelected] = useState<number | null>(null)
 
   const orientation = orientationFor(myPlayerIndex)
-  const cells = boardState?.cells ?? []
+  const cells = useMemo(() => boardState?.cells ?? [], [boardState?.cells])
   const lastMove = boardState?.last_move ?? null
   const chainFrom = typeof boardState?.must_continue_from === 'number' ? boardState.must_continue_from : null
-  const gameOver = !!boardState?.result
+  const gameOver = isGameOver || !!boardState?.result
   const boardTurn = typeof boardState?.turn === 'number' ? boardState.turn : undefined
 
   const canInteract =
+    !gameOver &&
     !!isMyTurn &&
     !disabled &&
-    !gameOver &&
     myPlayerIndex !== undefined &&
     (boardTurn === undefined || boardTurn === myPlayerIndex)
 
-  // During a capture chain the server names the only movable square. Deriving
-  // the active selection avoids a synchronisation effect and guarantees the
-  // UI can never offer a different piece mid-chain.
   const activeSelection = chainFrom ?? selected
 
   const targets = useMemo(
@@ -67,6 +70,22 @@ export function DamaBoard({
 
   const moveNumber = boardState?.move_count ?? 0
   const turnSeq = boardState?.turn_seq ?? 0
+
+  // Count active pieces on the board
+  const { lightCount, darkCount } = useMemo(() => {
+    let light = 0
+    let dark = 0
+    for (const val of cells) {
+      if (val === 1 || val === 2) light++
+      if (val === 3 || val === 4) dark++
+    }
+    return { lightCount: light, darkCount: dark }
+  }, [cells])
+
+  const isEliminationWin = gameOver && (lightCount === 0 || darkCount === 0)
+  const isImmobilization = gameOver && boardState?.result?.reason === 'no_legal_moves' && !isEliminationWin
+
+  const trappedIndices = outcome?.secondaryIndices ?? []
 
   const handleSquare = (index: number) => {
     if (!canInteract) return
@@ -83,8 +102,6 @@ export function DamaBoard({
     if (activeSelection === null) return
     const step = findStep(boardState, activeSelection, index)
     if (!step) {
-      // Clicking an empty/non-legal square clears the selection, but a capture
-      // chain square stays selected because the turn cannot be abandoned.
       if (chainFrom === null) setSelected(null)
       return
     }
@@ -95,18 +112,25 @@ export function DamaBoard({
 
   return (
     <div className="flex w-full max-w-[560px] flex-col items-center gap-3 select-none">
+      {/* Turn or Decisive Game-Ending Status */}
       <div
         role="status"
         aria-live="polite"
         className="flex min-h-6 items-center justify-center px-2 text-center text-xs font-semibold text-muted-foreground"
       >
-        {chainFrom !== null
-          ? 'Capture chain — keep jumping with the highlighted piece'
-          : gameOver
-            ? 'Match finished'
-            : isMyTurn
-              ? 'Your turn — select a piece'
-              : 'Opponent is thinking…'}
+        {chainFrom !== null ? (
+          <span className="text-rose-500 font-bold">
+            Capture chain — keep jumping with the highlighted piece
+          </span>
+        ) : gameOver ? (
+          <span className="font-extrabold text-foreground">
+            {outcome?.subtitle || 'Match finished'}
+          </span>
+        ) : isMyTurn ? (
+          'Your turn — select a piece'
+        ) : (
+          'Opponent is thinking…'
+        )}
       </div>
 
       {chainFrom !== null && (
@@ -115,7 +139,22 @@ export function DamaBoard({
         </div>
       )}
 
-      <div className="w-full rounded-2xl border-4 border-[#4a2c17] bg-[#4a2c17] p-1.5 shadow-2xl shadow-black/40">
+      {/* Piece Counts Bar */}
+      <div className="flex w-full items-center justify-between px-2 text-xs font-bold text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-full bg-[#f4ebd9] border border-amber-900/30" />
+          <span>Ivory (P1): {lightCount}</span>
+          {lightCount === 0 && gameOver && <span className="text-rose-500 text-[10px] uppercase">(Eliminated)</span>}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span>Obsidian (P2): {darkCount}</span>
+          {darkCount === 0 && gameOver && <span className="text-rose-500 text-[10px] uppercase">(Eliminated)</span>}
+          <span className="h-3 w-3 rounded-full bg-[#2a1d17] border border-amber-500/30" />
+        </span>
+      </div>
+
+      {/* 8x8 Board */}
+      <div className="relative w-full rounded-2xl border-4 border-[#4a2c17] bg-[#4a2c17] p-1.5 shadow-2xl shadow-black/40">
         <div className="grid grid-cols-8 overflow-hidden rounded-lg" role="grid" aria-label="Ethiopian Dama board">
           {displaySquares(cells, orientation).map(({ index, playable, value }) => {
             const side = pieceSide(value)
@@ -129,6 +168,12 @@ export function DamaBoard({
             const wasCaptured = !!lastMove?.captures?.includes(index)
             const selectable = canInteract && side === myPlayerIndex && (chainFrom === null || chainFrom === index)
 
+            // Winning / decisive states:
+            const isTrappedPiece = isImmobilization && trappedIndices.includes(index)
+            const isVictoriousRemainingPiece = isEliminationWin && value !== 0 && (
+              (lightCount > 0 && side === 0) || (darkCount > 0 && side === 1)
+            )
+
             if (!playable) {
               return <div key={`light-${index}`} aria-hidden="true" className={`aspect-square w-full ${LIGHT_SQUARE}`} />
             }
@@ -141,25 +186,28 @@ export function DamaBoard({
                 disabled={!canInteract}
                 aria-label={`${squareName(index)}${value ? `, ${pieceLabel(side ?? 0, king)}` : ', empty'}${
                   isTarget ? ', legal destination' : ''
-                }`}
+                }${isTrappedPiece ? ', immobilized piece' : ''}`}
                 aria-pressed={isSelected}
                 className={[
                   'group relative aspect-square w-full transition-colors duration-150',
                   DARK_SQUARE,
                   selectable ? 'cursor-pointer hover:brightness-110' : '',
-                  canInteract ? 'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-1 focus-visible:ring-offset-[#4a2c17]' : '',
+                  canInteract
+                    ? 'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-1 focus-visible:ring-offset-[#4a2c17]'
+                    : '',
                   isSelected ? 'z-10 ring-2 ring-inset ring-amber-300' : '',
                   isLastFrom && !isSelected ? 'ring-2 ring-inset ring-amber-200/50' : '',
-                  isLastTo && !isSelected ? 'ring-2 ring-inset ring-emerald-300/60' : '',
+                  isLastTo && !isSelected ? 'ring-2 ring-inset ring-emerald-300/80 shadow-md' : '',
                   isTarget ? 'cursor-pointer' : '',
+                  isTrappedPiece ? 'ring-2 ring-inset ring-rose-500/80 bg-rose-950/40' : '',
+                  isVictoriousRemainingPiece ? 'ring-2 ring-inset ring-emerald-400/80 bg-emerald-950/20' : '',
                 ].join(' ')}
               >
                 <span className="pointer-events-none absolute bottom-0.5 left-1 text-[8px] font-semibold uppercase tracking-tight text-amber-100/50">
                   {squareName(index)}
                 </span>
 
-                {/* Destination markers are small rings, never discs, so they can
-                    never be mistaken for a piece. */}
+                {/* Destination markers */}
                 {isTarget && (
                   <span
                     aria-hidden="true"
@@ -172,12 +220,33 @@ export function DamaBoard({
                   />
                 )}
 
+                {/* Final Move / Capture Indicator */}
                 {wasCaptured && (
                   <span
                     key={`capture-${moveNumber}`}
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-1 rounded-md ring-4 ring-rose-400/80 motion-safe:animate-ping motion-reduce:hidden"
+                    className="pointer-events-none absolute inset-1 rounded-md ring-4 ring-rose-400/90 motion-safe:animate-ping motion-reduce:hidden"
                   />
+                )}
+
+                {/* Trapped Piece Indicator Icon */}
+                {isTrappedPiece && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute top-1 right-1 z-20 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-white shadow"
+                  >
+                    <Lock className="h-2.5 w-2.5" />
+                  </span>
+                )}
+
+                {/* Victorious Piece Sparkle */}
+                {isVictoriousRemainingPiece && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -top-1 -right-1 z-20 flex h-3.5 w-3.5 items-center justify-center text-emerald-400 animate-pulse"
+                  >
+                    <Sparkles className="h-3 w-3" />
+                  </span>
                 )}
 
                 {value !== 0 && (
@@ -187,6 +256,8 @@ export function DamaBoard({
                       'transition-transform duration-150 motion-safe:group-hover:scale-105 motion-reduce:transition-none',
                       isSelected ? 'scale-105 drop-shadow-[0_0_7px_rgba(252,211,77,0.65)]' : '',
                       selectable && !isSelected ? 'ring-1 ring-amber-200/45' : '',
+                      isVictoriousRemainingPiece ? 'drop-shadow-[0_0_8px_rgba(52,211,153,0.8)] scale-105' : '',
+                      isTrappedPiece ? 'opacity-85 scale-95' : '',
                     ].join(' ')}
                   >
                     <DamaPiece side={side ?? 0} king={king} arriving={isLastTo} className="h-full w-full" />

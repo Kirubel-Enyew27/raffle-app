@@ -105,6 +105,26 @@ select option:checked {
   animation: ttt-win-glow 1.9s ease-in-out infinite;
 }
 
+@keyframes ttt-line-draw {
+  from { stroke-dashoffset: 400; opacity: 0; }
+  20% { opacity: 1; }
+  to { stroke-dashoffset: 0; opacity: 1; }
+}
+.ttt-line-stroke {
+  stroke-dasharray: 400;
+  stroke-dashoffset: 400;
+  animation: ttt-line-draw 550ms cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes ttt-cell-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.08); filter: brightness(1.2); }
+  100% { transform: scale(1.04); filter: brightness(1.05); }
+}
+.ttt-win-cell-seq {
+  animation: ttt-cell-pulse 500ms cubic-bezier(0.34, 1.5, 0.64, 1) both;
+}
+
 /* Rock-Paper-Scissors: a short pop when a move is selected and a slide-in for
    the round reveal. Kept under 250ms so a reveal never delays the next pick. */
 @keyframes rps-choice-select {
@@ -143,6 +163,15 @@ select option:checked {
   animation: c4-token-win 1.8s ease-in-out infinite;
 }
 
+@keyframes c4-win-seq {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.12); filter: brightness(1.3); }
+  100% { transform: scale(1.05); filter: brightness(1.1); }
+}
+.c4-win-seq {
+  animation: c4-win-seq 500ms cubic-bezier(0.34, 1.5, 0.64, 1) both;
+}
+
 /* Ethiopian Dama: a piece settling onto its square after a move. */
 @keyframes dama-piece-arrive {
   from { opacity: 0; transform: scale(0.84); }
@@ -155,10 +184,13 @@ select option:checked {
 @media (prefers-reduced-motion: reduce) {
   .ttt-marker-place,
   .ttt-win-cell,
+  .ttt-line-stroke,
+  .ttt-win-cell-seq,
   .rps-choice-select,
   .rps-reveal,
   .c4-token-drop,
   .c4-token-win,
+  .c4-win-seq,
   .dama-piece-arrive {
     animation: none;
   }
