@@ -29,7 +29,7 @@ import { DamaPiece } from '@/features/p2p/DamaPiece'
 import { seatForPlayerIndex } from '@/features/p2p/ticTacToe'
 import { ConnectFourBoard } from '@/features/p2p/ConnectFourBoard'
 import { RockPaperScissorsBoard } from '@/features/p2p/RockPaperScissorsBoard'
-import { DamaBoard, DamaMoveHistory } from '@/features/p2p/DamaBoard'
+import { DamaBoard } from '@/features/p2p/DamaBoard'
 import { type DamaBoardState, type DamaHistoryEntry } from '@/features/p2p/dama'
 import { useGameSounds } from '@/features/p2p/useGameSounds'
 import { SoundToggle } from '@/features/p2p/SoundToggle'
@@ -275,7 +275,7 @@ export function Component() {
   const isTicTacToe = match.game_slug === 'tic-tac-toe'
   const mySeat = isTicTacToe ? seatForPlayerIndex(myPlayer?.player_index) : null
   const isGameOver = ['completed', 'tied', 'forfeited', 'cancelled'].includes(match.status)
-  const damaHistory = (match.board_state?.move_history ?? []) as DamaHistoryEntry[]
+  // const damaHistory = (match.board_state?.move_history ?? []) as DamaHistoryEntry[]
 
   // Rematch state: a finished match either has the caller waiting on the
   // opponent, or the opponent waiting on the caller to accept.
