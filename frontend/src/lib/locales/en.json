@@ -108,7 +108,8 @@
     "phonePlaceholder": "e.g. +251912345678",
     "emailPlaceholder": "email@example.com or +251912345678",
     "telebirrNotice": "Make sure the full name matches the name registered on Telebirr for automatic processing.",
-    "resetNotConfigured": "⚠ Password reset email delivery is not yet configured. Contact support if you're locked out."
+    "resetNotConfigured": "⚠ Password reset email delivery is not yet configured. Contact support if you're locked out.",
+    "sessionExpired": "Your session expired and could not be renewed. Please sign in again — your match will still be there."
   },
   "dashboard": {
     "title": "Dashboard",

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -39,6 +40,21 @@ type ChangePasswordRequest struct {
 	NewPassword string `json:"new_password" binding:"required,min=6"`
 }
 
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+// writeSession returns the credential pair in the shape the frontend expects.
+// expires_in lets the client refresh proactively if it ever wants to.
+func writeSession(c *gin.Context, status int, session *application.Session) {
+	c.JSON(status, gin.H{"code": "success", "data": gin.H{
+		"token":         session.AccessToken,
+		"refresh_token": session.RefreshToken,
+		"expires_in":    session.ExpiresIn,
+		"user":          session.User,
+	}})
+}
+
 func (h *IdentityHandler) Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -62,16 +78,60 @@ func (h *IdentityHandler) Login(c *gin.Context) {
 		return
 	}
 
-	token, user, err := h.service.Login(c.Request.Context(), req.Identifier, req.Password)
+	session, err := h.service.Login(c.Request.Context(), req.Identifier, req.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "error", "message": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"code": "success", "data": gin.H{
-		"token": token,
-		"user":  user,
-	}})
+	writeSession(c, http.StatusOK, session)
+}
+
+// Refresh exchanges a refresh token for a new access token. It is deliberately
+// unauthenticated: the whole point is that the access token has expired. The
+// refresh token itself is validated (signature, type, expiry, live user).
+func (h *IdentityHandler) Refresh(c *gin.Context) {
+	var req RefreshRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "VALIDATION_FAILED", "message": "refresh_token is required"})
+		return
+	}
+
+	session, err := h.service.RefreshSession(c.Request.Context(), req.RefreshToken)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrUnauthorized) {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"code":    "SESSION_EXPIRED",
+				"message": "your session has expired, please sign in again",
+			})
+			return
+		}
+		// Anything else is transient (database down, misconfiguration). Keep the
+		// session: the client retries instead of logging the player out.
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "INTERNAL_ERROR", "message": "internal server error"})
+		return
+	}
+
+	writeSession(c, http.StatusOK, session)
+}
+
+// Logout revokes the refresh token that came with the request so it cannot be
+// exchanged again. It is deliberately unauthenticated: the access token may
+// already be expired by the time the user signs out, and the refresh token is
+// itself the credential being revoked. The call is idempotent.
+func (h *IdentityHandler) Logout(c *gin.Context) {
+	var req RefreshRequest
+	// An empty body simply means there is nothing to revoke server-side.
+	_ = c.ShouldBindJSON(&req)
+
+	if err := h.service.Logout(c.Request.Context(), req.RefreshToken); err != nil {
+		// Revocation could not be recorded. Report it instead of pretending the
+		// token is dead; the client still drops it locally.
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "INTERNAL_ERROR", "message": "internal server error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": "success", "message": "signed out"})
 }
 
 // writeRegistrationError maps domain errors to their HTTP status and never

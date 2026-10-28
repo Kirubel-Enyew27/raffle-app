@@ -25,6 +25,10 @@ export interface User {
 
 export interface LoginResponse {
   token: string
+  /** Long-lived token used by the API client to renew `token` without a new login. */
+  refresh_token?: string
+  /** Access-token lifetime in seconds. */
+  expires_in?: number
   user: User
 }
 

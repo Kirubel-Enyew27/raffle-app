@@ -108,6 +108,8 @@ func main() {
 		auditSvc,
 		[]byte(cfg.JWT.Secret),
 		cfg.JWT.AccessExpiry,
+		cfg.JWT.RefreshExpiry,
+		identityrepo.NewRefreshTokenStore(rdb),
 	)
 
 	depositRepo := walletrepo.NewDepositRepo(db)

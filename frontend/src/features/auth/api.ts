@@ -12,4 +12,11 @@ export const authApi = {
 
   changePassword: (old_password: string, new_password: string) =>
     api.post('/auth/change-password', { old_password, new_password }),
+
+  /**
+   * Revokes the refresh token server-side so a signed-out session cannot be
+   * replayed. Idempotent: an unknown or already-expired token is a no-op.
+   */
+  logout: (refreshToken: string) =>
+    api.post('/auth/logout', { refresh_token: refreshToken }).then(r => r.data),
 }

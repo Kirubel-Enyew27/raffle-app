@@ -48,8 +48,8 @@ export function Component() {
     onSuccess: async (_user, { email, phone, password }) => {
       // Auto-login after registration (use email or phone)
       const identifier = (email || phone)!
-      const { token, user } = await authApi.login(identifier, password)
-      login(token, user)
+      const { token, user, refresh_token } = await authApi.login(identifier, password)
+      login(token, user, refresh_token)
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.removeItem('pending_redirect')
       }

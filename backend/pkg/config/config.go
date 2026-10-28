@@ -52,8 +52,11 @@ type RedisConfig struct {
 }
 
 type JWTConfig struct {
-	Secret       string
-	AccessExpiry time.Duration
+	Secret string
+	// AccessExpiry is deliberately short; clients renew it with the refresh
+	// token instead of forcing a new login mid-session.
+	AccessExpiry  time.Duration
+	RefreshExpiry time.Duration
 }
 
 // CrashConfig holds the multiplayer crash game tunables. Every timing and limit
@@ -102,6 +105,17 @@ func loadDotEnv() error {
 		return nil
 	}
 	return nil
+}
+
+// positiveDuration reads a duration setting and falls back to def when the
+// value is missing or non-positive. An explicit 0 would otherwise mint tokens
+// that are already expired and log every user out immediately.
+func positiveDuration(key string, def time.Duration) time.Duration {
+	d := viper.GetDuration(key)
+	if d <= 0 {
+		return def
+	}
+	return d
 }
 
 func Load() (*Config, error) {
@@ -196,8 +210,9 @@ func Load() (*Config, error) {
 			TLSEnabled: viper.GetBool("REDIS_TLS_ENABLED"),
 		},
 		JWT: JWTConfig{
-			Secret:       viper.GetString("JWT_SECRET"),
-			AccessExpiry: viper.GetDuration("JWT_ACCESS_EXPIRY"),
+			Secret:        viper.GetString("JWT_SECRET"),
+			AccessExpiry:  positiveDuration("JWT_ACCESS_EXPIRY", 15*time.Minute),
+			RefreshExpiry: positiveDuration("JWT_REFRESH_EXPIRY", 7*24*time.Hour),
 		},
 		SMSAPIKey:           viper.GetString("SMS_API_KEY"),
 		TeleVerifyURL:       viper.GetString("TELE_VERIFY_URL"),
