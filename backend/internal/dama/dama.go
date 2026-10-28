@@ -117,9 +117,12 @@ func InitialBoard() Board {
 // Ruleset describes the Dama variant. The zero value is intentionally not the
 // default: use DefaultRuleset and override only the fields you need.
 type Ruleset struct {
-	// MenMoveBackwards allows uncrowned pieces to step backwards.
+	// MenMoveBackwards allows uncrowned pieces to step backwards. It is
+	// independent of MenCaptureBackwards: a man may capture backwards without
+	// gaining a backwards non-capturing step.
 	MenMoveBackwards bool
-	// MenCaptureBackwards allows uncrowned pieces to capture backwards.
+	// MenCaptureBackwards allows uncrowned pieces to capture forwards or
+	// backwards.
 	MenCaptureBackwards bool
 	// FlyingKings allows kings to slide and capture over any distance.
 	FlyingKings bool
@@ -142,7 +145,7 @@ type Ruleset struct {
 func DefaultRuleset() Ruleset {
 	return Ruleset{
 		MenMoveBackwards:       false,
-		MenCaptureBackwards:    false,
+		MenCaptureBackwards:    true,
 		FlyingKings:            true,
 		MandatoryCapture:       true,
 		MajorityCapture:        false,

@@ -128,6 +128,66 @@ func TestDamaEngineInvalidMoveDoesNotMutateBoard(t *testing.T) {
 	}
 }
 
+func TestDamaEngineBackwardManCapture(t *testing.T) {
+	engine := NewDamaEngine()
+	// Light man 35 (r4c3) jumps dark 42 (r5c2) behind it and lands on 49 (r6c1).
+	// Dark keeps a mobile piece on 3 so the round continues.
+	board := testDamaBoard(map[int]int{
+		35: 1,
+		42: 3,
+		3:  3,
+	}, 0)
+
+	// The capture is mandatory, so the free forward step is rejected.
+	if _, _, _, _, err := engine.ValidateAndApplyMove(board, 0, map[string]interface{}{
+		"from": 35, "to": 28, "turn_seq": 0,
+	}); !errors.Is(err, ErrInvalidMove) {
+		t.Fatalf("expected the non-capturing move to be rejected, got %v", err)
+	}
+	// Leaving the board diagonally backwards is not an ordinary move.
+	if _, _, _, _, err := engine.ValidateAndApplyMove(board, 0, map[string]interface{}{
+		"from": 35, "to": 44, "turn_seq": 0,
+	}); !errors.Is(err, ErrInvalidMove) {
+		t.Fatalf("expected the backward step to be rejected, got %v", err)
+	}
+
+	after, over, winner, tie, err := engine.ValidateAndApplyMove(board, 0, map[string]interface{}{
+		"from": 35, "to": 49, "turn_seq": 0,
+	})
+	if err != nil {
+		t.Fatalf("backward capture rejected: %v", err)
+	}
+	if over || winner != nil || tie {
+		t.Fatalf("unexpected terminal state: over=%v winner=%v tie=%v", over, winner, tie)
+	}
+
+	cells := after["cells"].([]int)
+	if cells[42] != 0 {
+		t.Fatalf("captured piece on 42 was not removed, got %d", cells[42])
+	}
+	if cells[35] != 0 {
+		t.Fatalf("source square 35 still holds a piece, got %d", cells[35])
+	}
+	if cells[49] != 1 {
+		t.Fatalf("expected the light man on 49, got %d", cells[49])
+	}
+	if after["turn"] != 1 {
+		t.Fatalf("turn should pass to dark after the capture, got %v", after["turn"])
+	}
+	if seq, ok := after["turn_seq"].(int); !ok || seq != 1 {
+		t.Fatalf("expected turn_seq 1, got %v", after["turn_seq"])
+	}
+
+	history, ok := after["move_history"].([]map[string]interface{})
+	if !ok || len(history) != 1 {
+		t.Fatalf("expected one history entry, got %T %v", after["move_history"], after["move_history"])
+	}
+	captures, ok := history[0]["captures"].([]int)
+	if !ok || len(captures) != 1 || captures[0] != 42 {
+		t.Fatalf("expected the captured square in the history, got %v", history[0]["captures"])
+	}
+}
+
 func TestDamaEngineMultiCaptureKeepsTurn(t *testing.T) {
 	engine := NewDamaEngine()
 	// Light man 35 captures dark 26 then dark 10, promoting on 3. Dark keeps a

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -185,6 +186,108 @@ func TestP2PService_DamaMatchLifecycle(t *testing.T) {
 	}
 	if status != p2pdomain.StatusForfeited {
 		t.Fatalf("persisted status should be forfeited, got %s", status)
+	}
+}
+
+func damaCellValue(t *testing.T, cells []interface{}, index int) int {
+	t.Helper()
+	switch value := cells[index].(type) {
+	case float64:
+		return int(value)
+	case int:
+		return value
+	case int64:
+		return int(value)
+	default:
+		t.Fatalf("unexpected cell type %T at square %d", cells[index], index)
+		return 0
+	}
+}
+
+func TestP2PService_DamaBackwardCaptureSyncsBothPlayers(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	svc := newTestService(t, db, false)
+
+	creator, joiner, matchID := setupReadyMatch(t, db, svc, "ethiopian-dama", 0)
+	if _, err := svc.ReadyUp(ctx, creator, matchID); err != nil {
+		t.Fatalf("creator ReadyUp failed: %v", err)
+	}
+	if _, err := svc.ReadyUp(ctx, joiner, matchID); err != nil {
+		t.Fatalf("joiner ReadyUp failed: %v", err)
+	}
+
+	// Light man 35 jumps dark 42 backwards to 49. Dark keeps a mobile man on 3.
+	if _, err := db.Exec(`UPDATE p2p_matches SET board_state = $1 WHERE id = $2`,
+		string(damaBoardJSON(t, map[int]int{35: 1, 42: 3, 3: 3}, 0, 7, 0)), matchID); err != nil {
+		t.Fatalf("failed to seed backward capture position: %v", err)
+	}
+
+	// A backward non-capturing step is still illegal on the server.
+	if _, err := svc.SubmitMove(ctx, creator, matchID, map[string]interface{}{
+		"from": 35, "to": 44, "turn_seq": 7,
+	}); !errors.Is(err, p2pdomain.ErrInvalidMove) {
+		t.Fatalf("expected the backward step to be rejected, got %v", err)
+	}
+
+	after, err := svc.SubmitMove(ctx, creator, matchID, map[string]interface{}{
+		"from": 35, "to": 49, "turn_seq": 7,
+	})
+	if err != nil {
+		t.Fatalf("backward capture rejected: %v", err)
+	}
+	if after.CurrentTurnUserID == nil || *after.CurrentTurnUserID != joiner {
+		t.Fatalf("turn should pass to the opponent after the capture")
+	}
+
+	creatorState, err := svc.GetMatchState(ctx, creator, matchID)
+	if err != nil {
+		t.Fatalf("creator state failed: %v", err)
+	}
+	joinerState, err := svc.GetMatchState(ctx, joiner, matchID)
+	if err != nil {
+		t.Fatalf("joiner state failed: %v", err)
+	}
+
+	creatorCells, ok := creatorState.BoardState["cells"].([]interface{})
+	if !ok {
+		t.Fatalf("creator cells have unexpected type %T", creatorState.BoardState["cells"])
+	}
+	joinerCells, ok := joinerState.BoardState["cells"].([]interface{})
+	if !ok {
+		t.Fatalf("joiner cells have unexpected type %T", joinerState.BoardState["cells"])
+	}
+	if !reflect.DeepEqual(creatorCells, joinerCells) {
+		t.Fatalf("both players must see the same board after a backward capture")
+	}
+	if damaCellValue(t, creatorCells, 42) != 0 {
+		t.Fatalf("captured square 42 still holds a piece for the creator")
+	}
+	if damaCellValue(t, creatorCells, 35) != 0 {
+		t.Fatalf("source square 35 still holds a piece")
+	}
+	if damaCellValue(t, creatorCells, 49) != 1 {
+		t.Fatalf("expected the light man on 49, got %d", damaCellValue(t, creatorCells, 49))
+	}
+	switch turn := creatorState.BoardState["turn"].(type) {
+	case float64:
+		if int(turn) != 1 {
+			t.Fatalf("expected dark to move after the capture, got %v", turn)
+		}
+	case int:
+		if turn != 1 {
+			t.Fatalf("expected dark to move after the capture, got %v", turn)
+		}
+	default:
+		t.Fatalf("unexpected turn type %T", creatorState.BoardState["turn"])
+	}
+
+	// The opponent's authoritative move list is derived from the same board.
+	moves, ok := joinerState.BoardState["legal_moves"].([]interface{})
+	if !ok || len(moves) == 0 {
+		t.Fatalf("expected legal moves for the opponent, got %T %v", joinerState.BoardState["legal_moves"], joinerState.BoardState["legal_moves"])
 	}
 }
 

@@ -244,29 +244,326 @@ func TestPromotionOnSimpleMove(t *testing.T) {
 	}
 }
 
-func TestBackwardCaptureIsConfigurable(t *testing.T) {
-	position := func(rules Ruleset) *Game {
-		g := emptyGame(rules)
+func TestManCapturesForwardAndBackward(t *testing.T) {
+	// Light men move up the board, so a forward capture reduces the row and a
+	// backward capture increases it. Both are legal under the default rules.
+	forward := emptyGame(DefaultRuleset())
+	forward.Turn = Light
+	place(forward, 35, Light, false) // r4c3
+	place(forward, 26, Dark, false)  // r3c2, forward victim
+	place(forward, 3, Dark, false)   // keeps dark mobile after the capture
+
+	capture := stepTo(forward.LegalSteps(), 35, 17)
+	if capture == nil {
+		t.Fatalf("expected forward capture 35->17, got %+v", forward.LegalSteps())
+	}
+	if len(capture.Captures) != 1 || capture.Captures[0] != 26 {
+		t.Fatalf("expected forward capture of 26, got %+v", capture.Captures)
+	}
+	if _, complete, err := forward.ApplyStep(35, 17); err != nil || !complete {
+		t.Fatalf("forward capture failed: complete=%v err=%v", complete, err)
+	}
+	if !forward.Board.At(26).IsEmpty() {
+		t.Fatalf("forward capture did not remove the jumped piece")
+	}
+	if forward.Board.At(17) != (Piece{Player: Light}) {
+		t.Fatalf("forward capture did not land on 17")
+	}
+
+	backward := emptyGame(DefaultRuleset())
+	backward.Turn = Light
+	place(backward, 35, Light, false) // r4c3
+	place(backward, 42, Dark, false)  // r5c2, backward victim
+	place(backward, 3, Dark, false)   // keeps dark mobile after the capture
+
+	capture = stepTo(backward.LegalSteps(), 35, 49)
+	if capture == nil {
+		t.Fatalf("expected backward capture 35->49, got %+v", backward.LegalSteps())
+	}
+	if len(capture.Captures) != 1 || capture.Captures[0] != 42 {
+		t.Fatalf("expected backward capture of 42, got %+v", capture.Captures)
+	}
+	if _, complete, err := backward.ApplyStep(35, 49); err != nil || !complete {
+		t.Fatalf("backward capture failed: complete=%v err=%v", complete, err)
+	}
+	if !backward.Board.At(42).IsEmpty() {
+		t.Fatalf("backward capture did not remove the jumped piece")
+	}
+	if backward.Board.At(35) != (Piece{}) {
+		t.Fatalf("backward capture left a copy of the piece on 35")
+	}
+	if backward.Board.At(49) != (Piece{Player: Light}) {
+		t.Fatalf("backward capture did not land on 49")
+	}
+	if backward.Turn != Dark {
+		t.Fatalf("turn should pass to dark after a completed capture")
+	}
+	if len(backward.History) != 1 || len(backward.History[0].Captures) != 1 || backward.History[0].Captures[0] != 42 {
+		t.Fatalf("expected the backward capture in the move history, got %+v", backward.History)
+	}
+}
+
+func TestManCannotCaptureOwnPiece(t *testing.T) {
+	g := emptyGame(DefaultRuleset())
+	g.Turn = Light
+	place(g, 35, Light, false) // r4c3
+	place(g, 26, Light, false) // r3c2, own man diagonally forward
+	place(g, 42, Light, false) // r5c2, own man diagonally backward
+	place(g, 3, Dark, false)
+
+	for _, step := range g.LegalSteps() {
+		if len(step.Captures) > 0 {
+			t.Fatalf("own pieces must never be capturable, got %+v", step)
+		}
+	}
+	for _, to := range []int{17, 49} {
+		if _, _, err := g.ApplyStep(35, to); !errors.Is(err, ErrIllegalMove) {
+			t.Fatalf("expected 35->%d over an own piece to be rejected, got %v", to, err)
+		}
+	}
+}
+
+func TestManCaptureLandingMustBeEmptyAndOnBoard(t *testing.T) {
+	// An enemy on the last row cannot be jumped backwards by a light man
+	// because the landing square would fall off the board.
+	edge := emptyGame(DefaultRuleset())
+	edge.Turn = Light
+	place(edge, 49, Light, false) // r6c1
+	place(edge, 56, Dark, false)  // r7c0
+	place(edge, 58, Dark, false)  // r7c2
+	for _, step := range edge.LegalSteps() {
+		if step.From == 49 && len(step.Captures) > 0 {
+			t.Fatalf("capture must not land off the board, got %+v", step)
+		}
+	}
+
+	// An occupied landing square blocks the capture in both directions.
+	for _, landing := range []struct {
+		name  string
+		piece Piece
+	}{
+		{name: "enemy", piece: Piece{Player: Dark}},
+		{name: "own", piece: Piece{Player: Light}},
+	} {
+		forward := emptyGame(DefaultRuleset())
+		forward.Turn = Light
+		place(forward, 35, Light, false) // r4c3
+		place(forward, 26, Dark, false)  // r3c2, victim
+		place(forward, 17, Dark, false)  // r2c1, landing
+		place(forward, 3, Dark, false)
+		forward.Board.Set(17, landing.piece)
+		if stepTo(forward.LegalSteps(), 35, 17) != nil {
+			t.Fatalf("forward capture must not land on a square occupied by %s pieces", landing.name)
+		}
+
+		backward := emptyGame(DefaultRuleset())
+		backward.Turn = Light
+		place(backward, 35, Light, false) // r4c3
+		place(backward, 42, Dark, false)  // r5c2, victim
+		place(backward, 49, Dark, false)  // r6c1, landing
+		place(backward, 3, Dark, false)
+		backward.Board.Set(49, landing.piece)
+		if stepTo(backward.LegalSteps(), 35, 49) != nil {
+			t.Fatalf("backward capture must not land on a square occupied by %s pieces", landing.name)
+		}
+	}
+}
+
+func TestManStillCannotMoveBackwards(t *testing.T) {
+	g := emptyGame(DefaultRuleset())
+	g.Turn = Light
+	place(g, 35, Light, false) // r4c3
+	place(g, 3, Dark, false)
+
+	if stepTo(g.LegalSteps(), 35, 44) != nil {
+		t.Fatalf("backward ordinary moves must stay illegal under the default rules")
+	}
+	if _, _, err := g.ApplyStep(35, 44); !errors.Is(err, ErrIllegalMove) {
+		t.Fatalf("expected 35->44 to be rejected, got %v", err)
+	}
+	if stepTo(g.LegalSteps(), 35, 28) == nil {
+		t.Fatalf("forward ordinary moves must stay legal")
+	}
+}
+
+func TestBackwardCaptureIsMandatory(t *testing.T) {
+	g := emptyGame(DefaultRuleset())
+	g.Turn = Light
+	place(g, 35, Light, false) // r4c3
+	place(g, 42, Dark, false)  // r5c2, reachable only backwards
+	place(g, 3, Dark, false)
+
+	// A free forward step exists but the backward capture is still compulsory.
+	if _, _, err := g.ApplyStep(35, 28); !errors.Is(err, ErrIllegalMove) {
+		t.Fatalf("expected the free move to be rejected while a backward capture exists, got %v", err)
+	}
+	steps := g.LegalSteps()
+	if len(steps) != 1 || steps[0].From != 35 || steps[0].To != 49 {
+		t.Fatalf("expected only the backward capture 35->49, got %+v", steps)
+	}
+}
+
+func TestManCaptureChainCanChangeDirection(t *testing.T) {
+	t.Run("forward then backward", func(t *testing.T) {
+		g := emptyGame(DefaultRuleset())
 		g.Turn = Light
 		place(g, 35, Light, false) // r4c3
-		place(g, 42, Dark, false)  // r5c2, behind light
-		place(g, 62, Dark, false)  // keeps dark alive
-		return g
+		place(g, 28, Dark, false)  // r3c4, first victim (forward)
+		place(g, 30, Dark, false)  // r3c6, second victim (backward from 21)
+		place(g, 3, Dark, false)
+
+		first := stepTo(g.LegalSteps(), 35, 21)
+		if first == nil || !first.Continues {
+			t.Fatalf("expected 35->21 to start a chain, got %+v", g.LegalSteps())
+		}
+		if _, complete, err := g.ApplyStep(35, 21); err != nil || complete {
+			t.Fatalf("first hop: complete=%v err=%v", complete, err)
+		}
+		if g.ChainFrom == nil || *g.ChainFrom != 21 {
+			t.Fatalf("expected the chain to continue from 21, got %v", g.ChainFrom)
+		}
+
+		second := stepTo(g.LegalSteps(), 21, 39)
+		if second == nil || len(second.Captures) != 1 || second.Captures[0] != 30 {
+			t.Fatalf("expected the backward continuation 21->39 capturing 30, got %+v", g.LegalSteps())
+		}
+		if _, complete, err := g.ApplyStep(21, 39); err != nil || !complete {
+			t.Fatalf("second hop: complete=%v err=%v", complete, err)
+		}
+		for _, square := range []int{28, 30} {
+			if !g.Board.At(square).IsEmpty() {
+				t.Fatalf("captured square %d was not cleared", square)
+			}
+		}
+		if g.Board.At(39) != (Piece{Player: Light}) {
+			t.Fatalf("expected the chain to end on 39")
+		}
+		if g.Turn != Dark {
+			t.Fatalf("turn should pass after the chain completes")
+		}
+	})
+
+	t.Run("backward then forward", func(t *testing.T) {
+		g := emptyGame(DefaultRuleset())
+		g.Turn = Light
+		place(g, 35, Light, false) // r4c3
+		place(g, 44, Dark, false)  // r5c4, first victim (backward)
+		place(g, 46, Dark, false)  // r5c6, second victim (forward from 53)
+		place(g, 3, Dark, false)
+
+		first := stepTo(g.LegalSteps(), 35, 53)
+		if first == nil || !first.Continues {
+			t.Fatalf("expected 35->53 to start a chain, got %+v", g.LegalSteps())
+		}
+		if _, complete, err := g.ApplyStep(35, 53); err != nil || complete {
+			t.Fatalf("first hop: complete=%v err=%v", complete, err)
+		}
+
+		second := stepTo(g.LegalSteps(), 53, 39)
+		if second == nil || len(second.Captures) != 1 || second.Captures[0] != 46 {
+			t.Fatalf("expected the forward continuation 53->39 capturing 46, got %+v", g.LegalSteps())
+		}
+		if _, complete, err := g.ApplyStep(53, 39); err != nil || !complete {
+			t.Fatalf("second hop: complete=%v err=%v", complete, err)
+		}
+		for _, square := range []int{44, 46} {
+			if !g.Board.At(square).IsEmpty() {
+				t.Fatalf("captured square %d was not cleared", square)
+			}
+		}
+		if g.Board.At(39) != (Piece{Player: Light}) {
+			t.Fatalf("expected the chain to end on 39")
+		}
+		if g.Turn != Dark {
+			t.Fatalf("turn should pass after the chain completes")
+		}
+	})
+}
+
+func TestBackwardCaptureKeepsPromotionAndKingRules(t *testing.T) {
+	// A light man capturing backwards lands on its own back rank and must not
+	// promote, exactly like any other move that ends there.
+	backward := emptyGame(DefaultRuleset())
+	backward.Turn = Light
+	place(backward, 35, Light, false) // r4c3
+	place(backward, 42, Dark, false)  // r5c2
+	place(backward, 3, Dark, false)
+
+	step, complete, err := backward.ApplyStep(35, 49)
+	if err != nil || !complete {
+		t.Fatalf("backward capture: complete=%v err=%v", complete, err)
+	}
+	if step.Promotion || backward.Board.At(49).King {
+		t.Fatalf("a backward capture must not promote on the mover's own back rank, got %+v", step)
 	}
 
-	defaultGame := position(DefaultRuleset())
-	if stepTo(defaultGame.LegalSteps(), 35, 49) != nil {
-		t.Fatalf("default rules must not allow a backward capture")
+	// A forward capture onto the opponent's back rank still promotes.
+	forward := emptyGame(DefaultRuleset())
+	forward.Turn = Light
+	place(forward, 17, Light, false) // r2c1
+	place(forward, 10, Dark, false)  // r1c2
+	place(forward, 62, Dark, false)  // keeps dark alive
+
+	capture := stepTo(forward.LegalSteps(), 17, 3)
+	if capture == nil {
+		t.Fatalf("expected the forward capture 17->3, got %+v", forward.LegalSteps())
+	}
+	if !capture.Promotion {
+		t.Fatalf("expected the previewed forward capture to promote, got %+v", capture)
+	}
+	step, complete, err = forward.ApplyStep(17, 3)
+	if err != nil || !complete {
+		t.Fatalf("forward capture: complete=%v err=%v", complete, err)
+	}
+	if step == nil || !step.Promotion {
+		t.Fatalf("expected promotion on the opponent's back rank, got %+v", step)
+	}
+	if !forward.Board.At(3).King || forward.Board.At(3).Player != Light {
+		t.Fatalf("expected a light king on 3, got %+v", forward.Board.At(3))
 	}
 
+	// Kings still slide forwards and backwards, unchanged.
+	slideGame := emptyGame(DefaultRuleset())
+	slideGame.Turn = Light
+	place(slideGame, 35, Light, true) // r4c3
+	place(slideGame, 3, Dark, false)
+
+	slideSteps := slideGame.LegalSteps()
+	if stepTo(slideSteps, 35, 44) == nil {
+		t.Fatalf("kings must still slide backwards, got %+v", slideSteps)
+	}
+	if stepTo(slideSteps, 35, 26) == nil {
+		t.Fatalf("kings must still slide forwards, got %+v", slideSteps)
+	}
+
+	// Kings still capture over a distance, unchanged.
+	kingGame := emptyGame(DefaultRuleset())
+	kingGame.Turn = Light
+	place(kingGame, 35, Light, true) // r4c3
+	place(kingGame, 14, Dark, false) // r1c6, captured over a distance
+	place(kingGame, 3, Dark, false)
+
+	kingCapture := stepTo(kingGame.LegalSteps(), 35, 7)
+	if kingCapture == nil || len(kingCapture.Captures) != 1 || kingCapture.Captures[0] != 14 {
+		t.Fatalf("expected the flying king capture 35->7 over 14, got %+v", kingGame.LegalSteps())
+	}
+}
+
+func TestBackwardCaptureCanBeDisabled(t *testing.T) {
 	rules := DefaultRuleset()
-	rules.MenCaptureBackwards = true
-	backwardsGame := position(rules)
-	if stepTo(backwardsGame.LegalSteps(), 35, 49) == nil {
-		t.Fatalf("MenCaptureBackwards should allow 35->49")
+	rules.MenCaptureBackwards = false
+
+	g := emptyGame(rules)
+	g.Turn = Light
+	place(g, 35, Light, false) // r4c3
+	place(g, 42, Dark, false)  // r5c2, behind light
+	place(g, 3, Dark, false)
+
+	if stepTo(g.LegalSteps(), 35, 49) != nil {
+		t.Fatalf("MenCaptureBackwards=false must not allow a backward capture")
 	}
-	if _, _, err := backwardsGame.ApplyStep(35, 49); err != nil {
-		t.Fatalf("backward capture rejected: %v", err)
+	if _, _, err := g.ApplyStep(35, 49); !errors.Is(err, ErrIllegalMove) {
+		t.Fatalf("expected the backward capture to be rejected, got %v", err)
 	}
 }
 
