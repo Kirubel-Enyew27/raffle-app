@@ -21,6 +21,7 @@ var (
 	ErrMatchNotFinished    = errors.New("match is not finished")
 	ErrAlreadyJoined       = errors.New("already joined this match")
 	ErrCannotJoinOwnMatch  = errors.New("cannot join your own match")
+	ErrInvitationExpired   = errors.New("invitation has expired")
 	ErrNotParticipant      = errors.New("you are not a participant in this match")
 	ErrUnsupportedGame     = errors.New("this game is not supported by the match engine")
 	ErrInsufficientStake   = errors.New("insufficient wallet balance for match stake")

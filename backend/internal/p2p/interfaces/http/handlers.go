@@ -210,6 +210,41 @@ func (h *P2PHandler) JoinMatchByCode(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": "success", "data": view})
 }
 
+func (h *P2PHandler) CancelMatch(c *gin.Context) {
+	userID := c.GetString("user_id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "unauthorized"})
+		return
+	}
+
+	matchID := c.Param("id")
+	if !isUUID(matchID) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "BAD_REQUEST", "message": "invalid match id"})
+		return
+	}
+	view, err := h.svc.CancelMatch(c.Request.Context(), userID, matchID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": "success", "data": view})
+}
+
+func (h *P2PHandler) GetInvite(c *gin.Context) {
+	code := c.Param("code")
+	if code == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "BAD_REQUEST", "message": "invite code is required"})
+		return
+	}
+
+	summary, err := h.svc.GetInvite(c.Request.Context(), code)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": "success", "data": summary})
+}
+
 func (h *P2PHandler) ReadyUp(c *gin.Context) {
 	userID := c.GetString("user_id")
 	if userID == "" {
@@ -338,6 +373,8 @@ func handleError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrPaidMatchesDisabled):
 		c.JSON(http.StatusForbidden, gin.H{"code": "PAID_MATCHES_DISABLED", "message": err.Error()})
+	case errors.Is(err, domain.ErrInvitationExpired):
+		c.JSON(http.StatusGone, gin.H{"code": "INVITATION_EXPIRED", "message": "This invitation has expired"})
 	case errors.Is(err, domain.ErrNotParticipant):
 		c.JSON(http.StatusForbidden, gin.H{"code": "FORBIDDEN", "message": err.Error()})
 	case errors.Is(err, domain.ErrMatchNotFound) || errors.Is(err, domain.ErrGameNotFound):
@@ -346,7 +383,13 @@ func handleError(c *gin.Context, err error) {
 		c.JSON(http.StatusPaymentRequired, gin.H{"code": "INSUFFICIENT_FUNDS", "message": "Insufficient available wallet balance for match stake"})
 	case errors.Is(err, domain.ErrInvalidStake) || errors.Is(err, domain.ErrInvalidMove) || errors.Is(err, domain.ErrUnsupportedGame):
 		c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_ACTION", "message": err.Error()})
-	case errors.Is(err, domain.ErrNotYourTurn) || errors.Is(err, domain.ErrTurnTimeout) || errors.Is(err, domain.ErrStaleMove) || errors.Is(err, domain.ErrMatchNotInProgress) || errors.Is(err, domain.ErrMatchNotFinished) || errors.Is(err, domain.ErrMatchFull) || errors.Is(err, domain.ErrCannotJoinOwnMatch) || errors.Is(err, domain.ErrMatchNotJoinable):
+	case errors.Is(err, domain.ErrCannotJoinOwnMatch):
+		c.JSON(http.StatusConflict, gin.H{"code": "CANNOT_JOIN_OWN_MATCH", "message": "cannot join your own match"})
+	case errors.Is(err, domain.ErrMatchFull):
+		c.JSON(http.StatusConflict, gin.H{"code": "MATCH_FULL", "message": "match is already full"})
+	case errors.Is(err, domain.ErrMatchNotJoinable):
+		c.JSON(http.StatusConflict, gin.H{"code": "MATCH_NOT_JOINABLE", "message": "match is not joinable"})
+	case errors.Is(err, domain.ErrNotYourTurn) || errors.Is(err, domain.ErrTurnTimeout) || errors.Is(err, domain.ErrStaleMove) || errors.Is(err, domain.ErrMatchNotInProgress) || errors.Is(err, domain.ErrMatchNotFinished):
 		c.JSON(http.StatusConflict, gin.H{"code": "MATCH_CONFLICT", "message": err.Error()})
 	default:
 		// Never echo raw driver/query errors to clients.

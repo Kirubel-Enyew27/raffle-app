@@ -20,6 +20,7 @@ type MatchRepository interface {
 	FindByID(ctx context.Context, id string) (*Match, error)
 	FindByIDForUpdate(ctx context.Context, tx *sql.Tx, id string) (*Match, error)
 	FindByInviteCode(ctx context.Context, code string) (*Match, error)
+	FindByInviteCodeForUpdate(ctx context.Context, tx *sql.Tx, code string) (*Match, error)
 	ListWaiting(ctx context.Context, gameSlug string, limit int) ([]*Match, error)
 	ListUserMatches(ctx context.Context, userID string, limit, offset int) ([]*Match, int, error)
 	FindExpiredTurns(ctx context.Context, now time.Time) ([]*Match, error)

@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/big"
 	"strconv"
+	"strings"
 	"time"
 
 	auditapp "github.com/raffle-app/backend/internal/audit/application"
@@ -43,6 +44,7 @@ type MatchView struct {
 	Players            []*domain.MatchPlayer `json:"players"`
 	StartedAt          *time.Time            `json:"started_at,omitempty"`
 	CompletedAt        *time.Time            `json:"completed_at,omitempty"`
+	ExpiresAt          *time.Time            `json:"expires_at,omitempty"`
 	CreatedAt          time.Time             `json:"created_at"`
 }
 
@@ -55,6 +57,26 @@ const (
 type RematchResult struct {
 	Status string     `json:"status"`
 	Match  *MatchView `json:"match"`
+}
+
+type InviteSummary struct {
+	InviteCode         string    `json:"invite_code"`
+	MatchID            string    `json:"match_id"`
+	GameSlug           string    `json:"game_slug"`
+	GameTitle          string    `json:"game_title"`
+	GameDescription    string    `json:"game_description"`
+	Status             string    `json:"status"`
+	IsJoinable         bool      `json:"is_joinable"`
+	IsExpired          bool      `json:"is_expired"`
+	ExpiresAt          time.Time `json:"expires_at"`
+	SecondsLeft        int       `json:"seconds_left"`
+	CreatorID          string    `json:"creator_id"`
+	CreatorName        string    `json:"creator_name"`
+	CreatorAvatarURL   *string   `json:"creator_avatar_url,omitempty"`
+	MatchType          string    `json:"match_type"`
+	MaxRounds          int       `json:"max_rounds"`
+	DefaultTurnSeconds int       `json:"default_turn_seconds"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 type CreateMatchRequest struct {
@@ -355,22 +377,17 @@ func (s *P2PService) JoinMatch(ctx context.Context, userID, matchID, inviteCode 
 		}
 		match = m
 	} else if inviteCode != "" {
-		m, err := s.matchRepo.FindByInviteCode(ctx, inviteCode)
+		cleanCode := strings.TrimSpace(strings.ToUpper(inviteCode))
+		if cleanCode == "" {
+			return nil, domain.ErrMatchNotFound
+		}
+		m, err := s.matchRepo.FindByInviteCodeForUpdate(ctx, tx, cleanCode)
 		if err != nil {
 			return nil, err
 		}
-		// Re-lock
-		locked, err := s.matchRepo.FindByIDForUpdate(ctx, tx, m.ID)
-		if err != nil {
-			return nil, err
-		}
-		match = locked
+		match = m
 	} else {
 		return nil, errors.New("must provide match_id or invite_code")
-	}
-
-	if match.Status != domain.StatusWaiting {
-		return nil, domain.ErrMatchNotJoinable
 	}
 
 	existingPlayers, err := s.playerRepo.ListByMatchTx(ctx, tx, match.ID)
@@ -380,8 +397,21 @@ func (s *P2PService) JoinMatch(ctx context.Context, userID, matchID, inviteCode 
 
 	for _, p := range existingPlayers {
 		if p.UserID == userID {
-			return nil, domain.ErrCannotJoinOwnMatch
+			if p.PlayerIndex == 0 {
+				return nil, domain.ErrCannotJoinOwnMatch
+			}
+			// Already joined as Player 1: return existing match view idempotently
+			match.Players = existingPlayers
+			return s.buildView(match, userID), nil
 		}
+	}
+
+	if match.Status != domain.StatusWaiting {
+		return nil, domain.ErrMatchNotJoinable
+	}
+
+	if match.CreatedAt.Before(time.Now().Add(-idleRoomTTL(match.MatchType))) {
+		return nil, domain.ErrInvitationExpired
 	}
 
 	if len(existingPlayers) >= 2 {
@@ -442,6 +472,135 @@ func (s *P2PService) JoinMatch(ctx context.Context, userID, matchID, inviteCode 
 	publishLobbyUpdate(ctx, s.realtime, "joined", match)
 
 	return s.buildView(match, userID), nil
+}
+
+func (s *P2PService) CancelMatch(ctx context.Context, userID, matchID string) (*MatchView, error) {
+	tx, err := s.matchRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	match, err := s.matchRepo.FindByIDForUpdate(ctx, tx, matchID)
+	if err != nil {
+		return nil, err
+	}
+
+	if match.CreatedBy != userID {
+		return nil, domain.ErrNotParticipant
+	}
+
+	if match.Status != domain.StatusWaiting {
+		return nil, domain.ErrMatchNotJoinable
+	}
+
+	now := time.Now()
+	if err := s.matchRepo.MarkCancelledTx(ctx, tx, match.ID, now); err != nil {
+		return nil, err
+	}
+
+	if match.StakeCents > 0 {
+		if err := s.escrowRepo.ReleaseReservedFundsTx(ctx, tx, match.CreatedBy, match.StakeCents, match.ID, "room cancelled by host"); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	match.Status = domain.StatusCancelled
+	match.CompletedAt = &now
+
+	players, _ := s.playerRepo.ListByMatch(ctx, match.ID)
+	match.Players = players
+
+	if s.realtime != nil {
+		_ = s.realtime.PublishToChannel(ctx, matchChannel(match.ID), "p2p.match_cancelled", map[string]interface{}{
+			"match_id": match.ID,
+			"reason":   "cancelled by host",
+		})
+	}
+	publishLobbyUpdate(ctx, s.realtime, "cancelled", match)
+
+	return s.buildView(match, userID), nil
+}
+
+func (s *P2PService) GetInvite(ctx context.Context, code string) (*InviteSummary, error) {
+	cleanCode := strings.TrimSpace(strings.ToUpper(code))
+	if cleanCode == "" {
+		return nil, domain.ErrMatchNotFound
+	}
+
+	match, err := s.matchRepo.FindByInviteCode(ctx, cleanCode)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrMatchNotFound
+		}
+		return nil, err
+	}
+
+	game, err := s.gameRepo.FindBySlug(ctx, match.GameSlug)
+	if err != nil {
+		return nil, err
+	}
+
+	players, err := s.playerRepo.ListByMatch(ctx, match.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	ttl := idleRoomTTL(match.MatchType)
+	expiresAt := match.CreatedAt.Add(ttl)
+	now := time.Now()
+	isExpired := false
+	secondsLeft := 0
+
+	status := match.Status
+	if match.Status == domain.StatusWaiting {
+		if now.After(expiresAt) {
+			isExpired = true
+			status = "expired"
+		} else {
+			secondsLeft = int(time.Until(expiresAt).Seconds())
+		}
+	}
+
+	isJoinable := (match.Status == domain.StatusWaiting && !isExpired && len(players) < 2)
+
+	var creatorName = "Challenger"
+	var creatorAvatar *string
+	if len(players) > 0 {
+		if players[0].DisplayName != "" {
+			creatorName = players[0].DisplayName
+		}
+		if players[0].AvatarURL != "" {
+			avatar := players[0].AvatarURL
+			creatorAvatar = &avatar
+		}
+	}
+
+	summary := &InviteSummary{
+		InviteCode:         cleanCode,
+		MatchID:            match.ID,
+		GameSlug:           match.GameSlug,
+		GameTitle:          game.Title,
+		GameDescription:    game.Description,
+		Status:             status,
+		IsJoinable:         isJoinable,
+		IsExpired:          isExpired,
+		ExpiresAt:          expiresAt,
+		SecondsLeft:        secondsLeft,
+		CreatorID:          match.CreatedBy,
+		CreatorName:        creatorName,
+		CreatorAvatarURL:   creatorAvatar,
+		MatchType:          match.MatchType,
+		MaxRounds:          match.MaxRounds,
+		DefaultTurnSeconds: game.DefaultTurnSeconds,
+		CreatedAt:          match.CreatedAt,
+	}
+
+	return summary, nil
 }
 
 func (s *P2PService) ReadyUp(ctx context.Context, userID, matchID string) (*MatchView, error) {
@@ -1073,6 +1232,12 @@ func (s *P2PService) buildView(m *domain.Match, userID string) *MatchView {
 		}
 	}
 
+	var expiresAt *time.Time
+	if m.Status == domain.StatusWaiting {
+		exp := m.CreatedAt.Add(idleRoomTTL(m.MatchType))
+		expiresAt = &exp
+	}
+
 	return &MatchView{
 		ID:                 m.ID,
 		GameSlug:           m.GameSlug,
@@ -1097,6 +1262,7 @@ func (s *P2PService) buildView(m *domain.Match, userID string) *MatchView {
 		Players:            m.Players,
 		StartedAt:          m.StartedAt,
 		CompletedAt:        m.CompletedAt,
+		ExpiresAt:          expiresAt,
 		CreatedAt:          m.CreatedAt,
 	}
 }

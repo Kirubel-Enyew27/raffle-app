@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Gamepad2,
@@ -11,7 +11,6 @@ import {
   Trophy,
   Clock,
   Sparkles,
-  ArrowRight,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -22,32 +21,19 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { p2pApi } from '@/features/p2p/api'
 import { useP2PStream } from '@/features/p2p/useP2PStream'
-import { TicTacToeMarkerPair } from '@/features/p2p/TicTacToeMarkers'
-import { RpsChoiceTrio } from '@/features/p2p/RockPaperScissorsIcons'
-import { ConnectFourTokenPair } from '@/features/p2p/ConnectFourToken'
-import { DamaPiecePair } from '@/features/p2p/DamaPiece'
+import { GameIcon } from '@/features/p2p/GameIcon'
+import { ChallengeFriendModal } from '@/features/p2p/ChallengeFriendModal'
+import { AcceptInviteModal } from '@/features/p2p/AcceptInviteModal'
+import { extractStartInviteCode } from '@/lib/telegram'
 
-const ICON_SIZES = {
-  sm: { text: 'text-lg', marker: 'h-4 w-4' },
-  md: { text: 'text-xl', marker: 'h-5 w-5' },
-  lg: { text: 'text-3xl', marker: 'h-7 w-7' },
-} as const
-
-// Every catalogued game shows its real pieces rather than an emoji badge; the
-// controller glyph below only covers a game this build does not know.
-function GameIcon({ slug, size = 'md' }: { slug: string; size?: keyof typeof ICON_SIZES }) {
-  switch (slug) {
-    case 'tic-tac-toe':
-      return <TicTacToeMarkerPair className={ICON_SIZES[size].marker} />
-    case 'rock-paper-scissors':
-      return <RpsChoiceTrio className={ICON_SIZES[size].marker} />
-    case 'connect-four':
-      return <ConnectFourTokenPair className={ICON_SIZES[size].marker} />
-    case 'ethiopian-dama':
-      return <DamaPiecePair className={ICON_SIZES[size].marker} />
-    default:
-      return <span className={ICON_SIZES[size].text}>🎮</span>
+function apiErrorMessage(err: unknown, fallback = 'Something went wrong'): string {
+  if (typeof err === 'object' && err !== null) {
+    const response = (err as { response?: { data?: { message?: string } } }).response
+    if (response?.data?.message) return response.data.message
+    const message = (err as { message?: string }).message
+    if (message) return message
   }
+  return fallback
 }
 
 export function Component() {
@@ -56,11 +42,40 @@ export function Component() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
 
+  const [searchParams, setSearchParams] = useSearchParams()
   const [inviteCodeInput, setInviteCodeInput] = useState('')
   const [activeTab, setActiveTab] = useState<'lobby' | 'history'>('lobby')
   const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [challengeModalOpen, setChallengeModalOpen] = useState(false)
+  const [challengeGameSlug, setChallengeGameSlug] = useState<string | undefined>()
+  const [enteredCode, setEnteredCode] = useState<string | null>(null)
   const [selectedGameSlug, setSelectedGameSlug] = useState<string>('tic-tac-toe')
   const [matchType, setMatchType] = useState<'public_queue' | 'private_room'>('public_queue')
+
+  // Resolve active invite code from entered state, URL search params, or Telegram WebApp start param
+  const urlInviteCode = (
+    searchParams.get('join') ||
+    searchParams.get('code') ||
+    extractStartInviteCode() ||
+    ''
+  ).trim().toUpperCase()
+  const acceptCode = enteredCode || (urlInviteCode ? urlInviteCode : null)
+
+  const handleCloseAccept = () => {
+    setEnteredCode(null)
+    if (searchParams.has('join') || searchParams.has('code') || searchParams.has('tgWebAppStartParam')) {
+      setSearchParams(
+        (prev) => {
+          const updated = new URLSearchParams(prev)
+          updated.delete('join')
+          updated.delete('code')
+          updated.delete('tgWebAppStartParam')
+          return updated
+        },
+        { replace: true }
+      )
+    }
+  }
 
   // Fetch games
   const { data: games = [] } = useQuery({
@@ -110,10 +125,10 @@ export function Component() {
       setCreateModalOpen(false)
       navigate(`/games/match/${match.id}`)
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       toast({
         title: 'Could not create match',
-        description: err.response?.data?.message || err.message,
+        description: apiErrorMessage(err),
         type: 'error',
       })
     },
@@ -126,25 +141,10 @@ export function Component() {
       queryClient.invalidateQueries({ queryKey: ['p2p-lobby'] })
       navigate(`/games/match/${match.id}`)
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       toast({
         title: 'Failed to join match',
-        description: err.response?.data?.message || err.message,
-        type: 'error',
-      })
-    },
-  })
-
-  // Join by code mutation
-  const joinByCodeMutation = useMutation({
-    mutationFn: (code: string) => p2pApi.joinMatchByCode(code),
-    onSuccess: (match) => {
-      navigate(`/games/match/${match.id}`)
-    },
-    onError: (err: any) => {
-      toast({
-        title: 'Invalid Invite Code',
-        description: err.response?.data?.message || 'Room not found or no longer open for joining.',
+        description: apiErrorMessage(err),
         type: 'error',
       })
     },
@@ -158,16 +158,26 @@ export function Component() {
     createMutation.mutate({
       game_slug: gameSlug,
       match_type: isPrivate ? 'private_room' : 'public_queue',
-      stake_amount: 0, // Free play mode in compliance with regulations
-      // Quick Play pairs with a waiting opponent; hosting a room does not.
+      stake_amount: 0,
       auto_match: autoMatch,
     })
   }
 
+  // Join by code preview handler
   const handleJoinByCode = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!inviteCodeInput.trim()) return
-    joinByCodeMutation.mutate(inviteCodeInput.trim())
+    const trimmed = inviteCodeInput.trim().toUpperCase()
+    if (!trimmed) return
+    if (trimmed.length < 4) {
+      toast({
+        title: 'Invalid Code Format',
+        description: 'Challenge codes must be at least 4 characters long.',
+        type: 'error',
+      })
+      return
+    }
+    setEnteredCode(trimmed)
+    setInviteCodeInput('')
   }
 
   return (
@@ -187,6 +197,27 @@ export function Component() {
           <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
             Test your skills in fast-paced turn-based games. Join public matchmaking or create a private room to challenge your friends with a code.
           </p>
+
+          <div className="pt-2 flex flex-wrap items-center gap-3">
+            <Button
+              onClick={() => {
+                setChallengeGameSlug(undefined)
+                setChallengeModalOpen(true)
+              }}
+              className="gap-2 font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25 h-11 px-5 text-sm"
+            >
+              <Swords className="w-4 h-4" />
+              <span>Challenge a Friend</span>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setCreateModalOpen(true)}
+              className="gap-1.5 h-11 px-4 text-sm font-semibold border-white/20 bg-white/5 hover:bg-white/10 text-white"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Host Custom Match</span>
+            </Button>
+          </div>
         </div>
 
         {/* Decorative background glow */}
@@ -211,10 +242,11 @@ export function Component() {
               />
               <Button
                 type="submit"
-                disabled={!inviteCodeInput.trim() || joinByCodeMutation.isPending}
-                className="h-10 px-6 font-semibold shrink-0"
+                disabled={!inviteCodeInput.trim()}
+                className="h-10 px-6 font-semibold shrink-0 gap-1.5"
               >
-                {joinByCodeMutation.isPending ? 'Joining…' : 'Join Room'}
+                <KeyRound className="w-4 h-4" />
+                <span>Preview & Join</span>
               </Button>
             </div>
           </form>
@@ -228,15 +260,28 @@ export function Component() {
             <Gamepad2 className="w-5 h-5 text-primary" />
             <h2 className="text-xl font-bold tracking-tight">Available Games</h2>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCreateModalOpen(true)}
-            className="gap-1.5"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>Host Custom Match</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => {
+                setChallengeGameSlug(undefined)
+                setChallengeModalOpen(true)
+              }}
+              className="gap-1.5 font-semibold text-xs h-8"
+            >
+              <Swords className="w-3.5 h-3.5" />
+              <span>Challenge Friend</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCreateModalOpen(true)}
+              className="gap-1.5 text-xs h-8"
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Host Custom Match</span>
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -288,12 +333,14 @@ export function Component() {
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => handleCreateMatch(g.slug, true)}
-                      disabled={createMutation.isPending}
-                      className="w-full gap-1 h-9 font-semibold text-xs"
+                      onClick={() => {
+                        setChallengeGameSlug(g.slug)
+                        setChallengeModalOpen(true)
+                      }}
+                      className="w-full gap-1.5 h-9 font-semibold text-xs"
                     >
-                      <span>Private</span>
-                      <ArrowRight className="w-3 h-3" />
+                      <Users className="w-3.5 h-3.5" />
+                      <span>Challenge</span>
                     </Button>
                   </div>
                 </CardContent>
@@ -559,6 +606,26 @@ export function Component() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {challengeModalOpen && (
+        <ChallengeFriendModal
+          open={challengeModalOpen}
+          onClose={() => setChallengeModalOpen(false)}
+          games={games}
+          initialGameSlug={challengeGameSlug}
+        />
+      )}
+
+      {acceptCode && (
+        <AcceptInviteModal
+          inviteCode={acceptCode}
+          onClose={handleCloseAccept}
+          onOpenChallengeModal={() => {
+            setChallengeGameSlug(undefined)
+            setChallengeModalOpen(true)
+          }}
+        />
       )}
     </div>
   )

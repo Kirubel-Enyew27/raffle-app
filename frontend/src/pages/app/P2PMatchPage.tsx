@@ -13,6 +13,9 @@ import {
   WifiOff,
   Sparkles,
   Loader2,
+  Send,
+  Share2,
+  AlertTriangle,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -21,6 +24,14 @@ import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { p2pApi } from '@/features/p2p/api'
+import {
+  buildInviteUrl,
+  buildWebInviteUrl,
+  buildInviteMessage,
+  shareViaTelegram,
+  shareLinkOrCopy,
+  copyToClipboard,
+} from '@/lib/telegram'
 import { useP2PStream, type P2PEvent } from '@/features/p2p/useP2PStream'
 import { TicTacToeBoard } from '@/features/p2p/TicTacToeBoard'
 import { PlayerOneMarker, PlayerTwoMarker, TicTacToeMarker } from '@/features/p2p/TicTacToeMarkers'
@@ -60,8 +71,11 @@ export function Component() {
   const { toast } = useToast()
 
   const [copied, setCopied] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
   const [secondsLeft, setSecondsLeft] = useState<number>(0)
+  const [waitingSecondsLeft, setWaitingSecondsLeft] = useState<number>(0)
   const [resignDialogOpen, setResignDialogOpen] = useState(false)
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
 
   // Fetch initial match state
   const {
@@ -120,6 +134,9 @@ export function Component() {
       } else if (event.type === 'p2p.rematch_created' && event.payload?.next_match_id) {
         toast({ title: 'Rematch started', description: 'Both players agreed — good luck!', type: 'success' })
         navigate(`/games/match/${event.payload.next_match_id}`)
+      } else if (event.type === 'p2p.match_cancelled') {
+        toast({ title: 'Match cancelled', description: 'This invitation has been cancelled.', type: 'info' })
+        refetch()
       } else {
         refetch()
       }
@@ -135,21 +152,43 @@ export function Component() {
     onReconnect: () => refetch(),
   })
 
+  const [prevTurnKey, setPrevTurnKey] = useState<string>('')
+  const turnKey = `${match?.current_turn_user_id}_${match?.turn_seconds_left}`
+  if (match?.status === 'in_progress' && turnKey !== prevTurnKey) {
+    setPrevTurnKey(turnKey)
+    setSecondsLeft(match.turn_seconds_left || 0)
+  }
+
   // Turn timer countdown locally
   useEffect(() => {
-    if (!match || match.status !== 'in_progress') {
-      setSecondsLeft(0)
-      return
-    }
+    if (!match || match.status !== 'in_progress') return
 
-    setSecondsLeft(match.turn_seconds_left || 0)
+    const initialSeconds = match.turn_seconds_left || 0
+    const startedAt = Date.now()
 
     const timer = setInterval(() => {
-      setSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0))
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000)
+      setSecondsLeft(Math.max(0, initialSeconds - elapsed))
     }, 1000)
 
     return () => clearInterval(timer)
-  }, [match?.current_turn_user_id, match?.turn_seconds_left, match?.status])
+  }, [match?.current_turn_user_id, match?.turn_seconds_left, match?.status, match])
+
+  // Waiting room countdown using backend expiration time
+  useEffect(() => {
+    if (!match || match.status !== 'waiting') return
+    const ttlMs = (match.match_type === 'private_room' ? 5 : 15) * 60 * 1000
+    const expiresAt = match.expires_at
+      ? new Date(match.expires_at).getTime()
+      : new Date(match.created_at).getTime() + ttlMs
+
+    const timer = setInterval(() => {
+      const remaining = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000))
+      setWaitingSecondsLeft(remaining)
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [match?.status, match?.expires_at, match?.created_at, match?.match_type, match])
 
   // Move mutation
   const moveMutation = useMutation({
@@ -227,15 +266,34 @@ export function Component() {
     },
   })
 
-  // Escape closes the resignation dialog without resigning.
+  // Cancel mutation
+  const cancelMutation = useMutation({
+    mutationFn: () => p2pApi.cancelMatch(matchId!),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['p2p-match', matchId], updated)
+      toast({ title: 'Invitation cancelled', description: 'The room has been closed.', type: 'info' })
+    },
+    onError: (err: unknown) => {
+      toast({
+        title: 'Could not cancel match',
+        description: apiErrorMessage(err),
+        type: 'error',
+      })
+    },
+  })
+
+  // Escape closes dialogs without action.
   useEffect(() => {
-    if (!resignDialogOpen) return
+    if (!resignDialogOpen && !cancelDialogOpen) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setResignDialogOpen(false)
+      if (event.key === 'Escape') {
+        setResignDialogOpen(false)
+        setCancelDialogOpen(false)
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [resignDialogOpen])
+  }, [resignDialogOpen, cancelDialogOpen])
 
   if (isError) {
     return (
@@ -283,12 +341,54 @@ export function Component() {
   const opponentRequestedRematch = !!match.rematch_requested_by && match.rematch_requested_by !== user?.id
   const canRematch = (match.players?.length ?? 0) === 2
 
-  const handleCopyCode = () => {
+  const handleCopyCode = async () => {
     if (!match.invite_code) return
-    navigator.clipboard.writeText(match.invite_code)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-    toast({ title: 'Code copied!', description: 'Share this 6-character code with your opponent.', type: 'info' })
+    const success = await copyToClipboard(match.invite_code)
+    if (success) {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+      toast({ title: 'Code copied!', description: 'Share this 6-character code with your opponent.', type: 'info' })
+    } else {
+      toast({ title: 'Copy failed', description: 'Please copy the code manually.', type: 'error' })
+    }
+  }
+
+  const handleShareTelegram = () => {
+    if (!match?.invite_code) return
+    const inviteUrl = buildInviteUrl(match.invite_code)
+    const gameName = match.game_slug.replace('-', ' ')
+    const message = buildInviteMessage(gameName, match.invite_code, inviteUrl)
+    shareViaTelegram(inviteUrl, message)
+  }
+
+  const handleCopyLink = async () => {
+    if (!match?.invite_code) return
+    const inviteUrl = buildWebInviteUrl(match.invite_code)
+    const success = await copyToClipboard(inviteUrl)
+    if (success) {
+      setCopiedLink(true)
+      setTimeout(() => setCopiedLink(false), 2000)
+      toast({ title: 'Link copied!', description: 'Challenge link copied to clipboard.', type: 'info' })
+    } else {
+      toast({ title: 'Copy failed', description: 'Please copy the link manually.', type: 'error' })
+    }
+  }
+
+  const handleShareOptions = async () => {
+    if (!match?.invite_code) return
+    const inviteUrl = buildWebInviteUrl(match.invite_code)
+    const gameName = match.game_slug.replace('-', ' ')
+    const message = buildInviteMessage(gameName, match.invite_code, inviteUrl)
+    const result = await shareLinkOrCopy({
+      title: `Challenge: ${gameName}`,
+      text: message,
+      url: inviteUrl,
+    })
+    if (result === 'copied') {
+      setCopiedLink(true)
+      setTimeout(() => setCopiedLink(false), 2000)
+      toast({ title: 'Link copied!', description: 'Challenge link copied to clipboard.', type: 'info' })
+    }
   }
 
   const handleMoveAction = (action: Record<string, unknown>) => {
@@ -477,27 +577,144 @@ export function Component() {
       {/* Main Interactive Stage */}
       <Card className="border-border/80 shadow-xl overflow-hidden min-h-[420px] flex flex-col justify-center">
         <CardContent className="p-4 sm:p-8 flex flex-col items-center justify-center">
-          {/* State 1: WAITING FOR OPPONENT */}
-          {match.status === 'waiting' && (
+          {/* State 0: MATCH CANCELLED */}
+          {match.status === 'cancelled' && (
             <div className="text-center max-w-sm space-y-4 py-8 animate-in fade-in">
-              <div className="w-16 h-16 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center mx-auto animate-pulse text-primary">
-                <Users className="w-8 h-8" />
+              <div className="w-16 h-16 rounded-full bg-muted border-2 border-border flex items-center justify-center mx-auto text-muted-foreground">
+                <Users className="w-8 h-8 opacity-60" />
               </div>
               <div>
-                <h3 className="text-xl font-bold">Waiting for Challenger</h3>
+                <h3 className="text-xl font-bold">Match Cancelled</h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Share your room code with a friend or wait for another player to join through the lobby.
+                  This room was cancelled by the host or expired after 5 minutes of inactivity.
+                </p>
+              </div>
+              <div className="pt-2">
+                <Button onClick={() => navigate('/games')} className="font-semibold text-xs">
+                  Return to Games Lobby
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* State 1: WAITING FOR OPPONENT */}
+          {match.status === 'waiting' && (
+            <div className="w-full max-w-md space-y-5 py-4 animate-in fade-in text-center">
+              {/* Radar Status Animation */}
+              <div className="relative inline-flex items-center justify-center">
+                <div className="w-16 h-16 rounded-2xl bg-primary/10 border-2 border-primary/30 flex items-center justify-center text-primary">
+                  <Users className="w-8 h-8" />
+                </div>
+                <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border-2 border-background" />
+                </span>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-bold">Waiting for Challenger</h3>
+                <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
+                  Share this invitation with a friend through Telegram or copy the room link to play!
                 </p>
               </div>
 
-              {match.invite_code && (
-                <div className="p-3 bg-muted/50 rounded-xl border border-border/80 flex items-center justify-between gap-3">
-                  <span className="font-mono text-lg font-black tracking-widest text-primary">
-                    {match.invite_code}
+              {/* Expiration Timer Badge */}
+              <div className="flex items-center justify-center">
+                <Badge variant="outline" className="font-mono text-xs px-3 py-1 gap-1.5 border-border">
+                  <Clock className="w-3.5 h-3.5 text-amber-500" />
+                  <span>
+                    {waitingSecondsLeft > 0
+                      ? `Expires in ${Math.floor(waitingSecondsLeft / 60)}:${waitingSecondsLeft % 60 < 10 ? '0' : ''}${waitingSecondsLeft % 60}`
+                      : 'Expired'}
                   </span>
-                  <Button size="sm" onClick={handleCopyCode} className="h-8 gap-1.5 font-semibold text-xs">
-                    {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copied ? 'Copied' : 'Copy Code'}</span>
+                </Badge>
+              </div>
+
+              {/* Room Code Card */}
+              {match.invite_code && (
+                <div className="p-4 bg-muted/40 rounded-2xl border border-border/80 space-y-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Private Room Code
+                  </span>
+                  <div className="flex items-center justify-center gap-3">
+                    <span className="font-mono text-3xl font-black tracking-widest text-primary">
+                      {match.invite_code}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleCopyCode}
+                      className="h-9 px-3 gap-1.5 font-semibold text-xs"
+                    >
+                      {copied ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-500" />
+                          <span>Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Sharing Actions */}
+              {match.invite_code && (
+                <div className="space-y-2.5">
+                  <Button
+                    onClick={handleShareTelegram}
+                    className="w-full h-11 font-bold text-sm gap-2 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-md shadow-sky-500/20"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>Invite via Telegram</span>
+                  </Button>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={handleCopyLink}
+                      className="h-9 text-xs font-semibold gap-1.5"
+                    >
+                      {copiedLink ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-500" />
+                          <span>Link Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copy Link</span>
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      onClick={handleShareOptions}
+                      className="h-9 text-xs font-semibold gap-1.5"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>Share Options</span>
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Cancel Invitation Action */}
+              {match.created_by === user?.id && (
+                <div className="pt-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCancelDialogOpen(true)}
+                    disabled={cancelMutation.isPending}
+                    className="text-xs text-muted-foreground hover:text-destructive"
+                  >
+                    Cancel Invitation
                   </Button>
                 </div>
               )}
@@ -675,6 +892,53 @@ export function Component() {
                   }}
                 >
                   {resignMutation.isPending ? 'Resigning…' : 'Resign'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {cancelDialogOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cancel-dialog-title"
+          onClick={() => setCancelDialogOpen(false)}
+        >
+          <Card
+            className="w-full max-w-sm border-border/80 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <CardContent className="space-y-4 p-5">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-destructive/10 text-destructive flex items-center justify-center shrink-0 mt-0.5">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 id="cancel-dialog-title" className="text-base font-bold">
+                    Cancel Invitation?
+                  </h2>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    This will close the room and invalidate the invite code. Your friend will no longer be able to join.
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" size="sm" onClick={() => setCancelDialogOpen(false)} autoFocus>
+                  Keep Waiting
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={cancelMutation.isPending}
+                  onClick={() => {
+                    setCancelDialogOpen(false)
+                    cancelMutation.mutate()
+                  }}
+                >
+                  {cancelMutation.isPending ? 'Cancelling…' : 'Cancel Invitation'}
                 </Button>
               </div>
             </CardContent>

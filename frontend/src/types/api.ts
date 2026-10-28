@@ -133,6 +133,7 @@ export interface P2PMatch {
   players: P2PMatchPlayer[]
   started_at?: string
   completed_at?: string
+  expires_at?: string
   created_at: string
 }
 
@@ -140,6 +141,26 @@ export interface P2PRematchResult {
   /** `requested`: waiting for the opponent. `started`: the return match is live. */
   status: 'requested' | 'started'
   match: P2PMatch
+}
+
+export interface InviteSummary {
+  invite_code: string
+  match_id: string
+  game_slug: string
+  game_title: string
+  game_description: string
+  status: 'waiting' | 'ready' | 'in_progress' | 'completed' | 'cancelled' | 'expired'
+  is_joinable: boolean
+  is_expired: boolean
+  expires_at: string
+  seconds_left: number
+  creator_id: string
+  creator_name: string
+  creator_avatar_url?: string
+  match_type: 'public_queue' | 'private_room'
+  max_rounds: number
+  default_turn_seconds: number
+  created_at: string
 }
 
 export type LeaderboardPeriod = 'all_time' | 'daily' | 'weekly' | 'monthly'

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/raffle-app/backend/internal/p2p/domain"
@@ -195,17 +196,17 @@ func (r *MatchRepo) CreateTx(ctx context.Context, tx *sql.Tx, match *domain.Matc
 		prize_pool_cents, service_fee_bp, total_fee_cents, winner_user_id, current_turn_user_id,
 		turn_deadline, current_round, max_rounds, scores, board_state, created_by,
 		rematch_requested_by, rematch_match_id, started_at, created_at, updated_at
-	) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,NOW(),NOW())`
+	) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,NOW(),NOW())
+	RETURNING created_at, updated_at`
 
-	_, err := tx.ExecContext(ctx, query,
+	return tx.QueryRowContext(ctx, query,
 		match.ID, match.GameSlug, match.Status, match.MatchType, nullIfEmpty(match.InviteCode),
 		int64(match.StakeCents), match.StakeAmount, int64(match.PrizePoolCents),
 		match.ServiceFeeBP, int64(match.TotalFeeCents), nullIfEmpty(ptrStr(match.WinnerUserID)),
 		nullIfEmpty(ptrStr(match.CurrentTurnUserID)), match.TurnDeadline, match.CurrentRound,
 		match.MaxRounds, string(scoresJSON), string(boardJSON), match.CreatedBy,
 		nullIfEmpty(ptrStr(match.RematchRequestedBy)), nullIfEmpty(ptrStr(match.RematchMatchID)),
-		match.StartedAt)
-	return err
+		match.StartedAt).Scan(&match.CreatedAt, &match.UpdatedAt)
 }
 
 func (r *MatchRepo) FindByID(ctx context.Context, id string) (*domain.Match, error) {
@@ -219,7 +220,12 @@ func (r *MatchRepo) FindByIDForUpdate(ctx context.Context, tx *sql.Tx, id string
 }
 
 func (r *MatchRepo) FindByInviteCode(ctx context.Context, code string) (*domain.Match, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT `+matchColumns+` FROM p2p_matches WHERE invite_code = $1`, code)
+	row := r.db.QueryRowContext(ctx, `SELECT `+matchColumns+` FROM p2p_matches WHERE UPPER(invite_code) = UPPER($1)`, strings.TrimSpace(code))
+	return scanMatch(row)
+}
+
+func (r *MatchRepo) FindByInviteCodeForUpdate(ctx context.Context, tx *sql.Tx, code string) (*domain.Match, error) {
+	row := tx.QueryRowContext(ctx, `SELECT `+matchColumns+` FROM p2p_matches WHERE UPPER(invite_code) = UPPER($1) FOR UPDATE`, strings.TrimSpace(code))
 	return scanMatch(row)
 }
 

@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { AuthCard } from '@/features/auth/AuthCard'
@@ -23,6 +23,11 @@ export function Component() {
   usePageTitle(t('auth.signIn'))
   const { login } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const redirectParam = searchParams.get('redirect')
+  const pendingRedirect =
+    redirectParam ||
+    (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pending_redirect') : null)
 
   const { register, handleSubmit, formState: { errors } } = useForm<Fields>({
     resolver: zodResolver(schema),
@@ -32,7 +37,14 @@ export function Component() {
     mutationFn: ({ identifier, password }: Fields) => authApi.login(identifier, password),
     onSuccess: ({ token, user }) => {
       login(token, user)
-      navigate(user.role === 'admin' ? '/admin/dashboard' : '/dashboard')
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem('pending_redirect')
+      }
+      if (pendingRedirect && pendingRedirect.startsWith('/') && !pendingRedirect.startsWith('//')) {
+        navigate(pendingRedirect)
+      } else {
+        navigate(user.role === 'admin' ? '/admin/dashboard' : '/dashboard')
+      }
     },
   })
 
@@ -65,7 +77,10 @@ export function Component() {
 
         <p className="text-center text-sm text-muted-foreground">
           {t('auth.noAccount')}{' '}
-          <Link to="/register" className="text-foreground underline underline-offset-4">
+          <Link
+            to={redirectParam ? `/register?redirect=${encodeURIComponent(redirectParam)}` : '/register'}
+            className="text-foreground underline underline-offset-4"
+          >
             {t('auth.register')}
           </Link>
         </p>

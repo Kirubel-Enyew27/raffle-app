@@ -4,6 +4,7 @@ import type {
   P2PGame,
   P2PMatch,
   P2PRematchResult,
+  InviteSummary,
   LeaderboardData,
   LeaderboardParams,
 } from '@/types/api'
@@ -47,6 +48,14 @@ export const p2pApi = {
     api
       .post<ApiResponse<P2PMatch>>('/p2p/matches/join-code', { invite_code: inviteCode.trim().toUpperCase() })
       .then((r) => r.data.data),
+
+  getInvite: (inviteCode: string) =>
+    api
+      .get<ApiResponse<InviteSummary>>(`/p2p/invites/${inviteCode.trim().toUpperCase()}`)
+      .then((r) => r.data.data),
+
+  cancelMatch: (matchId: string) =>
+    api.post<ApiResponse<P2PMatch>>(`/p2p/matches/${matchId}/cancel`).then((r) => r.data.data),
 
   readyUp: (matchId: string) =>
     api.post<ApiResponse<P2PMatch>>(`/p2p/matches/${matchId}/ready`).then((r) => r.data.data),

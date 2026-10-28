@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/select'
 import { useQuery } from '@tanstack/react-query'
 import { walletApi } from '@/features/wallet/api'
 import { notificationsApi } from '@/features/notifications/api'
+import { extractStartInviteCode } from '@/lib/telegram'
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -400,8 +401,23 @@ function Navbar() {
 
 export function AppLayout() {
   const { isAuthenticated, isLoading } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    const code = extractStartInviteCode()
+    if (code && !location.pathname.startsWith('/games')) {
+      navigate(`/games?join=${code}`, { replace: true })
+    }
+  }, [isAuthenticated, location.pathname, navigate])
+
   if (isLoading) return null
-  if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (!isAuthenticated) {
+    const code = extractStartInviteCode()
+    const redirect = code ? `/games?join=${code}` : location.pathname + location.search
+    return <Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace />
+  }
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar />

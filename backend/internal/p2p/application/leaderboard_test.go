@@ -254,10 +254,12 @@ func TestP2PService_LeaderboardSortingVariants(t *testing.T) {
 	userA := createTestUserWithWallet(t, db, 100.0)
 	userB := createTestUserWithWallet(t, db, 100.0)
 
+	gameSlug := createLeaderboardTestGame(t, db)
+
 	now := time.Now().UTC()
 	// userA wins 2 matches
-	insertFinalizedMatch(t, db, "rock-paper-scissors", userA, userB, &userA, p2pdomain.StatusCompleted, now.Add(1*time.Minute))
-	insertFinalizedMatch(t, db, "rock-paper-scissors", userA, userB, &userA, p2pdomain.StatusCompleted, now.Add(2*time.Minute))
+	insertFinalizedMatch(t, db, gameSlug, userA, userB, &userA, p2pdomain.StatusCompleted, now.Add(1*time.Minute))
+	insertFinalizedMatch(t, db, gameSlug, userA, userB, &userA, p2pdomain.StatusCompleted, now.Add(2*time.Minute))
 
 	svc := NewP2PService(
 		p2prepo.NewGameRepo(db),
@@ -269,12 +271,10 @@ func TestP2PService_LeaderboardSortingVariants(t *testing.T) {
 		nil, nil,
 	)
 
-	rps := "rock-paper-scissors"
-
 	// Sort by win_streak
 	resStreak, err := svc.GetLeaderboard(ctx, p2pdomain.LeaderboardFilter{
 		Period: p2pdomain.PeriodAllTime,
-		Game:   &rps,
+		Game:   &gameSlug,
 		SortBy: p2pdomain.SortByWinStreak,
 		Page:   1,
 		Limit:  100,
@@ -298,7 +298,7 @@ func TestP2PService_LeaderboardSortingVariants(t *testing.T) {
 	// Sort by win_rate
 	resRate, err := svc.GetLeaderboard(ctx, p2pdomain.LeaderboardFilter{
 		Period: p2pdomain.PeriodAllTime,
-		Game:   &rps,
+		Game:   &gameSlug,
 		SortBy: p2pdomain.SortByWinRate,
 		Page:   1,
 		Limit:  100,
@@ -330,8 +330,9 @@ func TestP2PService_LeaderboardPeriodFiltering(t *testing.T) {
 	userOpp := createTestUserWithWallet(t, db, 100.0)
 
 	// Finalized match 3 days ago (outside daily, but within weekly/monthly if early in the week)
+	gameSlug := createLeaderboardTestGame(t, db)
 	threeDaysAgo := time.Now().UTC().Add(-72 * time.Hour)
-	insertFinalizedMatch(t, db, "connect-four", userOld, userOpp, &userOld, p2pdomain.StatusCompleted, threeDaysAgo)
+	insertFinalizedMatch(t, db, gameSlug, userOld, userOpp, &userOld, p2pdomain.StatusCompleted, threeDaysAgo)
 
 	svc := NewP2PService(
 		p2prepo.NewGameRepo(db),
@@ -343,12 +344,10 @@ func TestP2PService_LeaderboardPeriodFiltering(t *testing.T) {
 		nil, nil,
 	)
 
-	cf := "connect-four"
-
 	// Daily query: should NOT contain userOld from 3 days ago
 	resDaily, err := svc.GetLeaderboard(ctx, p2pdomain.LeaderboardFilter{
 		Period: p2pdomain.PeriodDaily,
-		Game:   &cf,
+		Game:   &gameSlug,
 		SortBy: p2pdomain.SortByWins,
 		Page:   1,
 		Limit:  100,
@@ -365,7 +364,7 @@ func TestP2PService_LeaderboardPeriodFiltering(t *testing.T) {
 	// All-time query: MUST contain userOld
 	resAll, err := svc.GetLeaderboard(ctx, p2pdomain.LeaderboardFilter{
 		Period: p2pdomain.PeriodAllTime,
-		Game:   &cf,
+		Game:   &gameSlug,
 		SortBy: p2pdomain.SortByWins,
 		Page:   1,
 		Limit:  100,
@@ -398,9 +397,10 @@ func TestP2PService_LeaderboardDeterministicTieBreaking(t *testing.T) {
 	dummy := createTestUserWithWallet(t, db, 100.0)
 
 	// Both user1 and user2 win exactly 1 match
+	gameSlug := createLeaderboardTestGame(t, db)
 	now := time.Now().UTC()
-	insertFinalizedMatch(t, db, "tic-tac-toe", user1, dummy, &user1, p2pdomain.StatusCompleted, now)
-	insertFinalizedMatch(t, db, "tic-tac-toe", user2, dummy, &user2, p2pdomain.StatusCompleted, now)
+	insertFinalizedMatch(t, db, gameSlug, user1, dummy, &user1, p2pdomain.StatusCompleted, now)
+	insertFinalizedMatch(t, db, gameSlug, user2, dummy, &user2, p2pdomain.StatusCompleted, now)
 
 	svc := NewP2PService(
 		p2prepo.NewGameRepo(db),
@@ -412,10 +412,9 @@ func TestP2PService_LeaderboardDeterministicTieBreaking(t *testing.T) {
 		nil, nil,
 	)
 
-	ttt := "tic-tac-toe"
 	res, err := svc.GetLeaderboard(ctx, p2pdomain.LeaderboardFilter{
 		Period: p2pdomain.PeriodAllTime,
-		Game:   &ttt,
+		Game:   &gameSlug,
 		SortBy: p2pdomain.SortByWins,
 		Page:   1,
 		Limit:  100,
