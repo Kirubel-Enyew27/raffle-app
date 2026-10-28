@@ -229,7 +229,6 @@ export function Component() {
         <CardContent className="p-4 sm:p-6">
           <form onSubmit={handleJoinByCode} className="flex flex-col sm:flex-row items-center gap-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-foreground whitespace-nowrap">
-              <KeyRound className="w-4 h-4 text-primary" />
               <span>Have a Private Invite Code?</span>
             </div>
             <div className="flex-1 w-full flex items-center gap-2">
@@ -245,8 +244,7 @@ export function Component() {
                 disabled={!inviteCodeInput.trim()}
                 className="h-10 px-6 font-semibold shrink-0 gap-1.5"
               >
-                <KeyRound className="w-4 h-4" />
-                <span>Preview & Join</span>
+               <span>Preview & Join</span>
               </Button>
             </div>
           </form>
