@@ -1,6 +1,7 @@
 import axios, { type AxiosError } from 'axios'
 import { AUTH_TOKEN_REFRESHED_EVENT, authStorage } from '@/lib/authStorage'
 import { installAuthInterceptors, type RefreshedTokens } from '@/lib/authInterceptor'
+import { setSseTokenRefresher } from '@/lib/sseClient'
 
 // In production (Vercel), VITE_API_URL points to the Render backend.
 // In development, Vite's proxy handles /api requests to localhost:8080.
@@ -88,6 +89,10 @@ export const sessionRefresher = installAuthInterceptors(api, {
     url.includes('/auth/refresh') ||
     url.includes('/auth/logout'),
 })
+
+// Allow the SSE connection manager to proactively refresh an expired token
+// before retrying a dropped connection, without coupling sseClient to api.ts.
+setSseTokenRefresher(() => sessionRefresher.refresh())
 
 // Normalise error shape. Authentication failures are handled by the interceptor
 // above; this only turns what is left into ApiError.

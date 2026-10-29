@@ -18,7 +18,22 @@
  *   unsub()
  */
 
-import { AUTH_TOKEN_REFRESHED_EVENT } from './authStorage.ts'
+import { AUTH_TOKEN_REFRESHED_EVENT, authStorage } from './authStorage.ts'
+
+// ─── Token refresh hook ───────────────────────────────────────────────────────
+// sseClient may be imported before api.ts initialises. We resolve the refresher
+// lazily so there is no circular-import issue. api.ts sets this once it installs
+// the interceptors.
+
+let _refreshSession: (() => Promise<boolean>) | null = null
+
+/**
+ * Called by api.ts after it creates the sessionRefresher so that sseClient can
+ * proactively renew an expired token before retrying a dropped SSE connection.
+ */
+export function setSseTokenRefresher(fn: () => Promise<boolean>): void {
+  _refreshSession = fn
+}
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
@@ -244,45 +259,116 @@ export class SSEClient {
     const delay = backoffDelay(state.attempts)
     state.attempts += 1
 
-    state.reconnectTimer = setTimeout(() => {
+    state.reconnectTimer = setTimeout(async () => {
       // Verify the channel still exists and is still meant to reconnect.
       const current = this.channels.get(key)
       if (!current || current.status === 'closed' || current.status === 'failed') return
 
-      // Open a fresh EventSource on the same key.
-      const url = buildUrl(current.channel, current.token)
-      const source = new EventSource(url)
-      current.source = source
-      current.status = 'connecting'
-
-      const listeners = {
-        connected: () => {
-          current.attempts = 0
-          current.status = 'live'
-          current.everConnected = true
-        },
-        message: (ev: MessageEvent) => {
-          try {
-            const parsed = JSON.parse(ev.data) as SSEEvent
-            if (parsed?.type) {
-              for (const { handler } of current.subscribers.values()) {
-                handler(parsed)
-              }
-            }
-          } catch {
-            // Ignore unparseable frames.
-          }
-        },
-        error: () => {
-          this._onChannelError(key)
-        },
+      // Before reopening the EventSource, check whether the stored token has
+      // changed (e.g. by a concurrent API call that already refreshed it) or
+      // attempt a proactive refresh if one is available. This prevents repeated
+      // failures when the SSE connection was dropped because the access token
+      // expired and no API call has triggered a refresh yet.
+      let latestToken: string | null = null
+      try {
+        latestToken = authStorage.getToken()
+      } catch {
+        // In non-browser environments (e.g. unit tests) import.meta.env may be
+        // unavailable. Fall through with a null token.
+      }
+      if (latestToken && latestToken !== current.token) {
+        // A concurrent refresh already happened — migrate to the new token.
+        // _handleTokenRefresh opens a fresh channel with the new token.
+        this._handleTokenRefresh(latestToken)
+        return
       }
 
-      current.sourceListeners = listeners
-      source.addEventListener('connected', listeners.connected)
-      source.addEventListener('message', listeners.message)
-      source.onerror = listeners.error
+      // Try a proactive token refresh so reconnect uses a fresh token.
+      if (_refreshSession) {
+        try {
+          const refreshed = await _refreshSession()
+          if (refreshed === false) {
+            // Session is truly dead (refresh token rejected). Mark as failed
+            // so the UI can prompt the user to re-authenticate instead of
+            // silently looping forever in 'reconnecting'.
+            const stale = this.channels.get(key)
+            if (stale) {
+              stale.status = 'failed'
+            }
+            return
+          }
+          // If the token changed, _handleTokenRefresh was already called via
+          // the AUTH_TOKEN_REFRESHED_EVENT dispatched by api.ts. Verify that
+          // the channel was migrated; if not (token was the same or the event
+          // was never dispatched), fall through to reopen with the current token.
+          const afterEvent = this.channels.get(key)
+          if (!afterEvent || afterEvent.status === 'closed' || afterEvent.status === 'failed') return
+          // If the channel's token was updated by _handleTokenRefresh, a new
+          // EventSource has already been opened — don't reopen again.
+          let currentToken: string | null = null
+          try {
+            currentToken = authStorage.getToken()
+          } catch {
+            // Non-browser environment — fall through.
+          }
+          if (currentToken && currentToken !== current.token) {
+            // Token was refreshed and channel migrated — we're done.
+            return
+          }
+          // Token didn't change after refresh (same token returned or event
+          // not dispatched). Fall through to reopen with the existing token.
+        } catch {
+          // Refresh failed (network error or transient issue).
+          // Fall through and retry with the existing token.
+        }
+      }
+
+      // Check again after the async refresh attempt — it may have migrated the
+      // channel to a new key via _handleTokenRefresh.
+      const afterRefresh = this.channels.get(key)
+      if (!afterRefresh || afterRefresh.status === 'closed' || afterRefresh.status === 'failed') return
+
+      this._reopenSource(key)
     }, delay)
+  }
+
+  /** Opens a fresh EventSource on an existing channel key and wires its listeners. */
+  private _reopenSource(key: string): void {
+    const current = this.channels.get(key)
+    if (!current) return
+
+    const url = buildUrl(current.channel, current.token)
+    const source = new EventSource(url)
+    current.source = source
+    current.status = 'connecting'
+
+    const listeners = {
+      connected: () => {
+        current.attempts = 0
+        current.status = 'live'
+        current.everConnected = true
+      },
+      message: (ev: MessageEvent) => {
+        try {
+          const parsed = JSON.parse(ev.data) as SSEEvent
+          if (parsed?.type) {
+            for (const { handler } of current.subscribers.values()) {
+              handler(parsed)
+            }
+          }
+        } catch {
+          // Ignore unparseable frames.
+        }
+      },
+      error: () => {
+        this._onChannelError(key)
+      },
+    }
+
+    current.sourceListeners = listeners
+    source.addEventListener('connected', listeners.connected)
+    source.addEventListener('message', listeners.message)
+    source.onerror = listeners.error
   }
 
   private _detachSource(state: ChannelState): void {

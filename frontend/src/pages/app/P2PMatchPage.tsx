@@ -443,13 +443,35 @@ export function Component() {
         </div>
       </div>
 
-      {streamStatus === 'reconnecting' && !isGameOver && (
+      {/* Show reconnecting banner only during active gameplay — not while waiting or on game-over screens */}
+      {streamStatus === 'reconnecting' && match.status === 'in_progress' && (
         <div
           role="status"
           className="flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-700 dark:text-amber-300"
         >
           <WifiOff className="h-4 w-4 shrink-0" />
           <span>Reconnecting to the live match… your moves are safe on the server.</span>
+        </div>
+      )}
+
+      {/* Connection failed after all retries — prompt the player to recover */}
+      {streamStatus === 'failed' && !isGameOver && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive"
+        >
+          <div className="flex items-center gap-2">
+            <WifiOff className="h-4 w-4 shrink-0" />
+            <span>Live connection lost. Your match is still active on the server.</span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10"
+            onClick={() => window.location.reload()}
+          >
+            Reconnect
+          </Button>
         </div>
       )}
 

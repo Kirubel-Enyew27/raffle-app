@@ -89,6 +89,12 @@ export function useCrashStream({ enabled, token, onEvent, onReconnect }: Options
     }
 
     let lastStatus: CrashStreamStatus = 'connecting'
+    // Track whether the stream went through a reconnecting cycle since the
+    // last 'live' state. The SSE client transitions through:
+    //   reconnecting → connecting → live
+    // so checking lastStatus === 'reconnecting' at the moment status becomes
+    // 'live' is unreliable — lastStatus has already advanced to 'connecting'.
+    let sawReconnecting = false
     setStatus('connecting')
 
     const unsub = sseClient.subscribe('crash', key, (ev) => {
@@ -98,8 +104,12 @@ export function useCrashStream({ enabled, token, onEvent, onReconnect }: Options
     const interval = setInterval(() => {
       const s = sseClient.getStatus('crash')
       if (s !== lastStatus) {
-        if (s === 'live' && lastStatus === 'reconnecting') {
+        if (s === 'reconnecting') {
+          sawReconnecting = true
+        }
+        if (s === 'live' && sawReconnecting) {
           onReconnectRef.current?.()
+          sawReconnecting = false
         }
         lastStatus = s
         setStatus(s)

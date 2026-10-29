@@ -42,6 +42,14 @@ export function useP2PStream({ matchId, channel, token, enabled, onEvent, onReco
     }
 
     let lastStatus: P2PStreamStatus = 'connecting'
+    // Track whether the stream went through a reconnecting cycle since the
+    // last 'live' state. The SSE client transitions through:
+    //   reconnecting → connecting → live
+    // so checking lastStatus === 'reconnecting' at the moment status becomes
+    // 'live' is unreliable — lastStatus has already advanced to 'connecting'.
+    // Instead we set a flag when we observe 'reconnecting' and consume it
+    // when we reach 'live'.
+    let sawReconnecting = false
     setStatus('connecting')
 
     const unsub = sseClient.subscribe(target, token, (ev) => {
@@ -56,6 +64,7 @@ export function useP2PStream({ matchId, channel, token, enabled, onEvent, onReco
         }
         everLiveRef.current = true
         lastStatus = 'live'
+        sawReconnecting = false
         setStatus('live')
       }
     })
@@ -66,8 +75,15 @@ export function useP2PStream({ matchId, channel, token, enabled, onEvent, onReco
     const interval = setInterval(() => {
       const s = sseClient.getStatus(target)
       if (s !== lastStatus) {
-        if (s === 'live' && lastStatus === 'reconnecting') {
+        // Remember that the stream entered a reconnecting state so we can
+        // fire onReconnect when it eventually reaches 'live', even though
+        // the status passes through 'connecting' in between.
+        if (s === 'reconnecting') {
+          sawReconnecting = true
+        }
+        if (s === 'live' && sawReconnecting) {
           onReconnectRef.current?.()
+          sawReconnecting = false
         }
         lastStatus = s
         setStatus(s)
