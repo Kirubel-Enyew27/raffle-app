@@ -133,6 +133,10 @@ export interface P2PMatch {
   rematch_requested_by?: string
   /** The return match created once both players agreed to a rematch. */
   rematch_match_id?: string
+  /** The user_id of the player who has temporarily disconnected. */
+  disconnect_user_id?: string
+  /** Seconds remaining in the reconnection grace period (0 if none active). */
+  disconnect_seconds_left: number
   my_player_index?: number
   players: P2PMatchPlayer[]
   started_at?: string

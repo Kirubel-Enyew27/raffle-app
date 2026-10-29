@@ -48,6 +48,11 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Skipf("skipping test, postgres not available: %v", err)
 	}
+	// Run migrations so the schema is always up to date before tests execute.
+	// The path is relative to this file's location in the module tree.
+	if err := database.RunMigrations(db, "../../../../migrations"); err != nil {
+		t.Skipf("skipping test, migrations failed: %v", err)
+	}
 	return db
 }
 

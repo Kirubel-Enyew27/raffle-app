@@ -56,6 +56,8 @@ func RegisterP2PRoutes(r *gin.RouterGroup, handler *P2PHandler, rl ...*P2PRateLi
 			}
 
 			auth.POST("/matches/:id/resign", handler.ResignMatch)
+			auth.POST("/matches/:id/disconnect", handler.PlayerDisconnect)
+			auth.POST("/matches/:id/reconnect", handler.PlayerReconnect)
 			auth.POST("/matches/:id/rematch", handler.Rematch)
 			auth.GET("/matches/:id/state", handler.GetMatchState)
 			auth.GET("/matches/:id", handler.GetMatchState)

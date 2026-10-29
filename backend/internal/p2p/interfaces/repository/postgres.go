@@ -100,7 +100,8 @@ func (r *MatchRepo) BeginTx(ctx context.Context) (*sql.Tx, error) {
 const matchColumns = `id, game_slug, status, match_type, invite_code, stake_cents, stake_amount,
 	prize_pool_cents, service_fee_bp, total_fee_cents, winner_user_id, current_turn_user_id,
 	turn_deadline, current_round, max_rounds, scores, board_state, created_by,
-	started_at, completed_at, created_at, updated_at, rematch_requested_by, rematch_match_id`
+	started_at, completed_at, created_at, updated_at, rematch_requested_by, rematch_match_id,
+	disconnect_user_id, disconnect_deadline`
 
 // matchColumnsM is the same list qualified with the `m` alias. Queries that join
 // p2p_match_players must use it: both tables expose id/status/created_at, and an
@@ -108,7 +109,8 @@ const matchColumns = `id, game_slug, status, match_type, invite_code, stake_cent
 const matchColumnsM = `m.id, m.game_slug, m.status, m.match_type, m.invite_code, m.stake_cents, m.stake_amount,
 	m.prize_pool_cents, m.service_fee_bp, m.total_fee_cents, m.winner_user_id, m.current_turn_user_id,
 	m.turn_deadline, m.current_round, m.max_rounds, m.scores, m.board_state, m.created_by,
-	m.started_at, m.completed_at, m.created_at, m.updated_at, m.rematch_requested_by, m.rematch_match_id`
+	m.started_at, m.completed_at, m.created_at, m.updated_at, m.rematch_requested_by, m.rematch_match_id,
+	m.disconnect_user_id, m.disconnect_deadline`
 
 func scanMatch(row interface {
 	Scan(dest ...interface{}) error
@@ -116,15 +118,16 @@ func scanMatch(row interface {
 	m := &domain.Match{}
 	var inviteCode sql.NullString
 	var winnerID, turnUserID sql.NullString
-	var turnDeadline, startedAt, completedAt sql.NullTime
-	var rematchRequestedBy, rematchMatchID sql.NullString
+	var turnDeadline, startedAt, completedAt, disconnectDeadline sql.NullTime
+	var rematchRequestedBy, rematchMatchID, disconnectUserID sql.NullString
 	var stakeCents, poolCents, feeCents int64
 	var scoresRaw, boardRaw []byte
 
 	err := row.Scan(&m.ID, &m.GameSlug, &m.Status, &m.MatchType, &inviteCode, &stakeCents, &m.StakeAmount,
 		&poolCents, &m.ServiceFeeBP, &feeCents, &winnerID, &turnUserID,
 		&turnDeadline, &m.CurrentRound, &m.MaxRounds, &scoresRaw, &boardRaw, &m.CreatedBy,
-		&startedAt, &completedAt, &m.CreatedAt, &m.UpdatedAt, &rematchRequestedBy, &rematchMatchID)
+		&startedAt, &completedAt, &m.CreatedAt, &m.UpdatedAt, &rematchRequestedBy, &rematchMatchID,
+		&disconnectUserID, &disconnectDeadline)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, domain.ErrMatchNotFound
@@ -162,6 +165,13 @@ func scanMatch(row interface {
 	if rematchMatchID.Valid {
 		v := rematchMatchID.String
 		m.RematchMatchID = &v
+	}
+	if disconnectUserID.Valid {
+		v := disconnectUserID.String
+		m.DisconnectUserID = &v
+	}
+	if disconnectDeadline.Valid {
+		m.DisconnectDeadline = &disconnectDeadline.Time
 	}
 	if len(scoresRaw) > 0 {
 		_ = json.Unmarshal(scoresRaw, &m.Scores)
@@ -328,6 +338,25 @@ func (r *MatchRepo) FindIdleWaitingRooms(ctx context.Context, olderThan time.Tim
 	return list, rows.Err()
 }
 
+func (r *MatchRepo) FindExpiredDisconnects(ctx context.Context, now time.Time) ([]*domain.Match, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT `+matchColumns+` FROM p2p_matches
+		WHERE status = 'in_progress' AND disconnect_deadline IS NOT NULL AND disconnect_deadline < $1`, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []*domain.Match
+	for rows.Next() {
+		m, err := scanMatch(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, m)
+	}
+	return list, rows.Err()
+}
+
 func (r *MatchRepo) UpdateStateTx(ctx context.Context, tx *sql.Tx, match *domain.Match) error {
 	scoresJSON, _ := json.Marshal(match.Scores)
 	boardJSON, _ := json.Marshal(match.BoardState)
@@ -343,11 +372,14 @@ func (r *MatchRepo) UpdateStateTx(ctx context.Context, tx *sql.Tx, match *domain
 		started_at = COALESCE(started_at, $9),
 		rematch_requested_by = $10,
 		rematch_match_id = $11,
+		disconnect_user_id = $12,
+		disconnect_deadline = $13,
 		updated_at = NOW()
 		WHERE id = $1`,
 		match.ID, match.Status, nullIfEmpty(ptrStr(match.CurrentTurnUserID)), match.TurnDeadline,
 		match.CurrentRound, string(scoresJSON), string(boardJSON), int64(match.PrizePoolCents), match.StartedAt,
-		nullIfEmpty(ptrStr(match.RematchRequestedBy)), nullIfEmpty(ptrStr(match.RematchMatchID)))
+		nullIfEmpty(ptrStr(match.RematchRequestedBy)), nullIfEmpty(ptrStr(match.RematchMatchID)),
+		nullIfEmpty(ptrStr(match.DisconnectUserID)), match.DisconnectDeadline)
 	return err
 }
 
@@ -359,6 +391,8 @@ func (r *MatchRepo) MarkCompletedTx(ctx context.Context, tx *sql.Tx, matchID str
 		completed_at = $5,
 		current_turn_user_id = NULL,
 		turn_deadline = NULL,
+		disconnect_user_id = NULL,
+		disconnect_deadline = NULL,
 		updated_at = NOW()
 		WHERE id = $1`,
 		matchID, status, nullIfEmpty(ptrStr(winnerUserID)), int64(totalFeeCents), completedAt)

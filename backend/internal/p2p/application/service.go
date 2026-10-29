@@ -18,6 +18,12 @@ import (
 	"github.com/raffle-app/backend/pkg/money"
 )
 
+// DisconnectGraceSeconds is the server-authoritative grace period for a
+// disconnected player to reconnect before the match is forfeited. The value
+// is deliberately centralised so it can be tuned without scattering magic
+// numbers across the codebase.
+const DisconnectGraceSeconds = 60
+
 type MatchView struct {
 	ID                string                 `json:"id"`
 	GameSlug          string                 `json:"game_slug"`
@@ -40,6 +46,8 @@ type MatchView struct {
 	// asked for a return game.
 	RematchRequestedBy *string               `json:"rematch_requested_by,omitempty"`
 	RematchMatchID     *string               `json:"rematch_match_id,omitempty"`
+	DisconnectUserID   *string               `json:"disconnect_user_id,omitempty"`
+	DisconnectSecondsLeft int                 `json:"disconnect_seconds_left"`
 	MyPlayerIndex      *int                  `json:"my_player_index,omitempty"`
 	Players            []*domain.MatchPlayer `json:"players"`
 	StartedAt          *time.Time            `json:"started_at,omitempty"`
@@ -973,6 +981,144 @@ func (s *P2PService) ResignMatch(ctx context.Context, userID, matchID string) (*
 	return view, nil
 }
 
+// HandlePlayerDisconnect records a temporary disconnection for userID in matchID
+// and sets a server-authoritative reconnection deadline. Calling it a second time
+// for the same player while a deadline is already active is idempotent (the
+// existing deadline is preserved so the opponent cannot shorten the grace period
+// with duplicate events). Returns ErrMatchAlreadyEnded if the match is no longer
+// in progress.
+func (s *P2PService) HandlePlayerDisconnect(ctx context.Context, userID, matchID string) (*MatchView, error) {
+	tx, err := s.matchRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	match, err := s.matchRepo.FindByIDForUpdate(ctx, tx, matchID)
+	if err != nil {
+		return nil, err
+	}
+
+	if match.Status != domain.StatusInProgress {
+		return nil, domain.ErrMatchAlreadyEnded
+	}
+
+	players, err := s.playerRepo.ListByMatchTx(ctx, tx, match.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	if findPlayer(players, userID) == nil {
+		return nil, domain.ErrNotParticipant
+	}
+
+	// Idempotent: if any player already has an active deadline running, keep it.
+	// This covers two cases:
+	//   1. The same player calls disconnect again (true idempotency).
+	//   2. A second player calls disconnect while the first deadline is still
+	//      active — the first deadline governs; overwriting it would silently
+	//      extend the grace period for a different player.
+	if match.DisconnectUserID != nil && match.DisconnectDeadline != nil {
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		match.Players = players
+		return s.buildView(match, userID), nil
+	}
+	now := time.Now()
+	deadline := now.Add(time.Duration(DisconnectGraceSeconds) * time.Second)
+	match.DisconnectUserID = &userID
+	match.DisconnectDeadline = &deadline
+
+	if err := s.matchRepo.UpdateStateTx(ctx, tx, match); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	match.Players = players
+	view := s.buildView(match, userID)
+
+	if s.realtime != nil {
+		_ = s.realtime.PublishToChannel(ctx, matchChannel(match.ID), "p2p.player_disconnected", map[string]interface{}{
+			"match_id":             match.ID,
+			"disconnect_user_id":   userID,
+			"disconnect_seconds_left": view.DisconnectSecondsLeft,
+		})
+	}
+
+	return view, nil
+}
+
+// HandlePlayerReconnect clears the disconnection record for userID and resumes
+// the match normally. If the deadline has already expired the match will have
+// been forfeited by the background sweep and this call returns ErrMatchAlreadyEnded.
+// A reconnect from a user who was not the disconnected player is silently ignored
+// (idempotent), so stale reconnect events cannot affect live matches.
+func (s *P2PService) HandlePlayerReconnect(ctx context.Context, userID, matchID string) (*MatchView, error) {
+	tx, err := s.matchRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	match, err := s.matchRepo.FindByIDForUpdate(ctx, tx, matchID)
+	if err != nil {
+		return nil, err
+	}
+
+	// If the match is already over (grace period expired + sweep ran, or any
+	// other terminal state), refuse the reconnect so the UI shows the real result.
+	if match.Status != domain.StatusInProgress {
+		return nil, domain.ErrMatchAlreadyEnded
+	}
+
+	players, err := s.playerRepo.ListByMatchTx(ctx, tx, match.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	if findPlayer(players, userID) == nil {
+		return nil, domain.ErrNotParticipant
+	}
+
+	// Not the disconnected player: no state change needed, just return current state.
+	if match.DisconnectUserID == nil || *match.DisconnectUserID != userID {
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		match.Players = players
+		return s.buildView(match, userID), nil
+	}
+
+	// Clear the disconnect fields to resume normal play.
+	match.DisconnectUserID = nil
+	match.DisconnectDeadline = nil
+
+	if err := s.matchRepo.UpdateStateTx(ctx, tx, match); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	match.Players = players
+	view := s.buildView(match, userID)
+
+	if s.realtime != nil {
+		_ = s.realtime.PublishToChannel(ctx, matchChannel(match.ID), "p2p.player_reconnected", map[string]interface{}{
+			"match_id": match.ID,
+			"user_id":  userID,
+			"state":    view,
+		})
+	}
+
+	return view, nil
+}
+
 // RequestRematch asks for a return game against the same opponent after a
 // match has finished. The first request only records the intent: the opponent
 // sees it on the result screen and accepts from there. When the second player
@@ -1238,32 +1384,42 @@ func (s *P2PService) buildView(m *domain.Match, userID string) *MatchView {
 		expiresAt = &exp
 	}
 
+	disconnectSecondsLeft := 0
+	if m.DisconnectDeadline != nil && m.Status == domain.StatusInProgress {
+		d := time.Until(*m.DisconnectDeadline)
+		if d > 0 {
+			disconnectSecondsLeft = int(math.Ceil(d.Seconds()))
+		}
+	}
+
 	return &MatchView{
-		ID:                 m.ID,
-		GameSlug:           m.GameSlug,
-		Status:             m.Status,
-		MatchType:          m.MatchType,
-		InviteCode:         m.InviteCode,
-		StakeAmount:        m.StakeAmount,
-		PrizePool:          m.PrizePoolCents.Float(),
-		ServiceFeePercent:  float64(m.ServiceFeeBP) / 100.0,
-		TotalFee:           m.TotalFeeCents.Float(),
-		WinnerUserID:       m.WinnerUserID,
-		CurrentTurnUserID:  m.CurrentTurnUserID,
-		TurnSecondsLeft:    secondsLeft,
-		CurrentRound:       m.CurrentRound,
-		MaxRounds:          m.MaxRounds,
-		Scores:             m.Scores,
-		BoardState:         boardState,
-		CreatedBy:          m.CreatedBy,
-		RematchRequestedBy: m.RematchRequestedBy,
-		RematchMatchID:     m.RematchMatchID,
-		MyPlayerIndex:      myIdx,
-		Players:            m.Players,
-		StartedAt:          m.StartedAt,
-		CompletedAt:        m.CompletedAt,
-		ExpiresAt:          expiresAt,
-		CreatedAt:          m.CreatedAt,
+		ID:                    m.ID,
+		GameSlug:              m.GameSlug,
+		Status:                m.Status,
+		MatchType:             m.MatchType,
+		InviteCode:            m.InviteCode,
+		StakeAmount:           m.StakeAmount,
+		PrizePool:              m.PrizePoolCents.Float(),
+		ServiceFeePercent:     float64(m.ServiceFeeBP) / 100.0,
+		TotalFee:               m.TotalFeeCents.Float(),
+		WinnerUserID:          m.WinnerUserID,
+		CurrentTurnUserID:     m.CurrentTurnUserID,
+		TurnSecondsLeft:       secondsLeft,
+		CurrentRound:          m.CurrentRound,
+		MaxRounds:             m.MaxRounds,
+		Scores:                m.Scores,
+		BoardState:            boardState,
+		CreatedBy:             m.CreatedBy,
+		RematchRequestedBy:     m.RematchRequestedBy,
+		RematchMatchID:         m.RematchMatchID,
+		DisconnectUserID:       m.DisconnectUserID,
+		DisconnectSecondsLeft:  disconnectSecondsLeft,
+		MyPlayerIndex:          myIdx,
+		Players:               m.Players,
+		StartedAt:             m.StartedAt,
+		CompletedAt:           m.CompletedAt,
+		ExpiresAt:             expiresAt,
+		CreatedAt:             m.CreatedAt,
 	}
 }
 

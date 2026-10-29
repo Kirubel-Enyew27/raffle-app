@@ -27,6 +27,7 @@ var (
 	ErrInsufficientStake   = errors.New("insufficient wallet balance for match stake")
 	ErrInvalidStake        = errors.New("stake amount is outside allowed limits")
 	ErrPaidMatchesDisabled = errors.New("paid matches are temporarily disabled pending regulatory compliance; free play is available")
+	ErrMatchAlreadyEnded   = errors.New("match has already ended")
 )
 
 const (
@@ -87,6 +88,12 @@ type Match struct {
 	// two players agreed to play next.
 	RematchRequestedBy *string        `json:"rematch_requested_by,omitempty"`
 	RematchMatchID     *string        `json:"rematch_match_id,omitempty"`
+	// DisconnectUserID is the user_id of the player who has temporarily
+	// disconnected. Cleared when they reconnect or the match is forfeited.
+	DisconnectUserID *string    `json:"disconnect_user_id,omitempty"`
+	// DisconnectDeadline is the server-authoritative deadline for the grace
+	// period. If the player has not reconnected by this time, the opponent wins.
+	DisconnectDeadline *time.Time `json:"disconnect_deadline,omitempty"`
 	Players            []*MatchPlayer `json:"players,omitempty"`
 	StartedAt          *time.Time     `json:"started_at,omitempty"`
 	CompletedAt        *time.Time     `json:"completed_at,omitempty"`

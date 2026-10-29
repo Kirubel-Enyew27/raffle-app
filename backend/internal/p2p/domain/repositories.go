@@ -25,6 +25,7 @@ type MatchRepository interface {
 	ListUserMatches(ctx context.Context, userID string, limit, offset int) ([]*Match, int, error)
 	FindExpiredTurns(ctx context.Context, now time.Time) ([]*Match, error)
 	FindIdleWaitingRooms(ctx context.Context, olderThan time.Time) ([]*Match, error)
+	FindExpiredDisconnects(ctx context.Context, now time.Time) ([]*Match, error)
 	UpdateStateTx(ctx context.Context, tx *sql.Tx, match *Match) error
 	MarkCompletedTx(ctx context.Context, tx *sql.Tx, matchID string, winnerUserID *string, status string, totalFeeCents money.Cents, completedAt time.Time) error
 	MarkCancelledTx(ctx context.Context, tx *sql.Tx, matchID string, cancelledAt time.Time) error

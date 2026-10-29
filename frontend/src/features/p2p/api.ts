@@ -66,6 +66,21 @@ export const p2pApi = {
   resignMatch: (matchId: string) =>
     api.post<ApiResponse<P2PMatch>>(`/p2p/matches/${matchId}/resign`).then((r) => r.data.data),
 
+  /**
+   * Notify the server that the client has lost its connection to the match.
+   * The server starts the reconnection grace period (60 s).
+   */
+  disconnectFromMatch: (matchId: string) =>
+    api.post<ApiResponse<P2PMatch>>(`/p2p/matches/${matchId}/disconnect`).then((r) => r.data.data),
+
+  /**
+   * Notify the server that the client has re-established its connection.
+   * Returns the current match state. If the grace period expired the server
+   * returns 410 Gone — callers should refetch to show the final result.
+   */
+  reconnectToMatch: (matchId: string) =>
+    api.post<ApiResponse<P2PMatch>>(`/p2p/matches/${matchId}/reconnect`).then((r) => r.data.data),
+
   /** Ask for a return game: the first call waits for the opponent, the second starts it. */
   requestRematch: (matchId: string) =>
     api

@@ -354,6 +354,55 @@ func (h *P2PHandler) ResignMatch(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": "success", "data": view})
 }
 
+// PlayerDisconnect notifies the server that the caller has lost connection.
+// The server starts a grace-period countdown; if the player does not reconnect
+// within the configured deadline, the opponent is awarded the match.
+func (h *P2PHandler) PlayerDisconnect(c *gin.Context) {
+	userID := c.GetString("user_id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "unauthorized"})
+		return
+	}
+
+	matchID := c.Param("id")
+	if !isUUID(matchID) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "BAD_REQUEST", "message": "invalid match id"})
+		return
+	}
+
+	view, err := h.svc.HandlePlayerDisconnect(c.Request.Context(), userID, matchID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": "success", "data": view})
+}
+
+// PlayerReconnect notifies the server that the caller has restored their
+// connection and wishes to resume the match. If the grace period has already
+// expired the match will be in a terminal state and ErrMatchAlreadyEnded is
+// returned so the client can show the final result.
+func (h *P2PHandler) PlayerReconnect(c *gin.Context) {
+	userID := c.GetString("user_id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "unauthorized"})
+		return
+	}
+
+	matchID := c.Param("id")
+	if !isUUID(matchID) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "BAD_REQUEST", "message": "invalid match id"})
+		return
+	}
+
+	view, err := h.svc.HandlePlayerReconnect(c.Request.Context(), userID, matchID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": "success", "data": view})
+}
+
 func (h *P2PHandler) Rematch(c *gin.Context) {
 	userID := c.GetString("user_id")
 	if userID == "" {
@@ -420,6 +469,8 @@ func handleError(c *gin.Context, err error) {
 		c.JSON(http.StatusGone, gin.H{"code": "INVITATION_EXPIRED", "message": "This invitation has expired"})
 	case errors.Is(err, domain.ErrNotParticipant):
 		c.JSON(http.StatusForbidden, gin.H{"code": "FORBIDDEN", "message": err.Error()})
+	case errors.Is(err, domain.ErrMatchAlreadyEnded):
+		c.JSON(http.StatusGone, gin.H{"code": "MATCH_ALREADY_ENDED", "message": err.Error()})
 	case errors.Is(err, domain.ErrMatchNotFound) || errors.Is(err, domain.ErrGameNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"code": "NOT_FOUND", "message": err.Error()})
 	case errors.Is(err, domain.ErrInsufficientStake):

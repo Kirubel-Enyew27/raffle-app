@@ -73,6 +73,7 @@ export function Component() {
   const [copiedLink, setCopiedLink] = useState(false)
   const [secondsLeft, setSecondsLeft] = useState<number>(0)
   const [waitingSecondsLeft, setWaitingSecondsLeft] = useState<number>(0)
+  const [disconnectSecondsLeft, setDisconnectSecondsLeft] = useState<number>(0)
   const [resignDialogOpen, setResignDialogOpen] = useState(false)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
 
@@ -120,8 +121,30 @@ export function Component() {
       const payload = event.payload as Record<string, unknown>
       if (event.type === 'p2p.move_made' && payload?.state) {
         queryClient.setQueryData(['p2p-match', matchId], payload.state)
-      } else if (event.type === 'p2p.match_started' || event.type === 'p2p.match_completed') {
-        queryClient.setQueryData(['p2p-match', matchId], payload)
+      } else if (
+        event.type === 'p2p.match_started' ||
+        event.type === 'p2p.match_completed' ||
+        event.type === 'p2p.turn_timeout'
+      ) {
+        // For match_completed and turn_timeout the payload may be the full match
+        // state or a partial update — always refetch for canonical state.
+        if (event.type === 'p2p.match_started') {
+          queryClient.setQueryData(['p2p-match', matchId], payload)
+        } else {
+          refetch()
+        }
+      } else if (event.type === 'p2p.player_disconnected') {
+        // Payload contains disconnect_user_id and disconnect_seconds_left.
+        // Update the cached match so the banner shows immediately, then also
+        // refetch in the background so the full deadline is authoritative.
+        refetch()
+      } else if (event.type === 'p2p.player_reconnected') {
+        // Payload contains the full match state under `state`.
+        if (payload?.state) {
+          queryClient.setQueryData(['p2p-match', matchId], payload.state)
+        } else {
+          refetch()
+        }
       } else if (event.type === 'p2p.rematch_requested') {
         // The requester is told separately; only the opponent needs a nudge.
         if (payload?.user_id !== user?.id) {
@@ -145,12 +168,35 @@ export function Component() {
     [matchId, queryClient, refetch, toast, user?.id, navigate]
   )
 
+  // Reconnect mutation: when the SSE stream recovers from a disconnection,
+  // notify the server so it clears the grace-period countdown. If the grace
+  // period already expired (410 Gone) just refetch to show the final result.
+  const reconnectMutation = useMutation({
+    mutationFn: () => p2pApi.reconnectToMatch(matchId!),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['p2p-match', matchId], updated)
+    },
+    onError: () => {
+      // 410 Gone means the match ended while we were disconnected — refetch
+      // to pick up the terminal state.
+      refetch()
+    },
+  })
+
   const { isLive, status: streamStatus } = useP2PStream({
     matchId,
     token,
     enabled: !!matchId && !!token,
     onEvent: handleEvent,
-    onReconnect: () => refetch(),
+    onReconnect: () => {
+      // Always refetch the canonical state on stream reconnect.
+      refetch()
+      // If a match is in progress and we had been disconnected, tell the server
+      // so it clears the grace-period deadline.
+      if (match?.status === 'in_progress' && !reconnectMutation.isPending) {
+        reconnectMutation.mutate()
+      }
+    },
   })
 
   const [prevTurnKey, setPrevTurnKey] = useState<string>('')
@@ -190,6 +236,35 @@ export function Component() {
 
     return () => clearInterval(timer)
   }, [match?.status, match?.expires_at, match?.created_at, match?.match_type, match])
+
+  // Disconnect grace-period countdown: driven from the server-supplied
+  // disconnect_seconds_left value and ticking down locally each second.
+  const disconnectKey = `${match?.disconnect_user_id}_${match?.disconnect_seconds_left}`
+  const [prevDisconnectKey, setPrevDisconnectKey] = useState<string>('')
+  if (match?.status === 'in_progress' && match.disconnect_user_id && disconnectKey !== prevDisconnectKey) {
+    setPrevDisconnectKey(disconnectKey)
+    setDisconnectSecondsLeft(match.disconnect_seconds_left || 0)
+  }
+  // Clear the local countdown when the disconnect is resolved.
+  if (match?.status === 'in_progress' && !match.disconnect_user_id && disconnectSecondsLeft > 0) {
+    setDisconnectSecondsLeft(0)
+    setPrevDisconnectKey('')
+  }
+
+  useEffect(() => {
+    if (!match || match.status !== 'in_progress' || !match.disconnect_user_id) return
+
+    const initialSeconds = match.disconnect_seconds_left || 0
+    if (initialSeconds <= 0) return
+
+    const startedAt = Date.now()
+    const timer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000)
+      setDisconnectSecondsLeft(Math.max(0, initialSeconds - elapsed))
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [match?.disconnect_user_id, match?.disconnect_seconds_left, match?.status, match])
 
   // Move mutation
   const moveMutation = useMutation({
@@ -336,6 +411,15 @@ export function Component() {
   const isGameOver = ['completed', 'tied', 'forfeited', 'cancelled'].includes(match.status)
   // const damaHistory = (match.board_state?.move_history ?? []) as DamaHistoryEntry[]
 
+  // Disconnect state derived from match (server-authoritative).
+  const opponentDisconnected =
+    match.status === 'in_progress' &&
+    !!match.disconnect_user_id &&
+    match.disconnect_user_id !== user?.id
+  const iAmDisconnected =
+    match.status === 'in_progress' &&
+    match.disconnect_user_id === user?.id
+
   // Rematch state: a finished match either has the caller waiting on the
   // opponent, or the opponent waiting on the caller to accept.
   const iRequestedRematch = !!match.rematch_requested_by && match.rematch_requested_by === user?.id
@@ -472,6 +556,54 @@ export function Component() {
           >
             Reconnect
           </Button>
+        </div>
+      )}
+
+      {/* Opponent disconnected — countdown banner shown to the connected player */}
+      {opponentDisconnected && (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="flex items-center justify-between gap-3 rounded-lg border border-orange-500/40 bg-orange-500/10 px-3 py-2.5 text-xs font-semibold text-orange-700 dark:text-orange-300"
+        >
+          <div className="flex items-center gap-2">
+            <WifiOff className="h-4 w-4 shrink-0 text-orange-500" />
+            <span>
+              Your opponent disconnected.{' '}
+              {disconnectSecondsLeft > 0
+                ? `They have ${disconnectSecondsLeft}s to reconnect.`
+                : 'Waiting for them to reconnect…'}
+            </span>
+          </div>
+          {disconnectSecondsLeft > 0 && (
+            <span className="shrink-0 tabular-nums font-black text-orange-600 dark:text-orange-300 text-sm">
+              {disconnectSecondsLeft}s
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Own reconnecting progress — shown to the player who lost the connection */}
+      {iAmDisconnected && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs font-semibold text-amber-700 dark:text-amber-300"
+        >
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            <span>
+              You are reconnecting.{' '}
+              {disconnectSecondsLeft > 0
+                ? `Resume within ${disconnectSecondsLeft}s or the match will be forfeited.`
+                : 'Forfeiting soon…'}
+            </span>
+          </div>
+          {disconnectSecondsLeft > 0 && (
+            <span className="shrink-0 tabular-nums font-black text-amber-600 dark:text-amber-300 text-sm">
+              {disconnectSecondsLeft}s
+            </span>
+          )}
         </div>
       )}
 

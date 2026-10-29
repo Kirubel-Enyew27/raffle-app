@@ -41,7 +41,8 @@ func idleRoomTTL(matchType string) time.Duration {
 	return 5 * time.Minute
 }
 
-// Run starts the background workers for turn timeouts and idle room sweeps.
+// Run starts the background workers for turn timeouts, disconnect timeouts, and
+// idle room sweeps.
 func (e *P2PEngine) Run(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -58,6 +59,7 @@ func (e *P2PEngine) Run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			e.sweepTurnTimeouts(ctx)
+			e.sweepDisconnectTimeouts(ctx)
 		case <-cleanupTicker.C:
 			e.sweepIdleRooms(ctx)
 		}
@@ -77,6 +79,124 @@ func (e *P2PEngine) sweepTurnTimeouts(ctx context.Context) {
 			e.log.Error("failed to handle P2P turn timeout", zap.String("match_id", m.ID), zap.Error(err))
 		}
 	}
+}
+
+// sweepDisconnectTimeouts forfeits any in-progress match whose disconnect
+// deadline has elapsed without the disconnected player reconnecting.
+func (e *P2PEngine) sweepDisconnectTimeouts(ctx context.Context) {
+	now := time.Now()
+	expired, err := e.matchRepo.FindExpiredDisconnects(ctx, now)
+	if err != nil {
+		e.log.Error("failed to query expired P2P disconnect deadlines", zap.Error(err))
+		return
+	}
+
+	for _, m := range expired {
+		if err := e.handleDisconnectTimeout(ctx, m.ID); err != nil {
+			e.log.Error("failed to handle P2P disconnect timeout",
+				zap.String("match_id", m.ID), zap.Error(err))
+		}
+	}
+}
+
+func (e *P2PEngine) handleDisconnectTimeout(ctx context.Context, matchID string) error {
+	tx, err := e.matchRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	match, err := e.matchRepo.FindByIDForUpdate(ctx, tx, matchID)
+	if err != nil {
+		return err
+	}
+
+	// Guard against races: another sweep or a reconnect may have already cleared
+	// the disconnect record or moved the match to a terminal state.
+	if match.Status != domain.StatusInProgress ||
+		match.DisconnectDeadline == nil ||
+		time.Now().Before(*match.DisconnectDeadline) {
+		return nil
+	}
+
+	if match.DisconnectUserID == nil {
+		return nil
+	}
+
+	disconnectedUserID := *match.DisconnectUserID
+
+	players, err := e.playerRepo.ListByMatchTx(ctx, tx, match.ID)
+	if err != nil {
+		return err
+	}
+
+	var winnerUserID string
+	for _, p := range players {
+		if p.UserID != disconnectedUserID {
+			winnerUserID = p.UserID
+			break
+		}
+	}
+
+	if winnerUserID == "" {
+		// Both players somehow disconnected: just cancel cleanly.
+		now := time.Now()
+		if err := e.matchRepo.MarkCancelledTx(ctx, tx, match.ID, now); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		e.log.Warn("P2P match cancelled: both players disconnected",
+			zap.String("match_id", match.ID))
+		return nil
+	}
+
+	now := time.Now()
+	settlement := domain.CalculateSettlement(match.PrizePoolCents, match.ServiceFeeBP, false)
+
+	creditTxID, feeTxID, err := e.escrowRepo.SettleWinnerTx(ctx, tx, winnerUserID,
+		match.PrizePoolCents, settlement.FeeCents, settlement.NetPayoutCents, match.ID)
+	if err != nil {
+		return err
+	}
+
+	if err := e.escrowRepo.FinalizeLoserTx(ctx, tx, disconnectedUserID, match.StakeCents, match.ID); err != nil {
+		return err
+	}
+
+	for _, p := range players {
+		if p.UserID == winnerUserID {
+			_ = e.playerRepo.SetLedgerTxIDs(ctx, tx, p.ID, nil, &creditTxID, &feeTxID)
+		}
+	}
+
+	if err := e.matchRepo.MarkCompletedTx(ctx, tx, match.ID, &winnerUserID, domain.StatusForfeited,
+		settlement.FeeCents, now); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	e.log.Info("P2P match forfeited: disconnect grace period expired",
+		zap.String("match_id", match.ID),
+		zap.String("disconnected_user_id", disconnectedUserID),
+		zap.String("winner_user_id", winnerUserID))
+
+	if e.realtime != nil {
+		_ = e.realtime.PublishToChannel(ctx, "p2p_match:"+match.ID, "p2p.match_completed",
+			map[string]interface{}{
+				"match_id":              match.ID,
+				"winner_user_id":        winnerUserID,
+				"status":                domain.StatusForfeited,
+				"disconnect_user_id":    disconnectedUserID,
+				"reason":                "disconnect_timeout",
+			})
+	}
+
+	return nil
 }
 
 func (e *P2PEngine) handleTurnTimeout(ctx context.Context, matchID string) error {
