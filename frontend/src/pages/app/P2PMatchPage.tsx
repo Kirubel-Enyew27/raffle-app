@@ -577,7 +577,7 @@ export function Component() {
       </Card>
 
       {/* Main Interactive Stage */}
-      <Card className="border-border/80 shadow-xl overflow-hidden min-h-[420px] flex flex-col justify-center">
+      <Card className="border-border/80 shadow-xl min-h-[420px] flex flex-col justify-center">
         <CardContent className="p-4 sm:p-8 flex flex-col items-center justify-center">
           {/* State 0: MATCH CANCELLED */}
           {match.status === 'cancelled' && (
@@ -756,7 +756,7 @@ export function Component() {
 
           {/* State 3 & 4: BOARD STAGE (Active Play & Decisive Game-Ending Review) */}
           {(match.status === 'in_progress' || isGameOver) && (
-            <div className="relative w-full flex flex-col items-center">
+            <div className="relative isolate w-full flex flex-col items-center">
               {/* Victory Celebration Confetti Particles */}
               {isEffectsActive && outcome?.type === 'win' && <VictoryConfetti />}
 
