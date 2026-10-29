@@ -6,7 +6,6 @@ import {
   Swords,
   Users,
   PlusCircle,
-  KeyRound,
   RefreshCw,
   Trophy,
   Clock,

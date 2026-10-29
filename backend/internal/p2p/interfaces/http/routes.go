@@ -5,7 +5,14 @@ import (
 	"github.com/raffle-app/backend/pkg/middleware"
 )
 
-func RegisterP2PRoutes(r *gin.RouterGroup, handler *P2PHandler) {
+// RegisterP2PRoutes registers all P2P routes.
+// rl may be nil — when nil, rate limiting is skipped (e.g. in tests).
+func RegisterP2PRoutes(r *gin.RouterGroup, handler *P2PHandler, rl ...*P2PRateLimiter) {
+	var rateLimiter *P2PRateLimiter
+	if len(rl) > 0 {
+		rateLimiter = rl[0]
+	}
+
 	p2p := r.Group("/p2p")
 	{
 		// Public game list, leaderboard and invite preview
@@ -20,12 +27,34 @@ func RegisterP2PRoutes(r *gin.RouterGroup, handler *P2PHandler) {
 		{
 			auth.GET("/matches/lobby", handler.ListLobby)
 			auth.GET("/matches/my", handler.ListUserMatches)
-			auth.POST("/matches", handler.CreateMatch)
-			auth.POST("/matches/join-code", handler.JoinMatchByCode)
-			auth.POST("/matches/:id/join", handler.JoinMatch)
+
+			// Match creation: limited to 10 per 60s per user
+			if rateLimiter != nil {
+				auth.POST("/matches", rateLimiter.CreateRateLimit(), handler.CreateMatch)
+			} else {
+				auth.POST("/matches", handler.CreateMatch)
+			}
+
+			// Join actions: limited to 20 per 60s per user
+			if rateLimiter != nil {
+				auth.POST("/matches/join-code", rateLimiter.JoinRateLimit(), handler.JoinMatchByCode)
+				auth.POST("/matches/:id/join", rateLimiter.JoinRateLimit(), handler.JoinMatch)
+				auth.POST("/matches/:id/ready", rateLimiter.JoinRateLimit(), handler.ReadyUp)
+			} else {
+				auth.POST("/matches/join-code", handler.JoinMatchByCode)
+				auth.POST("/matches/:id/join", handler.JoinMatch)
+				auth.POST("/matches/:id/ready", handler.ReadyUp)
+			}
+
 			auth.POST("/matches/:id/cancel", handler.CancelMatch)
-			auth.POST("/matches/:id/ready", handler.ReadyUp)
-			auth.POST("/matches/:id/move", handler.SubmitMove)
+
+			// Move submission: limited to 30 per 60s per user
+			if rateLimiter != nil {
+				auth.POST("/matches/:id/move", rateLimiter.MoveRateLimit(), handler.SubmitMove)
+			} else {
+				auth.POST("/matches/:id/move", handler.SubmitMove)
+			}
+
 			auth.POST("/matches/:id/resign", handler.ResignMatch)
 			auth.POST("/matches/:id/rematch", handler.Rematch)
 			auth.GET("/matches/:id/state", handler.GetMatchState)

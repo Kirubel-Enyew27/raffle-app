@@ -25,7 +25,6 @@ export function Component() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const redirectParam = searchParams.get('redirect')
-  const sessionExpired = searchParams.get('reason') === 'session_expired'
   const pendingRedirect =
     redirectParam ||
     (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pending_redirect') : null)
@@ -52,11 +51,6 @@ export function Component() {
   return (
     <AuthCard title={t('auth.signIn')} subtitle={t('auth.welcomeBack')}>
       <form onSubmit={handleSubmit(d => mutate(d))} className="space-y-4">
-        {sessionExpired && !error && (
-          <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-            {t('auth.sessionExpired')}
-          </p>
-        )}
         {error && (
           <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {error.message}

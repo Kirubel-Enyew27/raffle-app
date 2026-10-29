@@ -4,24 +4,38 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/raffle-app/backend/internal/p2p/application"
 	"github.com/raffle-app/backend/internal/p2p/domain"
+	"go.uber.org/zap"
 )
 
 type P2PHandler struct {
 	svc *application.P2PService
+	log *zap.Logger
 }
 
+// NewP2PHandler creates a handler with a no-op logger.
+// Prefer NewP2PHandlerWithLogger in production.
 func NewP2PHandler(svc *application.P2PService) *P2PHandler {
-	return &P2PHandler{svc: svc}
+	return &P2PHandler{svc: svc, log: zap.NewNop()}
+}
+
+// NewP2PHandlerWithLogger creates a handler with structured logging.
+func NewP2PHandlerWithLogger(svc *application.P2PService, log *zap.Logger) *P2PHandler {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	return &P2PHandler{svc: svc, log: log}
 }
 
 func (h *P2PHandler) ListGames(c *gin.Context) {
 	games, err := h.svc.ListGames(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "SERVER_ERROR", "message": err.Error()})
+		h.log.Error("ListGames failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "SERVER_ERROR", "message": "internal server error"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"code": "success", "data": games})
@@ -35,7 +49,8 @@ func (h *P2PHandler) GetGame(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"code": "NOT_FOUND", "message": "Game not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "SERVER_ERROR", "message": err.Error()})
+		h.log.Error("GetGame failed", zap.String("slug", slug), zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "SERVER_ERROR", "message": "internal server error"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"code": "success", "data": game})
@@ -107,7 +122,8 @@ func (h *P2PHandler) GetLeaderboard(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"code": "NOT_FOUND", "message": "Game not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "SERVER_ERROR", "message": err.Error()})
+		h.log.Error("GetLeaderboard failed", zap.Any("filter", filter), zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "SERVER_ERROR", "message": "internal server error"})
 		return
 	}
 
@@ -123,7 +139,8 @@ func (h *P2PHandler) ListLobby(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	matches, err := h.svc.ListWaitingMatches(c.Request.Context(), gameSlug, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "SERVER_ERROR", "message": err.Error()})
+		h.log.Error("ListLobby failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "SERVER_ERROR", "message": "internal server error"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"code": "success", "data": matches})
@@ -140,7 +157,8 @@ func (h *P2PHandler) ListUserMatches(c *gin.Context) {
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 	matches, total, err := h.svc.ListUserMatches(c.Request.Context(), userID, limit, offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "SERVER_ERROR", "message": err.Error()})
+		h.log.Error("ListUserMatches failed", zap.String("user_id", userID), zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "SERVER_ERROR", "message": "internal server error"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"code": "success", "data": gin.H{"matches": matches, "total": total}})
@@ -266,6 +284,7 @@ func (h *P2PHandler) ReadyUp(c *gin.Context) {
 }
 
 func (h *P2PHandler) SubmitMove(c *gin.Context) {
+	start := time.Now()
 	userID := c.GetString("user_id")
 	if userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "unauthorized"})
@@ -283,11 +302,35 @@ func (h *P2PHandler) SubmitMove(c *gin.Context) {
 		return
 	}
 
+	// Collect action keys only — never log values (may contain game secrets).
+	actionKeys := make([]string, 0, len(action))
+	for k := range action {
+		actionKeys = append(actionKeys, k)
+	}
+
 	view, err := h.svc.SubmitMove(c.Request.Context(), userID, matchID, action)
+	latency := time.Since(start)
+
 	if err != nil {
+		h.log.Info("submit_move",
+			zap.String("user_id", userID),
+			zap.String("match_id", matchID),
+			zap.Strings("action_keys", actionKeys),
+			zap.String("result", "rejected"),
+			zap.Duration("latency", latency),
+			zap.Error(err),
+		)
 		handleError(c, err)
 		return
 	}
+
+	h.log.Info("submit_move",
+		zap.String("user_id", userID),
+		zap.String("match_id", matchID),
+		zap.Strings("action_keys", actionKeys),
+		zap.String("result", "accepted"),
+		zap.Duration("latency", latency),
+	)
 	c.JSON(http.StatusOK, gin.H{"code": "success", "data": view})
 }
 

@@ -1,160 +1,204 @@
-import React, { createContext, useContext, useEffect, useRef } from 'react'
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { useAuth } from './AuthContext'
 import { useToast } from './ToastContext'
 import { useQueryClient } from '@tanstack/react-query'
+import { sseClient } from '@/lib/sseClient'
+import type { SSEEvent, SSEStatus } from '@/lib/sseClient'
 
-const RealtimeContext = createContext<null>(null)
+// ─── Context type ─────────────────────────────────────────────────────────────
+
+interface RealtimeContextValue {
+  connectionStatus: SSEStatus
+}
+
+const RealtimeContext = createContext<RealtimeContextValue>({ connectionStatus: 'closed' })
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { token, user } = useAuth()
   const { toast } = useToast()
   const queryClient = useQueryClient()
-  const eventSourceRef = useRef<EventSource | null>(null)
+  const [connectionStatus, setConnectionStatus] = useState<SSEStatus>('closed')
+  const lastStatusRef = useRef<SSEStatus>('closed')
 
   useEffect(() => {
     if (!token) {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close()
-        eventSourceRef.current = null
-      }
+      setConnectionStatus('closed')
+      lastStatusRef.current = 'closed'
       return
     }
 
-    const baseURL = import.meta.env.VITE_API_URL || '/api/v1'
-    const absoluteURL = baseURL.startsWith('http')
-      ? `${baseURL}/realtime/stream?token=${encodeURIComponent(token)}`
-      : `${window.location.origin}${baseURL}/realtime/stream?token=${encodeURIComponent(token)}`
+    // sseClient internally handles AUTH_TOKEN_REFRESHED_EVENT — it will
+    // reconnect with the new token and migrate our subscriber automatically.
+    // We just need to provide the current token here.
 
-    console.log('Connecting to real-time events at:', absoluteURL.replace(token, 'REDACTED'))
-    const eventSource = new EventSource(absoluteURL)
-    eventSourceRef.current = eventSource
+    const CHANNEL = 'global'
 
-    eventSource.addEventListener('connected', () => {
-      console.log('Connected to real-time update stream')
+    console.log('Connecting to real-time events (sseClient)')
+    setConnectionStatus('connecting')
+    lastStatusRef.current = 'connecting'
+
+    const unsub = sseClient.subscribe(CHANNEL, token, (ev: SSEEvent) => {
+      handleEvent(ev)
     })
 
-    eventSource.addEventListener('message', (event) => {
-      try {
-        const ev = JSON.parse(event.data)
-        console.log('Real-time event:', ev)
+    const interval = setInterval(() => {
+      const s = sseClient.getStatus(CHANNEL)
+      if (s !== lastStatusRef.current) {
+        lastStatusRef.current = s
+        setConnectionStatus(s)
 
-        switch (ev.type) {
-          case 'wallet_update':
-            queryClient.invalidateQueries({ queryKey: ['wallet'] })
-            toast({
-              title: 'Wallet Balance Updated',
-              description: `Your balance is now ${ev.payload.balance} ${ev.payload.currency || 'ETB'}.`,
-              type: 'success',
-            })
-            break
-
-          case 'transaction_update':
-            queryClient.invalidateQueries({ queryKey: ['transactions'] })
-            {
-              if (ev.payload.type === 'ticket_purchase') {
-                break
-              }
-              const txType = (ev.payload.type === 'deposit' || ev.payload.type === 'sms_deposit') ? 'deposit' : 'withdraw'
-              if (txType === 'deposit' && ev.payload.status === 'completed') {
-                toast({
-                  title: 'Deposit Successful',
-                  description: `Successfully deposited ${ev.payload.amount} ETB.`,
-                  type: 'success',
-                })
-              } else if (txType === 'withdraw') {
-                if (ev.payload.status === 'pending') {
-                  toast({
-                    title: 'Withdrawal Requested',
-                    description: `Your request for ${ev.payload.amount} ETB is pending admin approval.`,
-                    type: 'info',
-                  })
-                } else if (ev.payload.status === 'completed') {
-                  toast({
-                    title: 'Withdrawal Processed',
-                    description: `Your withdrawal of ${ev.payload.amount} ETB was approved and completed.`,
-                    type: 'success',
-                  })
-                } else if (ev.payload.status === 'rejected') {
-                  toast({
-                    title: 'Withdrawal Rejected',
-                    description: `Your withdrawal request of ${ev.payload.amount} ETB was rejected.`,
-                    type: 'error',
-                  })
-                }
-              }
-            }
-            break
-
-          case 'ticket_purchase':
-            // Invalidate detailed and list queries for the updated raffle
-            queryClient.invalidateQueries({ queryKey: ['raffle', ev.payload.raffle_id] })
-            queryClient.invalidateQueries({ queryKey: ['raffles'] })
-            break
-
-          case 'withdrawal_request':
-            if (user?.role === 'admin') {
-              queryClient.invalidateQueries({ queryKey: ['admin-pending-withdrawals'] })
-              toast({
-                title: 'Withdrawal Action Required',
-                description: `A user has requested a withdrawal of ${ev.payload.amount} ETB.`,
-                type: 'warning',
-              })
-            }
-            break
-
-          case 'withdrawal_status':
-            queryClient.invalidateQueries({ queryKey: ['wallet'] })
-            queryClient.invalidateQueries({ queryKey: ['transactions'] })
-            queryClient.invalidateQueries({ queryKey: ['admin-pending-withdrawals'] })
-            break
-
-          case 'draw_completed':
-            queryClient.invalidateQueries({ queryKey: ['raffle', ev.payload.raffle_id] })
-            queryClient.invalidateQueries({ queryKey: ['raffles'] })
-            break
-
-          case 'winner_announcement':
-            queryClient.invalidateQueries({ queryKey: ['winners'] })
-            queryClient.invalidateQueries({ queryKey: ['admin-winners'] })
-            queryClient.invalidateQueries({ queryKey: ['my-winners'] })
-            break
-
-          case 'winner_notification':
-            toast({
-              title: '🎉 Congratulations!',
-              description: `You are the winner of the raffle! A prize of ${ev.payload.prize_amount} ETB has been sent to your wallet!`,
-              type: 'success',
-            })
-            // Force refresh data
-            queryClient.invalidateQueries({ queryKey: ['wallet'] })
-            queryClient.invalidateQueries({ queryKey: ['transactions'] })
-            queryClient.invalidateQueries({ queryKey: ['my-winners'] })
-            break
-
-          default:
-            break
+        if (s === 'live') {
+          console.log('Connected to real-time update stream')
+        } else if (s === 'reconnecting') {
+          console.warn('Real-time connection lost — reconnecting with backoff')
+        } else if (s === 'failed') {
+          console.error('Real-time connection failed after max retries')
         }
-      } catch (err) {
-        console.error('Failed to handle real-time message:', err)
       }
-    })
-
-    eventSource.onerror = (err) => {
-      console.warn('Real-time connection error/reconnect attempt:', err)
-    }
+    }, 200)
 
     return () => {
-      console.log('Closing real-time connection')
-      eventSource.close()
-      if (eventSourceRef.current === eventSource) {
-        eventSourceRef.current = null
+      clearInterval(interval)
+      unsub()
+      setConnectionStatus('closed')
+      lastStatusRef.current = 'closed'
+    }
+
+    function handleEvent(ev: SSEEvent) {
+      const raw = ev as {
+        type: string
+        payload: Record<string, unknown>
+      }
+      console.log('Real-time event:', raw)
+
+      switch (raw.type) {
+        case 'wallet_update': {
+          queryClient.invalidateQueries({ queryKey: ['wallet'] })
+          toast({
+            title: 'Wallet Balance Updated',
+            description: `Your balance is now ${(raw.payload as { balance: unknown }).balance} ${(raw.payload as { currency?: string }).currency ?? 'ETB'}.`,
+            type: 'success',
+          })
+          break
+        }
+
+        case 'transaction_update': {
+          queryClient.invalidateQueries({ queryKey: ['transactions'] })
+          const payload = raw.payload as {
+            type?: string
+            status?: string
+            amount?: number
+          }
+          if (payload.type === 'ticket_purchase') break
+
+          const txType =
+            payload.type === 'deposit' || payload.type === 'sms_deposit' ? 'deposit' : 'withdraw'
+
+          if (txType === 'deposit' && payload.status === 'completed') {
+            toast({
+              title: 'Deposit Successful',
+              description: `Successfully deposited ${payload.amount} ETB.`,
+              type: 'success',
+            })
+          } else if (txType === 'withdraw') {
+            if (payload.status === 'pending') {
+              toast({
+                title: 'Withdrawal Requested',
+                description: `Your request for ${payload.amount} ETB is pending admin approval.`,
+                type: 'info',
+              })
+            } else if (payload.status === 'completed') {
+              toast({
+                title: 'Withdrawal Processed',
+                description: `Your withdrawal of ${payload.amount} ETB was approved and completed.`,
+                type: 'success',
+              })
+            } else if (payload.status === 'rejected') {
+              toast({
+                title: 'Withdrawal Rejected',
+                description: `Your withdrawal request of ${payload.amount} ETB was rejected.`,
+                type: 'error',
+              })
+            }
+          }
+          break
+        }
+
+        case 'ticket_purchase': {
+          const payload = raw.payload as { raffle_id?: string }
+          queryClient.invalidateQueries({ queryKey: ['raffle', payload.raffle_id] })
+          queryClient.invalidateQueries({ queryKey: ['raffles'] })
+          break
+        }
+
+        case 'withdrawal_request': {
+          if (user?.role === 'admin') {
+            queryClient.invalidateQueries({ queryKey: ['admin-pending-withdrawals'] })
+            toast({
+              title: 'Withdrawal Action Required',
+              description: `A user has requested a withdrawal of ${(raw.payload as { amount?: number }).amount} ETB.`,
+              type: 'warning',
+            })
+          }
+          break
+        }
+
+        case 'withdrawal_status': {
+          queryClient.invalidateQueries({ queryKey: ['wallet'] })
+          queryClient.invalidateQueries({ queryKey: ['transactions'] })
+          queryClient.invalidateQueries({ queryKey: ['admin-pending-withdrawals'] })
+          break
+        }
+
+        case 'draw_completed': {
+          const payload = raw.payload as { raffle_id?: string }
+          queryClient.invalidateQueries({ queryKey: ['raffle', payload.raffle_id] })
+          queryClient.invalidateQueries({ queryKey: ['raffles'] })
+          break
+        }
+
+        case 'winner_announcement': {
+          queryClient.invalidateQueries({ queryKey: ['winners'] })
+          queryClient.invalidateQueries({ queryKey: ['admin-winners'] })
+          queryClient.invalidateQueries({ queryKey: ['my-winners'] })
+          break
+        }
+
+        case 'winner_notification': {
+          const payload = raw.payload as { prize_amount?: number }
+          toast({
+            title: '🎉 Congratulations!',
+            description: `You are the winner of the raffle! A prize of ${payload.prize_amount} ETB has been sent to your wallet!`,
+            type: 'success',
+          })
+          queryClient.invalidateQueries({ queryKey: ['wallet'] })
+          queryClient.invalidateQueries({ queryKey: ['transactions'] })
+          queryClient.invalidateQueries({ queryKey: ['my-winners'] })
+          break
+        }
+
+        default:
+          break
       }
     }
   }, [token, user?.role, queryClient, toast])
 
-  return <RealtimeContext.Provider value={null}>{children}</RealtimeContext.Provider>
+  return (
+    <RealtimeContext.Provider value={{ connectionStatus }}>
+      {children}
+    </RealtimeContext.Provider>
+  )
 }
+
+// ─── Consumer hooks ───────────────────────────────────────────────────────────
 
 export function useRealtime() {
   return useContext(RealtimeContext)
+}
+
+/** Returns the current SSE connection status for the global realtime channel. */
+export function useRealtimeStatus(): SSEStatus {
+  return useContext(RealtimeContext).connectionStatus
 }

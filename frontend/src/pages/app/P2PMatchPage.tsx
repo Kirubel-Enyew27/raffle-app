@@ -117,13 +117,15 @@ export function Component() {
   // Handle realtime events
   const handleEvent = useCallback(
     (event: P2PEvent) => {
-      if (event.type === 'p2p.move_made' && event.payload?.state) {
-        queryClient.setQueryData(['p2p-match', matchId], event.payload.state)
+      // SSE payloads are dynamic — cast to a loose record for field access.
+      const payload = event.payload as Record<string, unknown>
+      if (event.type === 'p2p.move_made' && payload?.state) {
+        queryClient.setQueryData(['p2p-match', matchId], payload.state)
       } else if (event.type === 'p2p.match_started' || event.type === 'p2p.match_completed') {
-        queryClient.setQueryData(['p2p-match', matchId], event.payload)
+        queryClient.setQueryData(['p2p-match', matchId], payload)
       } else if (event.type === 'p2p.rematch_requested') {
         // The requester is told separately; only the opponent needs a nudge.
-        if (event.payload?.user_id !== user?.id) {
+        if (payload?.user_id !== user?.id) {
           toast({
             title: 'Rematch requested',
             description: 'Your opponent wants to play again.',
@@ -131,9 +133,9 @@ export function Component() {
           })
         }
         refetch()
-      } else if (event.type === 'p2p.rematch_created' && event.payload?.next_match_id) {
+      } else if (event.type === 'p2p.rematch_created' && payload?.next_match_id) {
         toast({ title: 'Rematch started', description: 'Both players agreed — good luck!', type: 'success' })
-        navigate(`/games/match/${event.payload.next_match_id}`)
+        navigate(`/games/match/${payload.next_match_id as string}`)
       } else if (event.type === 'p2p.match_cancelled') {
         toast({ title: 'Match cancelled', description: 'This invitation has been cancelled.', type: 'info' })
         refetch()

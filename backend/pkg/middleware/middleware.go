@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -29,8 +30,60 @@ func RequestLogger(log *zap.Logger) gin.HandlerFunc {
 }
 
 func CORSMiddleware() gin.HandlerFunc {
+	return CORSMiddlewareWithLogger(nil)
+}
+
+// CORSMiddlewareWithLogger builds a CORS middleware that reads allowed origins
+// from the CORS_ALLOWED_ORIGINS environment variable (comma-separated list).
+// Defaults to "*" when the variable is unset — safe for local development but
+// not for production. In production (APP_ENV=production) a warning is logged
+// when the wildcard is in use.
+func CORSMiddlewareWithLogger(log *zap.Logger) gin.HandlerFunc {
+	rawOrigins := viper.GetString("CORS_ALLOWED_ORIGINS")
+	if rawOrigins == "" {
+		rawOrigins = "*"
+	}
+
+	// Warn in production when the wildcard is used.
+	if viper.GetString("APP_ENV") == "production" && rawOrigins == "*" {
+		if log != nil {
+			log.Warn("CORS_ALLOWED_ORIGINS is '*' in production — consider restricting to specific origins")
+		}
+	}
+
+	// Build the origin set for O(1) lookup.
+	wildcard := rawOrigins == "*"
+	allowedSet := make(map[string]bool)
+	if !wildcard {
+		for _, o := range strings.Split(rawOrigins, ",") {
+			o = strings.TrimSpace(o)
+			if o != "" {
+				allowedSet[o] = true
+			}
+		}
+	}
+
 	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := c.Request.Header.Get("Origin")
+
+		var allowOrigin string
+		switch {
+		case wildcard:
+			allowOrigin = "*"
+		case origin != "" && allowedSet[origin]:
+			allowOrigin = origin
+		default:
+			// Not a recognised origin; skip setting the header so the browser
+			// blocks the preflight/request.
+			if c.Request.Method == "OPTIONS" {
+				c.AbortWithStatus(http.StatusNoContent)
+				return
+			}
+			c.Next()
+			return
+		}
+
+		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Idempotency-Key")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -46,9 +99,52 @@ func RecoveryMiddleware() gin.HandlerFunc {
 	return gin.Recovery()
 }
 
-func RateLimiter(rdb *redis.Client, ttl time.Duration) gin.HandlerFunc {
+// RateLimiter is a sliding-window rate limiter backed by Redis.
+//
+// Algorithm:
+//   - Key:   "rl:{ip}:{bucket}" where bucket = unix_seconds / window_seconds
+//   - On each request: INCR the key, set EXPIRE to 2× window on first write.
+//   - If the resulting count exceeds limit, return 429 with a Retry-After header.
+//
+// The window_bucket approach means a new bucket (and counter) is created every
+// window duration, giving an approximate sliding window with at most 2× over-
+// counting at bucket boundaries.
+func RateLimiter(rdb *redis.Client, limit int, window time.Duration) gin.HandlerFunc {
+	windowSecs := int64(window.Seconds())
+	if windowSecs <= 0 {
+		windowSecs = 1
+	}
+
 	return func(c *gin.Context) {
-		// Rate limiting logic with redis
+		ip := GetClientIP(c)
+		bucket := time.Now().Unix() / windowSecs
+		key := fmt.Sprintf("rl:%s:%d", ip, bucket)
+
+		ctx := c.Request.Context()
+
+		// INCR is atomic; if the key did not exist it is created with value 1.
+		count, err := rdb.Incr(ctx, key).Result()
+		if err != nil {
+			// Redis unavailable — fail open to avoid blocking all traffic.
+			c.Next()
+			return
+		}
+
+		// Set expiry on first increment so the key does not accumulate forever.
+		if count == 1 {
+			rdb.Expire(ctx, key, window*2)
+		}
+
+		if count > int64(limit) {
+			retryAfter := windowSecs - (time.Now().Unix() % windowSecs)
+			c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"code":    "RATE_LIMIT_EXCEEDED",
+				"message": "Too many requests — please slow down",
+			})
+			return
+		}
+
 		c.Next()
 	}
 }

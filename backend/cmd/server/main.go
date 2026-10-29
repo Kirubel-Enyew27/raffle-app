@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"runtime"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -301,10 +302,35 @@ func main() {
 	crashhttp.RegisterCrashRoutes(api, crashHandler)
 
 	p2pHandler := p2phttp.NewP2PHandler(p2pSvc)
-	p2phttp.RegisterP2PRoutes(api, p2pHandler)
+	p2pRateLimiter := p2phttp.NewP2PRateLimiter(rdb)
+	p2phttp.RegisterP2PRoutes(api, p2pHandler, p2pRateLimiter)
 
 	realtimeHandler := realtime.NewHandler(realtimeSvc, cfg.JWT.Secret, logger.With())
 	api.GET("/realtime/stream", realtimeHandler.Stream)
+
+	// Metrics endpoint (admin-only): exposes operational health counters.
+	api.GET("/metrics", middleware.AuthMiddleware(), middleware.AdminMiddleware(), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"code": "success",
+			"data": gin.H{
+				"realtime": gin.H{
+					"connected_clients":    realtimeSvc.ConnectedCount(),
+					"total_dropped_events": realtimeSvc.DroppedCount(),
+					"total_events":         realtimeSvc.EventCount(),
+				},
+				"goroutines": runtime.NumGoroutine(),
+				"memory": func() gin.H {
+					var ms runtime.MemStats
+					runtime.ReadMemStats(&ms)
+					return gin.H{
+						"heap_alloc_bytes": ms.HeapAlloc,
+						"heap_sys_bytes":   ms.HeapSys,
+						"num_gc":           ms.NumGC,
+					}
+				}(),
+			},
+		})
+	})
 
 	if err := r.Run(fmt.Sprintf(":%d", cfg.AppPort)); err != nil {
 		panic(err)

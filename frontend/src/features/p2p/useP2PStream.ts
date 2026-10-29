@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
+import { sseClient } from '@/lib/sseClient'
+import type { SSEStatus } from '@/lib/sseClient'
 
-export interface P2PEvent<T = any> {
+export interface P2PEvent<T = unknown> {
   type: string
   channel?: string
   payload: T
   created_at?: string
 }
 
-export type P2PStreamStatus = 'connecting' | 'live' | 'reconnecting' | 'closed'
+export type P2PStreamStatus = SSEStatus
 
 interface Options {
   /** Subscribes to `p2p_match:<matchId>` when no explicit channel is given. */
@@ -24,6 +26,8 @@ export function useP2PStream({ matchId, channel, token, enabled, onEvent, onReco
   const [status, setStatus] = useState<P2PStreamStatus>('connecting')
   const onEventRef = useRef(onEvent)
   const onReconnectRef = useRef(onReconnect)
+  // Track whether we've seen a 'live' event before so we can fire onReconnect.
+  const everLiveRef = useRef(false)
 
   useEffect(() => {
     onEventRef.current = onEvent
@@ -37,38 +41,42 @@ export function useP2PStream({ matchId, channel, token, enabled, onEvent, onReco
       return
     }
 
-    const baseURL = import.meta.env.VITE_API_URL || '/api/v1'
-    const root = baseURL.startsWith('http') ? baseURL : `${window.location.origin}${baseURL}`
-    const url = `${root}/realtime/stream?channel=${encodeURIComponent(target)}&token=${encodeURIComponent(token)}`
+    let lastStatus: P2PStreamStatus = 'connecting'
+    setStatus('connecting')
 
-    let opened = false
-    const source = new EventSource(url)
+    const unsub = sseClient.subscribe(target, token, (ev) => {
+      // Forward game events.
+      onEventRef.current(ev as P2PEvent)
 
-    source.addEventListener('connected', () => {
-      if (opened) {
-        onReconnectRef.current?.()
-      }
-      opened = true
-      setStatus('live')
-    })
-
-    source.addEventListener('message', (event) => {
-      try {
-        const parsed = JSON.parse((event as MessageEvent).data) as P2PEvent
-        if (parsed?.type) {
-          onEventRef.current(parsed)
+      // Track live/reconnect transitions via connection events if the server
+      // publishes them as SSE events (type: 'connected').
+      if (ev.type === 'connected') {
+        if (everLiveRef.current) {
+          onReconnectRef.current?.()
         }
-      } catch {
-        // Ignore unparseable frames
+        everLiveRef.current = true
+        lastStatus = 'live'
+        setStatus('live')
       }
     })
 
-    source.onerror = () => {
-      setStatus('reconnecting')
-    }
+    // Poll the client status because EventSource status changes are not
+    // surfaced as events on the handler — they come from the source itself.
+    // We attach a small interval to mirror sseClient status into React state.
+    const interval = setInterval(() => {
+      const s = sseClient.getStatus(target)
+      if (s !== lastStatus) {
+        if (s === 'live' && lastStatus === 'reconnecting') {
+          onReconnectRef.current?.()
+        }
+        lastStatus = s
+        setStatus(s)
+      }
+    }, 200)
 
     return () => {
-      source.close()
+      clearInterval(interval)
+      unsub()
       setStatus('closed')
     }
   }, [matchId, channel, token, enabled])

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { sseClient } from '@/lib/sseClient'
+import type { SSEStatus } from '@/lib/sseClient'
 import type { P2PWinner } from './api'
 
 /**
@@ -51,7 +53,7 @@ export interface CrashEvent {
   created_at?: string
 }
 
-export type CrashStreamStatus = 'connecting' | 'live' | 'reconnecting' | 'closed'
+export type CrashStreamStatus = SSEStatus
 
 interface Options {
   /** Turns the connection on/off (for example while signed out). */
@@ -69,13 +71,10 @@ interface Options {
  * endpoint (`/realtime/stream`).
  */
 export function useCrashStream({ enabled, token, onEvent, onReconnect }: Options) {
-  const [connection, setConnection] = useState<{ key: string; status: CrashStreamStatus }>({
-    key: '',
-    status: 'connecting',
-  })
-
+  const [status, setStatus] = useState<CrashStreamStatus>('connecting')
   const onEventRef = useRef(onEvent)
   const onReconnectRef = useRef(onReconnect)
+
   useEffect(() => {
     onEventRef.current = onEvent
     onReconnectRef.current = onReconnect
@@ -84,46 +83,36 @@ export function useCrashStream({ enabled, token, onEvent, onReconnect }: Options
   const key = enabled && token ? token : ''
 
   useEffect(() => {
-    if (!key) return
-
-    const baseURL = import.meta.env.VITE_API_URL || '/api/v1'
-    const root = baseURL.startsWith('http') ? baseURL : `${window.location.origin}${baseURL}`
-    const url = `${root}/realtime/stream?channel=crash&token=${encodeURIComponent(key)}`
-
-    const source = new EventSource(url)
-    let opened = false
-
-    source.addEventListener('connected', () => {
-      if (opened) {
-        onReconnectRef.current?.()
-      }
-      opened = true
-      setConnection({ key, status: 'live' })
-    })
-
-    source.addEventListener('message', (event) => {
-      try {
-        const parsed = JSON.parse((event as MessageEvent).data) as CrashEvent
-        if (parsed?.type) onEventRef.current(parsed)
-      } catch {
-        // A malformed frame must never break the stream.
-      }
-    })
-
-    source.onerror = () => {
-      setConnection({ key, status: 'reconnecting' })
+    if (!key) {
+      setStatus('closed')
+      return
     }
 
+    let lastStatus: CrashStreamStatus = 'connecting'
+    setStatus('connecting')
+
+    const unsub = sseClient.subscribe('crash', key, (ev) => {
+      onEventRef.current(ev as CrashEvent)
+    })
+
+    const interval = setInterval(() => {
+      const s = sseClient.getStatus('crash')
+      if (s !== lastStatus) {
+        if (s === 'live' && lastStatus === 'reconnecting') {
+          onReconnectRef.current?.()
+        }
+        lastStatus = s
+        setStatus(s)
+      }
+    }, 200)
+
     return () => {
-      source.close()
+      clearInterval(interval)
+      unsub()
     }
   }, [key])
 
-  const status: CrashStreamStatus = !key
-    ? 'closed'
-    : connection.key === key
-      ? connection.status
-      : 'connecting'
+  const derived: CrashStreamStatus = !key ? 'closed' : status
 
-  return { status }
+  return { status: derived }
 }
