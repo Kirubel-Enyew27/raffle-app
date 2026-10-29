@@ -134,7 +134,7 @@ export function Component() {
         }
         refetch()
       } else if (event.type === 'p2p.rematch_created' && payload?.next_match_id) {
-        toast({ title: 'Rematch started', description: 'Both players agreed — good luck!', type: 'success' })
+        // toast({ title: 'Rematch started', description: 'Both players agreed — good luck!', type: 'success' })
         navigate(`/games/match/${payload.next_match_id as string}`)
       } else if (event.type === 'p2p.match_cancelled') {
         toast({ title: 'Match cancelled', description: 'This invitation has been cancelled.', type: 'info' })
@@ -212,7 +212,7 @@ export function Component() {
     mutationFn: () => p2pApi.readyUp(matchId!),
     onSuccess: (updated) => {
       queryClient.setQueryData(['p2p-match', matchId], updated)
-      toast({ title: 'Ready!', description: 'Waiting for opponent to ready up...', type: 'success' })
+      // toast({ title: 'Ready!', description: 'Waiting for opponent to ready up...', type: 'success' })
     },
     onError: (err: unknown) => {
       toast({
@@ -230,18 +230,18 @@ export function Component() {
     onSuccess: (result) => {
       if (result.status === 'started' && result.match) {
         queryClient.setQueryData(['p2p-match', result.match.id], result.match)
-        toast({ title: 'Rematch started', description: 'Both players agreed — good luck!', type: 'success' })
+        // toast({ title: 'Rematch started', description: 'Both players agreed — good luck!', type: 'success' })
         navigate(`/games/match/${result.match.id}`)
         return
       }
       if (result.match) {
         queryClient.setQueryData(['p2p-match', matchId], result.match)
       }
-      toast({
-        title: 'Rematch requested',
-        description: 'Waiting for your opponent to accept…',
-        type: 'info',
-      })
+      // toast({
+      //   title: 'Rematch requested',
+      //   description: 'Waiting for your opponent to accept…',
+      //   type: 'info',
+      // })
     },
     onError: (err: unknown) => {
       toast({
