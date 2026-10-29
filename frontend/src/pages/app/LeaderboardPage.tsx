@@ -15,7 +15,6 @@ import {
   AlertCircle,
   Swords,
   User,
-  Sparkles,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -253,7 +252,6 @@ export function Component() {
                 <div className="text-center px-3 py-1 rounded-lg bg-background/80 border border-border">
                   <p className="text-[10px] text-muted-foreground uppercase">{t('leaderboard.longestStreak', 'Best')}</p>
                   <p className="font-bold text-primary flex items-center justify-center gap-1">
-                    <Sparkles className="h-3 w-3" />
                     {currentPlayer.longest_win_streak}
                   </p>
                 </div>
@@ -478,7 +476,6 @@ export function Component() {
                       <td className="py-3.5 px-4 text-center hidden md:table-cell text-xs font-medium text-muted-foreground">
                         {p.longest_win_streak > 0 ? (
                           <span className="flex items-center justify-center gap-1">
-                            <Sparkles className="h-3 w-3 text-primary/70" />
                             {p.longest_win_streak}
                           </span>
                         ) : (

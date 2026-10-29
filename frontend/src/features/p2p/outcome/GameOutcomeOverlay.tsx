@@ -1,4 +1,4 @@
-import { Trophy, Frown, Handshake, Eye, ArrowLeft, Loader2, Sparkles, RotateCcw } from 'lucide-react'
+import { Trophy, Frown, Handshake, Eye, ArrowLeft, Loader2, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { GameOutcome } from './outcomeTypes'
@@ -136,7 +136,6 @@ export function GameOutcomeOverlay({
               )}
               {isWin && (
                 <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow">
-                  <Sparkles className="h-3 w-3" />
                 </span>
               )}
             </div>

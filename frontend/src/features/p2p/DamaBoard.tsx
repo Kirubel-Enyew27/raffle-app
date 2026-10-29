@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Lock, Sparkles } from 'lucide-react'
+import { Lock } from 'lucide-react'
 
 import { DamaPiece } from './DamaPiece'
 import {
@@ -245,7 +245,6 @@ export function DamaBoard({
                     aria-hidden="true"
                     className="pointer-events-none absolute -top-1 -right-1 z-20 flex h-3.5 w-3.5 items-center justify-center text-emerald-400 animate-pulse"
                   >
-                    <Sparkles className="h-3 w-3" />
                   </span>
                 )}
 

@@ -19,7 +19,6 @@ import {
   ImageIcon,
   X,
   FileCheck,
-  Sparkles,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -340,7 +339,6 @@ function DepositCard() {
                         </div>
                       ) : extractSuccess ? (
                         <div className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 mt-0.5">
-                          <Sparkles className="h-3 w-3" />
                           <span>{t('wallet.extractedSuccess')}: <strong className="font-mono">{extractSuccess}</strong></span>
                         </div>
                       ) : (

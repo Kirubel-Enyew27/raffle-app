@@ -1,4 +1,4 @@
-import { Sparkles, FastForward } from 'lucide-react'
+import { FastForward } from 'lucide-react'
 import type { GameOutcome, OutcomePhase } from './outcomeTypes'
 import { Button } from '@/components/ui/button'
 
@@ -28,7 +28,6 @@ export function DecisiveBanner({ outcome, phase, onSkip }: DecisiveBannerProps) 
       ].join(' ')}
     >
       <div className="flex items-center gap-2 text-xs font-bold">
-        <Sparkles className="h-4 w-4 animate-spin text-primary shrink-0" />
         <span className="truncate">{outcome.subtitle}</span>
       </div>
 
