@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	_ "github.com/lib/pq"
 	p2pdomain "github.com/raffle-app/backend/internal/p2p/domain"
 	p2prepo "github.com/raffle-app/backend/internal/p2p/interfaces/repository"
 	"github.com/raffle-app/backend/pkg/config"
 	"github.com/raffle-app/backend/pkg/database"
+	"go.uber.org/zap"
 )
 
 func setupTestDB(t *testing.T) *sql.DB {
@@ -52,6 +54,11 @@ func createTestUserWithWallet(t *testing.T, db *sql.DB, balance float64) string 
 func TestP2PService_TicTacToeFullMatch(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
+
+	// Keep the between-round reveal short so the test does not wait seconds.
+	previousReveal := roundRevealDelay
+	roundRevealDelay = 20 * time.Millisecond
+	t.Cleanup(func() { roundRevealDelay = previousReveal })
 
 	ctx := context.Background()
 	userA := createTestUserWithWallet(t, db, 500.0) // 500 ETB
@@ -129,9 +136,52 @@ func TestP2PService_TicTacToeFullMatch(t *testing.T) {
 		t.Fatalf("expected User A score 1, got %v", r1End.Scores["0"])
 	}
 
+	// The round-winning board is held for a short reveal: the winning line is
+	// still visible, the turn is cleared (nobody loses clock time), and the
+	// staged next board never reaches the client.
+	if r1End.CurrentTurnUserID != nil {
+		t.Fatalf("expected no current turn during the round reveal, got %v", *r1End.CurrentTurnUserID)
+	}
+	line, ok := r1End.BoardState["winning_line"].([]int)
+	if !ok || len(line) != 3 {
+		t.Fatalf("expected the winning line during the reveal, got %v", r1End.BoardState["winning_line"])
+	}
+	if _, leaked := r1End.BoardState[roundTransitionKey]; leaked {
+		t.Fatalf("internal round transition leaked into the client view")
+	}
+
+	// The background sweeper promotes the staged board when the reveal ends.
+	time.Sleep(roundRevealDelay + 30*time.Millisecond)
+	sweeper := NewP2PEngine(matchRepo, playerRepo, escrowRepo, nil, zap.NewNop())
+	if err := sweeper.handleTurnTimeout(ctx, match.ID); err != nil {
+		t.Fatalf("starting round 2 failed: %v", err)
+	}
+	round2, err := svc.GetMatchState(ctx, userA, match.ID)
+	if err != nil {
+		t.Fatalf("GetMatchState after the reveal failed: %v", err)
+	}
+	if round2.CurrentRound != 2 {
+		t.Fatalf("expected round 2 after the reveal, got %d", round2.CurrentRound)
+	}
+	if round2.CurrentTurnUserID == nil || *round2.CurrentTurnUserID != userB {
+		t.Fatalf("expected user B to start round 2, got %v", round2.CurrentTurnUserID)
+	}
+	if round2.BoardState["winning_line"] != nil {
+		t.Fatalf("the previous round's winning line must be cleared for the new round: %v", round2.BoardState["winning_line"])
+	}
+	if round2Cells, _ := round2.BoardState["cells"].([]interface{}); len(round2Cells) == 9 {
+		for idx, cell := range round2Cells {
+			if cell != float64(0) {
+				t.Fatalf("round 2 should start from an empty board, cell %d = %v", idx, cell)
+			}
+		}
+	} else {
+		t.Fatalf("round 2 board is not a 9-cell Tic-Tac-Toe board: %v", round2.BoardState["cells"])
+	}
+
 	// Round 2 (User A wins round 2: 0, 1, 2 -> wins match 2-0!)
 	// Note: in round 2 next turn starter is userB
-	turnUser := *r1End.CurrentTurnUserID
+	turnUser := *round2.CurrentTurnUserID
 	otherUser := userA
 	if turnUser == userA {
 		otherUser = userB
@@ -153,6 +203,28 @@ func TestP2PService_TicTacToeFullMatch(t *testing.T) {
 		}
 		if matchFinal.WinnerUserID == nil || *matchFinal.WinnerUserID != userA {
 			t.Fatalf("expected User A to be match winner, got %v", matchFinal.WinnerUserID)
+		}
+
+		// The complete winning line must survive the match being completed:
+		// a refetch of the terminal state is what both clients render, and it
+		// used to come back from before the winning move (no winning_line, no
+		// final piece), so the winning row could never be highlighted.
+		for _, userID := range []string{userA, userB} {
+			terminal, err := svc.GetMatchState(ctx, userID, match.ID)
+			if err != nil {
+				t.Fatalf("GetMatchState for %s failed: %v", userID, err)
+			}
+			line, ok := terminal.BoardState["winning_line"].([]interface{})
+			assertWinningLine(t, line, ok, []int{0, 1, 2})
+			cells, _ := terminal.BoardState["cells"].([]interface{})
+			for _, idx := range []int{0, 1, 2} {
+				if idx >= len(cells) || cells[idx] == float64(0) {
+					t.Fatalf("winning cell %d is empty in the terminal board: %v", idx, cells)
+				}
+			}
+			if terminal.Scores["0"] != 2 || terminal.Scores["1"] != 0 {
+				t.Fatalf("expected persisted series score 2-0, got %v", terminal.Scores)
+			}
 		}
 	} else {
 		_ = otherUser
@@ -274,6 +346,46 @@ func TestP2PService_ConnectFourMatch(t *testing.T) {
 	}
 	if balanceB != 180.0 {
 		t.Errorf("expected User B balance 180.0, got %v", balanceB)
+	}
+
+	// The vertical winning four must still be readable once the match is over:
+	// the terminal board is what both clients render and what they highlight.
+	for _, userID := range []string{userA, userB} {
+		terminal, err := svc.GetMatchState(ctx, userID, match.ID)
+		if err != nil {
+			t.Fatalf("GetMatchState for %s failed: %v", userID, err)
+		}
+		line, ok := terminal.BoardState["winning_line"].([]interface{})
+		assertWinningLine(t, line, ok, []int{14, 21, 28, 35})
+		cells, _ := terminal.BoardState["cells"].([]interface{})
+		for _, idx := range []int{14, 21, 28, 35} {
+			if idx >= len(cells) || cells[idx] != float64(1) {
+				t.Fatalf("winning token %d is missing from the terminal board: %v", idx, cells)
+			}
+		}
+	}
+}
+
+// assertWinningLine compares a JSON-decoded winning line against the expected
+// cells, order-independently (the direction of the line is not part of the
+// contract, only the set of cells that must be highlighted).
+func assertWinningLine(t *testing.T, line []interface{}, ok bool, want []int) {
+	t.Helper()
+	if !ok || len(line) != len(want) {
+		t.Fatalf("expected winning line %v, got %v", want, line)
+	}
+	seen := make(map[int]bool, len(line))
+	for _, v := range line {
+		n, isNumber := v.(float64)
+		if !isNumber {
+			t.Fatalf("winning line contains a non-number: %v", v)
+		}
+		seen[int(n)] = true
+	}
+	for _, idx := range want {
+		if !seen[idx] {
+			t.Fatalf("winning line %v is missing cell %d", line, idx)
+		}
 	}
 }
 

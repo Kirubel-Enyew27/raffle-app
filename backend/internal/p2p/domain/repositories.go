@@ -63,4 +63,9 @@ type EscrowRepository interface {
 	ReleaseReservedFundsTx(ctx context.Context, tx *sql.Tx, userID string, amount money.Cents, matchID, reason string) error
 	SettleWinnerTx(ctx context.Context, tx *sql.Tx, winnerUserID string, grossPayout, fee, netPayout money.Cents, matchID string) (creditTxID, feeTxID string, err error)
 	FinalizeLoserTx(ctx context.Context, tx *sql.Tx, loserUserID string, stake money.Cents, matchID string) error
+	// PlayersWithoutReservedStake reports the players that have no 'reserved'
+	// stake ledger row for the match. Settlement may only move money that a
+	// reservation recorded, so callers use this to detect a match that can
+	// never be settled instead of retrying the failing settlement for ever.
+	PlayersWithoutReservedStake(ctx context.Context, tx *sql.Tx, matchID string, userIDs []string) ([]string, error)
 }

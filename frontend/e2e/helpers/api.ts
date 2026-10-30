@@ -1,74 +1,154 @@
 /**
- * Direct API client for seeding / teardown — bypasses the UI.
- * All requests go to the backend API (port 8080 in CI, proxied via vite in dev).
+ * Shared helpers for the Playwright suite.
+ *
+ * The e2e tests run against the real backend (the Vite dev server proxies
+ * `/api` to it). Everything here talks to that API directly so a test can set up
+ * accounts and matches without clicking through unrelated screens.
  */
-const BASE = process.env.API_URL ?? 'http://localhost:8080/api/v1'
 
-interface LoginResponse { token: string; user: { id: string; email: string; role: string } }
-interface WalletTx       { id: string; amount: number; balance_after: number }
-interface Raffle         { id: string; title: string; status: string; ticket_price: number; sold_tickets: number }
-interface Ticket         { id: string; ticket_number: number }
-interface DrawResult     { id: string; raffle_id: string; winning_ticket_number: number; winning_ticket_id: string; proof: { commit_hash: string; revealed_seed: string } }
+import type { BrowserContext } from '@playwright/test'
 
-async function req<T>(method: string, path: string, body?: unknown, token?: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+export const API_BASE = process.env.E2E_API_URL || 'http://localhost:8080/api/v1'
+
+/** Short unique suffix for e-mail addresses and names. */
+export function uid(): string {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
+}
+
+export interface ApiResult<T = unknown> {
+  status: number
+  data: T
+}
+
+/** Loosely typed `p2p_matches` snapshot; unknown fields stay reachable. */
+export interface MatchState {
+  status?: string
+  current_turn_user_id?: string
+  [key: string]: unknown
+}
+
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  token?: string,
+): Promise<ApiResult<T>> {
+  const res = await fetch(API_BASE + path, {
     method,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: body ? JSON.stringify(body) : undefined,
+    body: body === undefined ? undefined : JSON.stringify(body),
   })
-  const json = await res.json()
-  if (!res.ok) throw new Error(`${method} ${path} → ${res.status}: ${JSON.stringify(json)}`)
-  return (json.data ?? json) as T
+  const text = await res.text()
+  let parsed: unknown = null
+  try {
+    if (text) parsed = JSON.parse(text)
+  } catch {
+    parsed = { raw: text }
+  }
+  const envelope =
+    parsed && typeof parsed === 'object' && 'data' in parsed ? (parsed as { data: unknown }).data : undefined
+  return { status: res.status, data: envelope ?? parsed }
 }
 
-export function uid() {
-  return Math.random().toString(36).slice(2, 10)
+/** True when the backend is reachable; e2e specs skip when it is not. */
+export async function backendReachable(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(2000) })
+    return res.ok
+  } catch {
+    return false
+  }
 }
 
-export async function registerUser(email: string, password: string) {
-  return req<{ id: string; email: string }>('POST', '/auth/register', { email, password })
+export interface TestSession {
+  token: string
+  refreshToken: string
+  user: { id: string; email: string; full_name?: string; role?: string }
+  email: string
+  password: string
 }
 
-export async function loginUser(email: string, password: string) {
-  return req<LoginResponse>('POST', '/auth/login', { identifier: email, password })
+/** Registers (and logs in) a fresh user, returning a usable session. */
+export async function createSession(name = 'player'): Promise<TestSession> {
+  const email = `${name}_${uid()}@example.com`
+  const password = 'Password123!'
+
+  const registered = await request('POST', '/auth/register', {
+    email,
+    password,
+    full_name: name,
+  })
+  if (registered.status !== 201) {
+    throw new Error(`register failed (${registered.status}): ${JSON.stringify(registered.data)}`)
+  }
+
+  const login = await request<{ token: string; refresh_token: string; user: TestSession['user'] }>(
+    'POST',
+    '/auth/login',
+    { identifier: email, password },
+  )
+  if (login.status !== 200) {
+    throw new Error(`login failed (${login.status}): ${JSON.stringify(login.data)}`)
+  }
+
+  return {
+    token: login.data.token,
+    refreshToken: login.data.refresh_token,
+    user: login.data.user,
+    email,
+    password,
+  }
 }
 
-export async function deposit(token: string, amount: number) {
-  return req<WalletTx>('POST', '/wallets/deposit', { amount, reference: `seed-${uid()}`, description: 'Test deposit' }, token)
+/** Seeds a browser context with the session (dev builds read sessionStorage). */
+export async function seedSession(context: BrowserContext, session: TestSession): Promise<void> {
+  await context.addInitScript(
+    ([token, refresh, user]: [string, string, string]) => {
+      window.sessionStorage.setItem('token', token)
+      window.sessionStorage.setItem('refresh_token', refresh)
+      window.sessionStorage.setItem('user', user)
+    },
+    [session.token, session.refreshToken, JSON.stringify(session.user)],
+  )
 }
 
-export async function createRaffle(token: string, overrides: Partial<{
-  title: string; ticket_price: number; max_tickets: number; draw_date: string; status: string; prize_pool: number
-}> = {}) {
-  const draw = new Date(Date.now() + 86_400_000).toISOString()
-  return req<Raffle>('POST', '/raffles', {
-    title: `Test Raffle ${uid()}`,
-    description: 'E2E test raffle',
-    ticket_price: 10,
-    max_tickets: 100,
-    draw_date: draw,
-    status: 'active',
-    prize_pool: 500,
-    currency: 'USD',
-    ...overrides,
-  }, token)
+export async function createPrivateMatch(
+  session: TestSession,
+  gameSlug = 'tic-tac-toe',
+): Promise<{ id: string; invite_code: string }> {
+  const res = await request<{ id: string; invite_code: string }>(
+    'POST',
+    '/p2p/matches',
+    { game_slug: gameSlug, match_type: 'private_room', stake_amount: 0 },
+    session.token,
+  )
+  if (res.status !== 201) {
+    throw new Error(`create match failed (${res.status}): ${JSON.stringify(res.data)}`)
+  }
+  return res.data
 }
 
-export async function activateRaffle(token: string, raffleId: string) {
-  return req<Raffle>('PUT', `/raffles/${raffleId}`, { status: 'active' }, token)
+export async function joinByCode(session: TestSession, inviteCode: string): Promise<void> {
+  const res = await request('POST', '/p2p/matches/join-code', { invite_code: inviteCode }, session.token)
+  if (res.status !== 200) {
+    throw new Error(`join failed (${res.status}): ${JSON.stringify(res.data)}`)
+  }
 }
 
-export async function commitDraw(token: string, raffleId: string) {
-  return req<{ commit_hash: string }>('POST', `/draw/commit/${raffleId}`, {}, token)
+export async function fetchMatch(session: TestSession, matchId: string): Promise<MatchState> {
+  const res = await request('GET', `/p2p/matches/${matchId}/state`, undefined, session.token)
+  return res.data
 }
 
-export async function executeDraw(token: string, raffleId: string) {
-  return req<DrawResult>('POST', `/draw/execute/${raffleId}`, {}, token)
-}
-
-export async function getDrawResult(raffleId: string) {
-  return req<DrawResult>('GET', `/draw/${raffleId}/result`)
+/** Submits a move as `session`; returns the HTTP status. */
+export async function submitMove(
+  session: TestSession,
+  matchId: string,
+  action: Record<string, unknown>,
+): Promise<number> {
+  const res = await request('POST', `/p2p/matches/${matchId}/move`, action, session.token)
+  return res.status
 }

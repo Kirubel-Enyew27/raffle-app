@@ -486,3 +486,175 @@ func newNopEngine(matchRepo p2pdomain.MatchRepository, playerRepo p2pdomain.Play
 	e := NewP2PEngine(matchRepo, playerRepo, escrowRepo, nil, zap.NewNop())
 	return e
 }
+
+// ─── Turn clock vs. reconnection grace period ────────────────────────────────
+
+// A player inside the reconnection grace period must be judged by that deadline,
+// not by the turn clock. Otherwise the 60 s grace period is meaningless: the
+// 15 s turn timeout forfeits them first, which is exactly the unfair loss the
+// reported bug produced.
+func TestTurnTimeout_DoesNotForfeitDuringDisconnectGrace(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	svc := newTestService(t, db, false)
+	creator, _, matchID := setupInProgressMatch(t, db, svc, "tic-tac-toe")
+
+	// The creator (player 0, the opening mover) loses their transport.
+	if _, err := svc.HandlePlayerDisconnect(ctx, creator, matchID); err != nil {
+		t.Fatalf("HandlePlayerDisconnect: %v", err)
+	}
+
+	// The turn deadline has already passed, but the grace period is still open.
+	past := time.Now().Add(-5 * time.Second)
+	if _, err := db.Exec(`UPDATE p2p_matches SET turn_deadline = $1 WHERE id = $2`, past, matchID); err != nil {
+		t.Fatalf("force expired turn deadline: %v", err)
+	}
+
+	engine := newNopEngine(
+		p2prepo.NewMatchRepo(db),
+		p2prepo.NewPlayerRepo(db),
+		p2prepo.NewEscrowRepo(db, ""),
+	)
+	engine.sweepTurnTimeouts(ctx)
+
+	var status string
+	if err := db.QueryRow(`SELECT status FROM p2p_matches WHERE id = $1`, matchID).Scan(&status); err != nil {
+		t.Fatalf("read status: %v", err)
+	}
+	if status != p2pdomain.StatusInProgress {
+		t.Fatalf("turn timeout forfeited a player inside the grace period: status=%s", status)
+	}
+
+	// Reconnecting restores the state and refreshes the (expired) turn clock.
+	view, err := svc.HandlePlayerReconnect(ctx, creator, matchID)
+	if err != nil {
+		t.Fatalf("HandlePlayerReconnect: %v", err)
+	}
+	if view.DisconnectUserID != nil {
+		t.Fatalf("reconnect did not clear the disconnect record: %v", view.DisconnectUserID)
+	}
+	if view.TurnSecondsLeft <= 0 {
+		t.Fatalf("reconnect did not restore a full turn clock: %ds", view.TurnSecondsLeft)
+	}
+}
+
+// Once the grace period lapses the disconnect sweep finishes the match, and only
+// then. Having both timeouts fire would produce two conflicting results.
+func TestTurnTimeout_ResumesAfterGraceExpires(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	svc := newTestService(t, db, false)
+	creator, joiner, matchID := setupInProgressMatch(t, db, svc, "tic-tac-toe")
+
+	if _, err := svc.HandlePlayerDisconnect(ctx, creator, matchID); err != nil {
+		t.Fatalf("HandlePlayerDisconnect: %v", err)
+	}
+
+	// Grace period over.
+	past := time.Now().Add(-time.Second)
+	if _, err := db.Exec(`UPDATE p2p_matches SET disconnect_deadline = $1 WHERE id = $2`, past, matchID); err != nil {
+		t.Fatalf("expire grace deadline: %v", err)
+	}
+
+	engine := newNopEngine(
+		p2prepo.NewMatchRepo(db),
+		p2prepo.NewPlayerRepo(db),
+		p2prepo.NewEscrowRepo(db, ""),
+	)
+	engine.sweepTurnTimeouts(ctx)
+	engine.sweepDisconnectTimeouts(ctx)
+
+	var status string
+	var winner sql.NullString
+	if err := db.QueryRow(`SELECT status, winner_user_id FROM p2p_matches WHERE id = $1`, matchID).
+		Scan(&status, &winner); err != nil {
+		t.Fatalf("read result: %v", err)
+	}
+	if status != p2pdomain.StatusForfeited {
+		t.Fatalf("expected forfeited after the grace period lapsed, got %s", status)
+	}
+	if !winner.Valid || winner.String != joiner {
+		t.Fatalf("expected the connected player to win, got %v", winner)
+	}
+}
+
+// A match whose stake reservations are missing can never be settled: the
+// escrow layer refuses to move money without a matching ledger row, so the
+// sweep used to fail and retry every second for ever while both players sat on
+// a match that never finished. The terminal transition must happen anyway,
+// without touching a wallet.
+func TestTurnTimeout_IncompleteEscrowStillEndsMatch(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	svc := newTestService(t, db, false)
+	_, joiner, matchID := setupInProgressMatch(t, db, svc, "tic-tac-toe")
+
+	// A funded match whose reservations then went missing (partial join,
+	// manual data repair, …): settlement would fail for ever.
+	if _, err := db.Exec(
+		`UPDATE p2p_matches SET stake_cents = 5000, prize_pool_cents = 10000 WHERE id = $1`, matchID,
+	); err != nil {
+		t.Fatalf("fund the match: %v", err)
+	}
+	if _, err := db.Exec(
+		`DELETE FROM wallet_transactions WHERE reference = $1 AND type = 'p2p_match_stake'`,
+		"p2p_stake:"+matchID,
+	); err != nil {
+		t.Fatalf("drop reservations: %v", err)
+	}
+
+	// The turn clock expired and no reconnection grace period is open.
+	past := time.Now().Add(-time.Second)
+	if _, err := db.Exec(
+		`UPDATE p2p_matches SET turn_deadline = $1, disconnect_deadline = NULL WHERE id = $2`,
+		past, matchID,
+	); err != nil {
+		t.Fatalf("force expired turn deadline: %v", err)
+	}
+
+	var txBefore int
+	if err := db.QueryRow(
+		`SELECT count(*) FROM wallet_transactions WHERE reference = $1`, "p2p_stake:"+matchID,
+	).Scan(&txBefore); err != nil {
+		t.Fatalf("count transactions: %v", err)
+	}
+
+	engine := newNopEngine(
+		p2prepo.NewMatchRepo(db),
+		p2prepo.NewPlayerRepo(db),
+		p2prepo.NewEscrowRepo(db, ""),
+	)
+	engine.sweepTurnTimeouts(ctx)
+	// A second sweep must find nothing left to do — this is the loop that used
+	// to run once per second, for ever.
+	engine.sweepTurnTimeouts(ctx)
+
+	var status string
+	var winner sql.NullString
+	if err := db.QueryRow(`SELECT status, winner_user_id FROM p2p_matches WHERE id = $1`, matchID).
+		Scan(&status, &winner); err != nil {
+		t.Fatalf("read result: %v", err)
+	}
+	if status != p2pdomain.StatusForfeited {
+		t.Fatalf("expected the match to reach a terminal state anyway, got %s", status)
+	}
+	if !winner.Valid || winner.String != joiner {
+		t.Fatalf("expected the connected player to win, got %v", winner)
+	}
+
+	var txAfter int
+	if err := db.QueryRow(
+		`SELECT count(*) FROM wallet_transactions WHERE reference = $1`, "p2p_stake:"+matchID,
+	).Scan(&txAfter); err != nil {
+		t.Fatalf("count transactions: %v", err)
+	}
+	if txAfter != txBefore {
+		t.Fatalf("settlement must not move money when reservations are missing: %d -> %d", txBefore, txAfter)
+	}
+}

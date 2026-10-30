@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/raffle-app/backend/internal/p2p/domain"
@@ -99,6 +100,39 @@ func (e *P2PEngine) sweepDisconnectTimeouts(ctx context.Context) {
 	}
 }
 
+// escrowIncomplete reports whether the match is missing stake reservations for
+// one or more of its players. A prize pool above zero means both players were
+// expected to have reserved their stake when the match started, so a missing
+// ledger row can never be settled: the escrow layer refuses to move money
+// without the matching reservation, and the sweep would otherwise fail and
+// retry every second for ever while both players look at a board that never
+// finishes. Free matches (prize pool 0) reserve nothing and are never
+// incomplete.
+func (e *P2PEngine) escrowIncomplete(ctx context.Context, tx *sql.Tx, match *domain.Match, players []*domain.MatchPlayer) (bool, error) {
+	if match.PrizePoolCents <= 0 {
+		return false, nil
+	}
+
+	userIDs := make([]string, 0, len(players))
+	for _, p := range players {
+		userIDs = append(userIDs, p.UserID)
+	}
+
+	missing, err := e.escrowRepo.PlayersWithoutReservedStake(ctx, tx, match.ID, userIDs)
+	if err != nil {
+		return false, err
+	}
+	if len(missing) == 0 {
+		return false, nil
+	}
+
+	e.log.Error("P2P match has incomplete stake reservations; finishing it without settlement",
+		zap.String("match_id", match.ID),
+		zap.Strings("user_ids", missing),
+		zap.Int64("prize_pool_cents", int64(match.PrizePoolCents)))
+	return true, nil
+}
+
 func (e *P2PEngine) handleDisconnectTimeout(ctx context.Context, matchID string) error {
 	tx, err := e.matchRepo.BeginTx(ctx)
 	if err != nil {
@@ -153,6 +187,38 @@ func (e *P2PEngine) handleDisconnectTimeout(ctx context.Context, matchID string)
 	}
 
 	now := time.Now()
+	// A match missing stake reservations can never be settled — the money is
+	// unreachable — and failing here would retry every second for ever while
+	// both players stay on a match that never ends. Finish it without touching
+	// a wallet instead.
+	incomplete, err := e.escrowIncomplete(ctx, tx, match, players)
+	if err != nil {
+		return err
+	}
+	if incomplete {
+		if err := e.matchRepo.MarkCompletedTx(ctx, tx, match.ID, &winnerUserID, domain.StatusForfeited, 0, now); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		e.log.Info("P2P match forfeited without settlement: incomplete stake reservations",
+			zap.String("match_id", match.ID),
+			zap.String("disconnected_user_id", disconnectedUserID),
+			zap.String("winner_user_id", winnerUserID))
+		if e.realtime != nil {
+			_ = e.realtime.PublishToChannel(ctx, "p2p_match:"+match.ID, "p2p.match_completed",
+				map[string]interface{}{
+					"match_id":           match.ID,
+					"winner_user_id":     winnerUserID,
+					"status":             domain.StatusForfeited,
+					"disconnect_user_id": disconnectedUserID,
+					"reason":             "disconnect_timeout",
+				})
+		}
+		return nil
+	}
+
 	settlement := domain.CalculateSettlement(match.PrizePoolCents, match.ServiceFeeBP, false)
 
 	creditTxID, feeTxID, err := e.escrowRepo.SettleWinnerTx(ctx, tx, winnerUserID,
@@ -188,11 +254,11 @@ func (e *P2PEngine) handleDisconnectTimeout(ctx context.Context, matchID string)
 	if e.realtime != nil {
 		_ = e.realtime.PublishToChannel(ctx, "p2p_match:"+match.ID, "p2p.match_completed",
 			map[string]interface{}{
-				"match_id":              match.ID,
-				"winner_user_id":        winnerUserID,
-				"status":                domain.StatusForfeited,
-				"disconnect_user_id":    disconnectedUserID,
-				"reason":                "disconnect_timeout",
+				"match_id":           match.ID,
+				"winner_user_id":     winnerUserID,
+				"status":             domain.StatusForfeited,
+				"disconnect_user_id": disconnectedUserID,
+				"reason":             "disconnect_timeout",
 			})
 	}
 
@@ -213,6 +279,23 @@ func (e *P2PEngine) handleTurnTimeout(ctx context.Context, matchID string) error
 
 	if match.Status != domain.StatusInProgress || match.TurnDeadline == nil || time.Now().Before(*match.TurnDeadline) {
 		return nil // state changed or refreshed
+	}
+
+	// A between-round reveal has no current turn: once its deadline passes,
+	// promote the staged board and start the round the previous winning move
+	// was holding back. This is checked before the disconnect guard so a
+	// player dropping during the reveal cannot freeze the match until their
+	// grace period expires.
+	if match.CurrentTurnUserID == nil {
+		return e.startNextRound(ctx, tx, match)
+	}
+
+	// A player inside the reconnection grace period is judged by that deadline,
+	// not by the turn clock. Two competing timeout mechanisms would otherwise
+	// forfeit a reconnecting player after seconds, making the documented grace
+	// period meaningless (and the loss unfair).
+	if match.DisconnectDeadline != nil && time.Now().Before(*match.DisconnectDeadline) {
+		return nil
 	}
 
 	timedOutUserID := match.CurrentTurnUserID
@@ -239,6 +322,35 @@ func (e *P2PEngine) handleTurnTimeout(ctx context.Context, matchID string) error
 
 	now := time.Now()
 	settlement := domain.CalculateSettlement(match.PrizePoolCents, match.ServiceFeeBP, false)
+
+	// See handleDisconnectTimeout: an unsettleable match must still reach a
+	// terminal state, or the sweep retries it every second for ever.
+	incomplete, err := e.escrowIncomplete(ctx, tx, match, players)
+	if err != nil {
+		return err
+	}
+	if incomplete {
+		if err := e.matchRepo.MarkCompletedTx(ctx, tx, match.ID, &winnerUserID, domain.StatusForfeited, 0, now); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		e.log.Info("P2P match timed out and forfeited without settlement: incomplete stake reservations",
+			zap.String("match_id", match.ID),
+			zap.String("forfeited_user_id", *timedOutUserID),
+			zap.String("winner_user_id", winnerUserID))
+		if e.realtime != nil {
+			_ = e.realtime.PublishToChannel(ctx, "p2p_match:"+match.ID, "p2p.turn_timeout", map[string]interface{}{
+				"match_id":          match.ID,
+				"timed_out_user_id": *timedOutUserID,
+				"winner_user_id":    winnerUserID,
+				"status":            domain.StatusForfeited,
+			})
+		}
+		return nil
+	}
+
 	creditTxID, feeTxID, err := e.escrowRepo.SettleWinnerTx(ctx, tx, winnerUserID, match.PrizePoolCents, settlement.FeeCents, settlement.NetPayoutCents, match.ID)
 	if err != nil {
 		return err
@@ -277,6 +389,73 @@ func (e *P2PEngine) handleTurnTimeout(ctx context.Context, matchID string) error
 	}
 
 	return nil
+}
+
+// startNextRound completes a staged between-round reveal: the finished board
+// (with its winning line) has been on screen for roundRevealDelay, so swap in
+// the prepared board and hand the move clock to the next round's starter.
+func (e *P2PEngine) startNextRound(ctx context.Context, tx *sql.Tx, match *domain.Match) error {
+	transition, ok := match.BoardState[roundTransitionKey].(map[string]interface{})
+	if !ok {
+		return nil // not a reveal; nothing to advance
+	}
+
+	nextBoard, ok := transition["next_board"].(map[string]interface{})
+	starter, _ := transition["next_starter_user_id"].(string)
+	if !ok || starter == "" {
+		e.log.Error("P2P round transition is malformed; leaving the match unchanged",
+			zap.String("match_id", match.ID))
+		return nil
+	}
+
+	nextRound := intFromBoardValue(transition["next_round"])
+	if nextRound <= match.CurrentRound {
+		nextRound = match.CurrentRound + 1
+	}
+
+	now := time.Now()
+	match.BoardState = nextBoard
+	match.CurrentRound = nextRound
+	match.CurrentTurnUserID = &starter
+	deadline := now.Add(time.Duration(turnSecondsFor(match.GameSlug)) * time.Second)
+	match.TurnDeadline = &deadline
+
+	if err := e.matchRepo.UpdateStateTx(ctx, tx, match); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	e.log.Info("P2P next round started after the winning-line reveal",
+		zap.String("match_id", match.ID),
+		zap.Int("round", match.CurrentRound),
+		zap.String("starter_user_id", starter))
+
+	if e.realtime != nil {
+		_ = e.realtime.PublishToChannel(ctx, "p2p_match:"+match.ID, "p2p.round_started", map[string]interface{}{
+			"match_id":             match.ID,
+			"round":                match.CurrentRound,
+			"current_turn_user_id": starter,
+		})
+	}
+
+	return nil
+}
+
+// intFromBoardValue reads an integer that may arrive as int (freshly built) or
+// float64 (after a JSONB round trip).
+func intFromBoardValue(value interface{}) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	default:
+		return 0
+	}
 }
 
 func (e *P2PEngine) sweepIdleRooms(ctx context.Context) {

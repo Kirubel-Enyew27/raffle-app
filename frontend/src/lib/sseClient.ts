@@ -1,16 +1,23 @@
 /**
  * SSEClient — a shared, singleton EventSource connection manager.
  *
- * Features:
- *  - One EventSource per (channel, token) pair; multiple React subscribers
- *    reuse the same underlying connection.
- *  - Exponential backoff: 1 s → 2 s → 4 s → 8 s → 16 s → 30 s (cap), each
- *    delay randomised by ±20 % jitter.
- *  - Maximum 10 reconnect attempts before entering the 'failed' state.
- *  - Token refresh: listens for AUTH_TOKEN_REFRESHED_EVENT and reconnects all
- *    open channels with the new token.
- *  - Clean unsubscribe: the EventSource is closed when the last subscriber
- *    for a channel leaves.
+ * Responsibilities:
+ *  - Exactly one EventSource per channel, shared by every subscriber.
+ *  - One logical session per channel: a token change re-attaches the existing
+ *    subscribers to a fresh EventSource instead of stranding them on a
+ *    (channel, token) key nobody can find again.
+ *  - Bounded exponential backoff (1 s → 30 s, ±20 % jitter) so a server restart
+ *    does not produce a reconnect storm.
+ *  - The stream is never permanently dead: after `MAX_ATTEMPTS` consecutive
+ *    failures it reports 'failed' (so the UI can explain and offer a retry) and
+ *    stops the timer, but regaining network, returning to the tab, remounting a
+ *    subscriber or calling `retryNow()` starts it again. Before this, a player
+ *    whose stream died was stuck on "Connecting…" for the rest of the match.
+ *  - `attempts` only resets after a connection has *stayed* live for
+ *    `STABLE_RESET_MS`, so a flapping connection cannot loop forever.
+ *  - A proactive token refresh is attempted only when the access token is
+ *    actually expired: refreshing on every transport error rotated the session
+ *    token on each retry and re-ran every token-dependent subscription.
  *
  * Usage:
  *   const unsub = sseClient.subscribe('crash', token, handler)
@@ -29,9 +36,9 @@ let _refreshSession: (() => Promise<boolean>) | null = null
 
 /**
  * Called by api.ts after it creates the sessionRefresher so that sseClient can
- * proactively renew an expired token before retrying a dropped SSE connection.
+ * renew an expired token before retrying a dropped SSE connection.
  */
-export function setSseTokenRefresher(fn: () => Promise<boolean>): void {
+export function setSseTokenRefresher(fn: (() => Promise<boolean>) | null): void {
   _refreshSession = fn
 }
 
@@ -47,7 +54,6 @@ export interface SSEEvent {
 }
 
 export type SSEEventHandler = (ev: SSEEvent) => void
-export type StatusChangeHandler = (status: SSEStatus) => void
 
 // ─── Internal types ───────────────────────────────────────────────────────────
 
@@ -55,40 +61,78 @@ interface Subscriber {
   handler: SSEEventHandler
 }
 
+interface ChannelListeners {
+  connected: () => void
+  message: (ev: MessageEvent) => void
+  error: () => void
+}
+
 interface ChannelState {
   /** The channel name (e.g. 'crash', 'p2p_match:abc'). */
   channel: string
-  /** Token that was used to open this EventSource. */
+  /** Token used to open the current EventSource. */
   token: string
-  source: EventSource
+  source: EventSource | null
   status: SSEStatus
   subscribers: Map<symbol, Subscriber>
-  /** Number of consecutive reconnection attempts. */
+  /** Consecutive failed connection attempts. */
   attempts: number
   /** setTimeout handle for the next reconnect. */
   reconnectTimer: ReturnType<typeof setTimeout> | null
-  /** true between the 'connected' event being received once (to detect reconnects). */
-  everConnected: boolean
-  /** Listeners added to the EventSource so they can be removed on close. */
-  sourceListeners: {
-    connected: () => void
-    message: (ev: MessageEvent) => void
-    error: () => void
-  }
+  /** setTimeout handle that clears `attempts` after a stable connection. */
+  stableTimer: ReturnType<typeof setTimeout> | null
+  /** Listeners attached to the current EventSource, so they can be removed. */
+  listeners: ChannelListeners | null
+  /** Timestamp of the last proactive token refresh attempt. */
+  lastRefreshAt: number
 }
 
 // ─── Backoff helpers ──────────────────────────────────────────────────────────
 
 const BASE_DELAY_MS = 1_000
 const MAX_DELAY_MS = 30_000
-const MAX_ATTEMPTS = 10
+/** Consecutive failures before the channel reports 'failed'. */
+export const MAX_ATTEMPTS = 10
 const JITTER = 0.2 // ±20 %
+/** How long a connection must stay live before its retry budget is restored. */
+export const STABLE_RESET_MS = 5_000
+/** Minimum gap between two proactive token refreshes for the same channel. */
+const REFRESH_THROTTLE_MS = 60_000
+/** Refresh this long before the access token actually expires. */
+const TOKEN_SKEW_MS = 60_000
 
-function backoffDelay(attempt: number): number {
-  // attempt 0 → 1 s, 1 → 2 s, 2 → 4 s, 3 → 8 s, 4 → 16 s, 5+ → 30 s
-  const base = Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS)
-  const jitter = base * JITTER * (Math.random() * 2 - 1) // [-20 %, +20 %]
+/**
+ * Backoff for the given attempt: 1 s, 2 s, 4 s … 30 s (capped), ±20 % jitter.
+ * Exported for tests.
+ */
+export function backoffDelay(attempt: number, random: () => number = Math.random): number {
+  const base = Math.min(BASE_DELAY_MS * 2 ** Math.max(0, attempt), MAX_DELAY_MS)
+  const jitter = base * JITTER * (random() * 2 - 1) // [-20 %, +20 %]
   return Math.round(base + jitter)
+}
+
+/**
+ * True when the JWT is missing, unreadable, or expires within `skewMs`.
+ * Unreadable tokens are treated as "not expiring soon" so a malformed token
+ * cannot trigger refresh storms; the server rejects it and the UI reports it.
+ */
+export function tokenExpiresSoon(token: string, skewMs = TOKEN_SKEW_MS): boolean {
+  const claims = decodeJwtPayload(token)
+  if (!claims || typeof claims.exp !== 'number') return false
+  return claims.exp * 1000 - Date.now() <= skewMs
+}
+
+function decodeJwtPayload(token: string): { exp?: number } | null {
+  const parts = token.split('.')
+  if (parts.length < 2) return null
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
+    if (typeof atob !== 'function') return null
+    return JSON.parse(atob(padded)) as { exp?: number }
+  } catch {
+    return null
+  }
 }
 
 // ─── URL builder ──────────────────────────────────────────────────────────────
@@ -113,29 +157,33 @@ function buildUrl(channel: string, token: string): string {
 // ─── SSEClient class ──────────────────────────────────────────────────────────
 
 export class SSEClient {
-  /**
-   * Map key: `${channel}\0${token}` — one entry per (channel, token) pair.
-   * When the token changes the old entry is cleaned up and a new one is opened.
-   */
+  /** One entry per channel name. The token lives inside the entry. */
   private readonly channels = new Map<string, ChannelState>()
 
-  /**
-   * Maps a channel name to its current key so callers can query status by
-   * channel name without knowing the token.
-   */
-  private readonly channelToKey = new Map<string, string>()
-
   private readonly tokenRefreshListener: (ev: Event) => void
+  private readonly onlineListener: () => void
+  private readonly visibilityListener: () => void
 
   constructor() {
     this.tokenRefreshListener = (ev: Event) => {
       const newToken = (ev as CustomEvent<{ token: string }>).detail?.token
       if (!newToken) return
-      this._handleTokenRefresh(newToken)
+      this._applyToken(newToken)
     }
 
-    if (typeof window !== 'undefined') {
+    this.onlineListener = () => this._retryInterrupted()
+    this.visibilityListener = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        this._retryInterrupted()
+      }
+    }
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener(AUTH_TOKEN_REFRESHED_EVENT, this.tokenRefreshListener)
+      window.addEventListener('online', this.onlineListener)
+    }
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      document.addEventListener('visibilitychange', this.visibilityListener)
     }
   }
 
@@ -146,229 +194,224 @@ export class SSEClient {
    * Returns an unsubscribe function.
    */
   subscribe(channel: string, token: string, handler: SSEEventHandler): () => void {
-    const key = this._key(channel, token)
     const id = Symbol()
+    let state = this.channels.get(channel)
 
-    if (!this.channels.has(key)) {
-      this._openChannel(channel, token, key)
+    if (!state) {
+      state = this._createState(channel, token)
+      this.channels.set(channel, state)
+      this._openSource(state)
+    } else if (token && token !== state.token) {
+      // The access token rotated: re-attach the same channel (and its existing
+      // subscribers) to a source authenticated with the new token.
+      state.token = token
+      this._reopenSource(state)
+    } else if (state.status === 'failed') {
+      // A component remounting is a user-visible retry signal.
+      this._scheduleRetry(state, 0)
     }
 
-    const state = this.channels.get(key)!
     state.subscribers.set(id, { handler })
 
-    return () => this._unsubscribe(key, id)
+    // A new subscriber while the channel is dead should also restart it.
+    if (state.status === 'failed' && !state.reconnectTimer) {
+      this._scheduleRetry(state, 0)
+    }
+
+    return () => this._unsubscribe(channel, id)
   }
 
   /** Returns the current connection status for the given channel name. */
   getStatus(channel: string): SSEStatus {
-    const key = this.channelToKey.get(channel)
-    if (!key) return 'closed'
-    return this.channels.get(key)?.status ?? 'closed'
+    return this.channels.get(channel)?.status ?? 'closed'
+  }
+
+  /**
+   * Force an immediate reconnect attempt for `channel`, resetting its retry
+   * budget. Used by the "Retry connection" action instead of reloading the page
+   * (a reload throws away the client's in-memory match view).
+   */
+  retryNow(channel: string): void {
+    const state = this.channels.get(channel)
+    if (!state) return
+    state.attempts = 0
+    if (state.reconnectTimer !== null) {
+      clearTimeout(state.reconnectTimer)
+      state.reconnectTimer = null
+    }
+    this._openSource(state)
   }
 
   /** Tear down all connections and remove global listeners. */
   dispose(): void {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
       window.removeEventListener(AUTH_TOKEN_REFRESHED_EVENT, this.tokenRefreshListener)
+      window.removeEventListener('online', this.onlineListener)
+    }
+    if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
+      document.removeEventListener('visibilitychange', this.visibilityListener)
     }
 
-    for (const [key] of this.channels) {
-      this._closeChannel(key, true)
+    for (const state of Array.from(this.channels.values())) {
+      this._closeChannel(state)
     }
     this.channels.clear()
-    this.channelToKey.clear()
   }
 
   // ── Internal helpers ───────────────────────────────────────────────────────
 
-  private _key(channel: string, token: string): string {
-    return `${channel}\0${token}`
-  }
-
-  private _openChannel(channel: string, token: string, key: string): void {
-    const url = buildUrl(channel, token)
-    const source = new EventSource(url)
-
-    const state: ChannelState = {
+  private _createState(channel: string, token: string): ChannelState {
+    return {
       channel,
       token,
-      source,
+      source: null,
       status: 'connecting',
       subscribers: new Map(),
       attempts: 0,
       reconnectTimer: null,
-      everConnected: false,
-      // Placeholder — assigned below after state is created so closures can
-      // reference `state` by closure.
-      sourceListeners: undefined as unknown as ChannelState['sourceListeners'],
+      stableTimer: null,
+      listeners: null,
+      lastRefreshAt: 0,
     }
+  }
 
-    const listeners = {
+  /** Opens the first EventSource for a channel. */
+  private _openSource(state: ChannelState): void {
+    this._detachSource(state)
+    this._attachSource(state)
+    state.status = 'connecting'
+  }
+
+  /** Replaces the current EventSource, keeping subscribers and retry state. */
+  private _reopenSource(state: ChannelState): void {
+    this._detachSource(state)
+    this._attachSource(state)
+    state.status = 'connecting'
+  }
+
+  private _attachSource(state: ChannelState): void {
+    const url = buildUrl(state.channel, state.token)
+    const source = new EventSource(url)
+    state.source = source
+
+    const listeners: ChannelListeners = {
       connected: () => {
-        // On the very first successful open reset attempts.
-        state.attempts = 0
         state.status = 'live'
-        state.everConnected = true
+        // Only restore the retry budget once the connection proves stable;
+        // resetting on every connect let a flapping stream retry forever.
+        if (state.stableTimer !== null) clearTimeout(state.stableTimer)
+        state.stableTimer = setTimeout(() => {
+          state.stableTimer = null
+          if (state.status === 'live') state.attempts = 0
+        }, STABLE_RESET_MS)
       },
       message: (ev: MessageEvent) => {
         try {
           const parsed = JSON.parse(ev.data) as SSEEvent
-          if (parsed?.type) {
-            for (const { handler } of state.subscribers.values()) {
-              handler(parsed)
-            }
+          if (!parsed?.type) return
+          for (const { handler } of state.subscribers.values()) {
+            handler(parsed)
           }
         } catch {
           // Ignore unparseable frames.
         }
       },
       error: () => {
-        // The browser fires onerror both when the server closes the connection
-        // (readyState → CLOSED) and when a network issue occurs while
-        // CONNECTING. In both cases the browser would normally retry
-        // immediately; we intercept to apply our own backoff.
-        this._onChannelError(key)
+        // The browser fires onerror when the server closes the stream and when
+        // the connection cannot be established. Both are handled by the same
+        // bounded backoff instead of the browser's immediate retry loop.
+        this._onChannelError(state)
       },
     }
 
-    state.sourceListeners = listeners
-
-    // EventSource uses named event listeners for custom event types.
+    state.listeners = listeners
     source.addEventListener('connected', listeners.connected)
     source.addEventListener('message', listeners.message)
     source.onerror = listeners.error
-
-    this.channels.set(key, state)
-    this.channelToKey.set(channel, key)
   }
 
-  private _onChannelError(key: string): void {
-    const state = this.channels.get(key)
-    if (!state) return
-
-    // Close the broken EventSource immediately so the browser stops its own
-    // rapid-retry loop — we'll reconnect on our schedule.
+  private _onChannelError(state: ChannelState): void {
+    // A late error from a source that has already been replaced must not touch
+    // the current connection state.
     this._detachSource(state)
+    if (state.status === 'closed' || !this.channels.has(state.channel)) return
 
-    if (state.attempts >= MAX_ATTEMPTS) {
+    state.attempts += 1
+
+    if (state.attempts > MAX_ATTEMPTS) {
       state.status = 'failed'
       return
     }
 
     state.status = 'reconnecting'
-    const delay = backoffDelay(state.attempts)
-    state.attempts += 1
+    this._scheduleRetry(state, backoffDelay(state.attempts - 1))
+  }
 
+  /**
+   * Schedules the next connection attempt. `delay` of 0 opens immediately on the
+   * next macrotask, so callers never connect re-entrantly.
+   */
+  private _scheduleRetry(state: ChannelState, delay: number): void {
+    if (state.reconnectTimer !== null) return
     state.reconnectTimer = setTimeout(async () => {
-      // Verify the channel still exists and is still meant to reconnect.
-      const current = this.channels.get(key)
-      if (!current || current.status === 'closed' || current.status === 'failed') return
+      state.reconnectTimer = null
+      if (!this.channels.has(state.channel) || state.status === 'closed') return
 
-      // Before reopening the EventSource, check whether the stored token has
-      // changed (e.g. by a concurrent API call that already refreshed it) or
-      // attempt a proactive refresh if one is available. This prevents repeated
-      // failures when the SSE connection was dropped because the access token
-      // expired and no API call has triggered a refresh yet.
-      let latestToken: string | null = null
-      try {
-        latestToken = authStorage.getToken()
-      } catch {
-        // In non-browser environments (e.g. unit tests) import.meta.env may be
-        // unavailable. Fall through with a null token.
-      }
-      if (latestToken && latestToken !== current.token) {
-        // A concurrent refresh already happened — migrate to the new token.
-        // _handleTokenRefresh opens a fresh channel with the new token.
-        this._handleTokenRefresh(latestToken)
-        return
-      }
+      const proceed = await this._maybeRefreshExpiredToken(state)
+      if (!proceed) return
+      // The channel may have been closed or replaced while we awaited.
+      if (!this.channels.has(state.channel)) return
 
-      // Try a proactive token refresh so reconnect uses a fresh token.
-      if (_refreshSession) {
-        try {
-          const refreshed = await _refreshSession()
-          if (refreshed === false) {
-            // Session is truly dead (refresh token rejected). Mark as failed
-            // so the UI can prompt the user to re-authenticate instead of
-            // silently looping forever in 'reconnecting'.
-            const stale = this.channels.get(key)
-            if (stale) {
-              stale.status = 'failed'
-            }
-            return
-          }
-          // If the token changed, _handleTokenRefresh was already called via
-          // the AUTH_TOKEN_REFRESHED_EVENT dispatched by api.ts. Verify that
-          // the channel was migrated; if not (token was the same or the event
-          // was never dispatched), fall through to reopen with the current token.
-          const afterEvent = this.channels.get(key)
-          if (!afterEvent || afterEvent.status === 'closed' || afterEvent.status === 'failed') return
-          // If the channel's token was updated by _handleTokenRefresh, a new
-          // EventSource has already been opened — don't reopen again.
-          let currentToken: string | null = null
-          try {
-            currentToken = authStorage.getToken()
-          } catch {
-            // Non-browser environment — fall through.
-          }
-          if (currentToken && currentToken !== current.token) {
-            // Token was refreshed and channel migrated — we're done.
-            return
-          }
-          // Token didn't change after refresh (same token returned or event
-          // not dispatched). Fall through to reopen with the existing token.
-        } catch {
-          // Refresh failed (network error or transient issue).
-          // Fall through and retry with the existing token.
-        }
-      }
-
-      // Check again after the async refresh attempt — it may have migrated the
-      // channel to a new key via _handleTokenRefresh.
-      const afterRefresh = this.channels.get(key)
-      if (!afterRefresh || afterRefresh.status === 'closed' || afterRefresh.status === 'failed') return
-
-      this._reopenSource(key)
+      this._reopenSource(state)
     }, delay)
   }
 
-  /** Opens a fresh EventSource on an existing channel key and wires its listeners. */
-  private _reopenSource(key: string): void {
-    const current = this.channels.get(key)
-    if (!current) return
+  /**
+   * Refreshes an expired access token before reconnecting. Failures are
+   * swallowed: the reconnect proceeds with the current token and the server's
+   * 401 surfaces through the normal status transitions.
+   */
+  private async _maybeRefreshExpiredToken(state: ChannelState): Promise<boolean> {
+    if (!_refreshSession) return true
 
-    const url = buildUrl(current.channel, current.token)
-    const source = new EventSource(url)
-    current.source = source
-    current.status = 'connecting'
-
-    const listeners = {
-      connected: () => {
-        current.attempts = 0
-        current.status = 'live'
-        current.everConnected = true
-      },
-      message: (ev: MessageEvent) => {
-        try {
-          const parsed = JSON.parse(ev.data) as SSEEvent
-          if (parsed?.type) {
-            for (const { handler } of current.subscribers.values()) {
-              handler(parsed)
-            }
-          }
-        } catch {
-          // Ignore unparseable frames.
-        }
-      },
-      error: () => {
-        this._onChannelError(key)
-      },
+    let latestToken: string | null = null
+    try {
+      latestToken = authStorage.getToken()
+    } catch {
+      // Non-browser environment.
     }
 
-    current.sourceListeners = listeners
-    source.addEventListener('connected', listeners.connected)
-    source.addEventListener('message', listeners.message)
-    source.onerror = listeners.error
+    if (latestToken && latestToken !== state.token) {
+      // A concurrent refresh already produced a newer token.
+      state.token = latestToken
+      return true
+    }
+
+    const token = latestToken ?? state.token
+    // Refreshing on every transport error rotated the session token on each
+    // retry (and re-ran every token-dependent subscription). Only an access
+    // token that is actually about to expire is worth refreshing.
+    if (!tokenExpiresSoon(token)) return true
+
+    const now = Date.now()
+    if (now - state.lastRefreshAt < REFRESH_THROTTLE_MS) return true
+    state.lastRefreshAt = now
+
+    try {
+      const refreshed = await _refreshSession()
+      if (refreshed === false) {
+        // The session is gone; the app is being signed out. Stop retrying the
+        // stream instead of hammering the server with a dead token.
+        state.status = 'failed'
+        return false
+      }
+      const nextToken = authStorage.getToken()
+      if (nextToken) state.token = nextToken
+      return true
+    } catch {
+      // Transient refresh failure: retry with the current token.
+      return true
+    }
   }
 
   private _detachSource(state: ChannelState): void {
@@ -376,65 +419,69 @@ export class SSEClient {
       clearTimeout(state.reconnectTimer)
       state.reconnectTimer = null
     }
+    if (state.stableTimer !== null) {
+      clearTimeout(state.stableTimer)
+      state.stableTimer = null
+    }
     if (state.source) {
-      state.source.removeEventListener('connected', state.sourceListeners.connected)
-      state.source.removeEventListener('message', state.sourceListeners.message)
+      if (state.listeners) {
+        state.source.removeEventListener('connected', state.listeners.connected)
+        state.source.removeEventListener('message', state.listeners.message)
+      }
       state.source.onerror = null
       state.source.close()
+      state.source = null
+      state.listeners = null
     }
   }
 
-  private _unsubscribe(key: string, id: symbol): void {
-    const state = this.channels.get(key)
+  private _unsubscribe(channel: string, id: symbol): void {
+    const state = this.channels.get(channel)
     if (!state) return
 
     state.subscribers.delete(id)
 
     if (state.subscribers.size === 0) {
-      this._closeChannel(key, false)
+      this._closeChannel(state)
+      this.channels.delete(channel)
     }
   }
 
-  private _closeChannel(key: string, force: boolean): void {
-    const state = this.channels.get(key)
-    if (!state) return
-
-    if (!force && state.subscribers.size > 0) return
-
+  private _closeChannel(state: ChannelState): void {
     this._detachSource(state)
     state.status = 'closed'
-    this.channels.delete(key)
-    // Remove from name→key map only if it still points to this key.
-    if (this.channelToKey.get(state.channel) === key) {
-      this.channelToKey.delete(state.channel)
+  }
+
+  /**
+   * Re-attaches every channel to a new access token. The channel key (and so
+   * every subscriber) is preserved, which fixes the leak where an unsubscribe
+   * after a refresh could no longer find the migrated entry.
+   */
+  private _applyToken(newToken: string): void {
+    for (const state of this.channels.values()) {
+      if (state.token === newToken) continue
+      state.token = newToken
+      if (state.subscribers.size === 0) continue
+      state.attempts = 0
+      this._reopenSource(state)
     }
   }
 
-  private _handleTokenRefresh(newToken: string): void {
-    // Collect existing channels (snapshot) before mutating the map.
-    const entries = Array.from(this.channels.entries())
-
-    for (const [oldKey, state] of entries) {
-      if (state.token === newToken) continue // already using the new token
-
-      const { channel } = state
-      const newKey = this._key(channel, newToken)
-
-      // Migrate subscribers to a new entry with the refreshed token.
-      const oldSubscribers = new Map(state.subscribers)
-
-      // Close old channel without removing subscribers (they migrate).
-      state.subscribers.clear()
-      this._closeChannel(oldKey, true)
-
-      // Open fresh channel if there are subscribers to inherit.
-      if (oldSubscribers.size > 0) {
-        this._openChannel(channel, newToken, newKey)
-        const newState = this.channels.get(newKey)!
-        for (const [id, sub] of oldSubscribers) {
-          newState.subscribers.set(id, sub)
-        }
+  /**
+   * Restarts channels that were waiting on the network or on a hidden tab.
+   * 'failed' channels are retried here (and by `retryNow`) rather than on a
+   * timer, so the client never retries unboundedly while nothing changes.
+   */
+  private _retryInterrupted(): void {
+    for (const state of this.channels.values()) {
+      if (state.subscribers.size === 0) continue
+      if (state.status === 'live' || state.status === 'closed') continue
+      state.attempts = 0
+      if (state.reconnectTimer !== null) {
+        clearTimeout(state.reconnectTimer)
+        state.reconnectTimer = null
       }
+      this._openSource(state)
     }
   }
 
@@ -447,9 +494,7 @@ export class SSEClient {
 
   /** @internal */
   _getChannelState(channel: string): ChannelState | undefined {
-    const key = this.channelToKey.get(channel)
-    if (!key) return undefined
-    return this.channels.get(key)
+    return this.channels.get(channel)
   }
 }
 

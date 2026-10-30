@@ -137,6 +137,16 @@ export interface P2PMatch {
   disconnect_user_id?: string
   /** Seconds remaining in the reconnection grace period (0 if none active). */
   disconnect_seconds_left: number
+  /**
+   * Absolute turn deadline on the server, with the server's clock at the time
+   * of the snapshot. Counting down from these instead of from a rendered
+   * `turn_seconds_left` keeps the display honest across refetches and drift.
+   */
+  turn_deadline_at?: string
+  /** Absolute reconnection-grace deadline on the server. */
+  disconnect_deadline_at?: string
+  /** Server clock at snapshot time (reference point for the deadlines above). */
+  server_time?: string
   my_player_index?: number
   players: P2PMatchPlayer[]
   started_at?: string

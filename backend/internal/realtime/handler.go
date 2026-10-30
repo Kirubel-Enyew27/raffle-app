@@ -1,6 +1,8 @@
 package realtime
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -74,17 +76,7 @@ func (h *Handler) Stream(c *gin.Context) {
 		role = claims.Role
 	}
 
-	// ── 3. Per-user connection cap ─────────────────────────────────────────────
-	if !h.svc.CanConnect(userID) {
-		c.JSON(http.StatusTooManyRequests, gin.H{
-			"code":  "TOO_MANY_CONNECTIONS",
-			"error": gin.H{"message": "Maximum concurrent SSE connections reached for this user"},
-		})
-		return
-	}
-	defer h.svc.ReleaseConnection(userID)
-
-	// ── 4. Set SSE headers ─────────────────────────────────────────────────────
+	// ── 3. Set SSE headers ─────────────────────────────────────────────────────
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -103,8 +95,12 @@ func (h *Handler) Stream(c *gin.Context) {
 		zap.String("client_ip", clientIP),
 	)
 
-	// ── 5. Subscribe ───────────────────────────────────────────────────────────
-	client := h.svc.SubscribeChannel(userID, role, channel)
+	// ── 4. Subscribe ───────────────────────────────────────────────────────────
+	// Connect never refuses the request: a newer stream for the same user and
+	// channel replaces the previous one, and the per-user cap evicts the oldest
+	// connection. Refusing here used to leave reconnecting players permanently
+	// stuck because every retry was answered with 429.
+	client := h.svc.Connect(userID, role, channel)
 	defer func() {
 		h.svc.Unsubscribe(client)
 		h.log.Info("SSE client disconnected",
@@ -114,19 +110,22 @@ func (h *Handler) Stream(c *gin.Context) {
 		)
 	}()
 
-	// ── 6. Initial response: connected event + browser reconnect hint ──────────
-	// "retry: 3000" instructs compliant EventSource implementations to wait 3 s
-	// before attempting a reconnect if the connection drops.
-	c.SSEvent("retry", "3000")
-	c.SSEvent("connected", gin.H{"status": "ok", "user_id": userID, "role": role})
-	c.Writer.Flush()
+	// ── 5. Initial response: connected event + browser reconnect hint ──────────
+	// A literal `retry:` field (not a named event) sets the browser's own
+	// reconnect delay. The client applies its own jittered backoff on top.
+	if _, err := c.Writer.WriteString("retry: 3000\n\n"); err != nil {
+		return
+	}
+	if err := writeEvent(c, "connected", gin.H{"status": "ok", "user_id": userID, "role": role}); err != nil {
+		return
+	}
 
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	ctx := c.Request.Context()
 
-	// ── 7. Event loop ──────────────────────────────────────────────────────────
+	// ── 6. Event loop ──────────────────────────────────────────────────────────
 	for {
 		select {
 		case <-ctx.Done():
@@ -134,21 +133,42 @@ func (h *Handler) Stream(c *gin.Context) {
 			return
 
 		case <-ticker.C:
-			// Heartbeat keeps the connection alive and updates LastPing so the
-			// stale-client sweeper knows this connection is still live.
-			c.SSEvent("ping", "")
+			// A comment frame keeps the connection alive without dispatching an
+			// event. A failed write means the peer is gone (laptop sleep, dropped
+			// Wi-Fi); returning frees the goroutine and the connection slot, which
+			// otherwise stayed occupied until TCP eventually noticed.
+			if _, err := c.Writer.WriteString(": heartbeat\n\n"); err != nil {
+				return
+			}
 			c.Writer.Flush()
-			client.SetLastPing(time.Now())
+			if c.Writer.Written() {
+				client.SetLastPing(time.Now())
+			}
 
 		case ev, ok := <-client.Ch:
 			if !ok {
-				// Channel closed by Unsubscribe or Shutdown — terminate cleanly.
+				// Channel closed by Unsubscribe, eviction or Shutdown.
 				return
 			}
-			c.SSEvent("message", ev)
-			c.Writer.Flush()
+			if err := writeEvent(c, "message", ev); err != nil {
+				return
+			}
 		}
 	}
+}
+
+// writeEvent writes one SSE frame and flushes it, reporting transport failures
+// so the caller can stop holding a dead connection.
+func writeEvent(c *gin.Context, event string, payload interface{}) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", event, data); err != nil {
+		return err
+	}
+	c.Writer.Flush()
+	return nil
 }
 
 // clientIP extracts the real client IP following the same priority order as

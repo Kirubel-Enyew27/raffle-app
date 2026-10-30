@@ -1008,6 +1008,45 @@ func (r *EscrowRepo) ReleaseReservedFundsTx(ctx context.Context, tx *sql.Tx, use
 	return err
 }
 
+// PlayersWithoutReservedStake reports which of the given players have no
+// 'reserved' stake ledger row for the match. A missing row is a permanent
+// inconsistency (the reservation should have been written when the match
+// started), never a transient error, so callers can use it to decide that a
+// settlement will never succeed rather than retrying it for ever.
+func (r *EscrowRepo) PlayersWithoutReservedStake(ctx context.Context, tx *sql.Tx, matchID string, userIDs []string) ([]string, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+
+	rows, err := tx.QueryContext(ctx, `SELECT user_id FROM wallet_transactions
+		WHERE reference = $1 AND type = 'p2p_match_stake' AND status = 'reserved'`,
+		"p2p_stake:"+matchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	reserved := make(map[string]struct{}, len(userIDs))
+	for rows.Next() {
+		var uid string
+		if err := rows.Scan(&uid); err != nil {
+			return nil, err
+		}
+		reserved[uid] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	var missing []string
+	for _, uid := range userIDs {
+		if _, ok := reserved[uid]; !ok {
+			missing = append(missing, uid)
+		}
+	}
+	return missing, nil
+}
+
 func (r *EscrowRepo) FinalizeLoserTx(ctx context.Context, tx *sql.Tx, loserUserID string, stake money.Cents, matchID string) error {
 	if stake <= 0 {
 		return nil

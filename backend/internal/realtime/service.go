@@ -3,6 +3,7 @@ package realtime
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -45,6 +46,10 @@ type Client struct {
 	Channel string
 	Ch      chan Event
 
+	// seq orders connections by acceptance time so the per-user cap can evict
+	// the oldest connection deterministically.
+	seq int64
+
 	// LastPing is updated each time a heartbeat is written to the client.
 	// It is read and written by multiple goroutines so it uses atomic
 	// operations (stored as int64 UnixNano).
@@ -81,6 +86,7 @@ type Service struct {
 	// Atomic counters — hot-path read/write without the mutex.
 	dropCount  atomic.Int64
 	eventCount atomic.Int64
+	connectSeq atomic.Int64
 }
 
 // NewService creates a new realtime service backed by the given Redis client.
@@ -188,6 +194,82 @@ func (s *Service) publish(ctx context.Context, ev Event) error {
 // Subscribe registers a local client and returns it.
 func (s *Service) Subscribe(userID, role string) *Client {
 	return s.SubscribeChannel(userID, role, "")
+}
+
+// Connect registers a client for an HTTP stream without ever rejecting it.
+//
+// Two connections are never allowed to represent the same logical session: a
+// newer stream for the same (user, channel) replaces the older one, which is
+// what a page reload, React StrictMode remount or a second tab really is. The
+// per-user cap is enforced by evicting the oldest connections instead of
+// returning an error, because refusing the newest connection left players whose
+// browser had reconnected before the server noticed the old socket permanently
+// stuck on "Connecting" (the SSE request was answered with 429, retried, and
+// answered with 429 again).
+//
+// Evicted clients are notified through a closed Ch, so their goroutines exit
+// and their per-user slot is released.
+func (s *Service) Connect(userID, role, channel string) *Client {
+	c := &Client{
+		UserID:  userID,
+		Role:    role,
+		Channel: channel,
+		Ch:      make(chan Event, ClientChannelBuffer),
+	}
+	c.SetLastPing(time.Now())
+
+	c.seq = s.connectSeq.Add(1)
+
+	var evicted []*Client
+
+	s.mu.Lock()
+	if userID != "" {
+		sameUser := make([]*Client, 0, len(s.clients))
+		for existing := range s.clients {
+			if existing.UserID == userID {
+				sameUser = append(sameUser, existing)
+			}
+		}
+		// Oldest first, so eviction always drops the least recent connection.
+		sort.Slice(sameUser, func(i, j int) bool { return sameUser[i].seq < sameUser[j].seq })
+
+		// 1. A newer stream for the same channel represents the same logical
+		//    session (reload, remount, duplicate tab): it replaces the old one.
+		kept := make([]*Client, 0, len(sameUser))
+		for _, existing := range sameUser {
+			if channel != "" && existing.Channel == channel {
+				delete(s.clients, existing)
+				evicted = append(evicted, existing)
+				continue
+			}
+			kept = append(kept, existing)
+		}
+
+		// 2. Keep at most maxConnectionsPerUser-1 existing connections so the
+		//    new one still fits under the cap; evict the oldest ones.
+		evictCount := len(kept) - (maxConnectionsPerUser - 1)
+		for i := 0; i < evictCount && i < len(kept); i++ {
+			delete(s.clients, kept[i])
+			evicted = append(evicted, kept[i])
+		}
+	}
+	s.clients[c] = true
+	s.mu.Unlock()
+
+	for _, old := range evicted {
+		close(old.Ch)
+		s.log.Info("SSE connection replaced by a newer one",
+			zap.String("user_id", old.UserID),
+			zap.String("channel", old.Channel),
+		)
+	}
+
+	s.log.Debug("Client subscribed to real-time events",
+		zap.String("user_id", userID),
+		zap.String("role", role),
+		zap.String("channel", channel),
+	)
+	return c
 }
 
 // SubscribeChannel registers a local client that additionally receives events

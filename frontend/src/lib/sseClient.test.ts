@@ -8,7 +8,8 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { SSEClient } from './sseClient.ts'
+import { MAX_ATTEMPTS, SSEClient } from './sseClient.ts'
+import { STABLE_RESET_MS } from './sseClient.ts'
 
 // ─── EventSource mock ─────────────────────────────────────────────────────────
 
@@ -65,14 +66,13 @@ class MockEventSource {
 
 function setupMock() {
   MockEventSource.instances = []
-  // @ts-ignore — inject mock into global so SSEClient's `new EventSource(...)` picks it up
+  // @ts-expect-error — inject mock into global so SSEClient's `new EventSource(...)` picks it up
   global.EventSource = MockEventSource
   // Minimal window stub with working addEventListener / dispatchEvent so
   // the SSEClient's AUTH_TOKEN_REFRESHED_EVENT listener actually fires.
   if (!('window' in global) || !(global as Record<string, unknown>).window) {
     const listeners: Record<string, Array<(ev: Event) => void>> = {}
-    // @ts-ignore
-    global.window = {
+    const windowStub = {
       addEventListener: (type: string, fn: (ev: Event) => void) => {
         if (!listeners[type]) listeners[type] = []
         listeners[type].push(fn)
@@ -86,8 +86,9 @@ function setupMock() {
       dispatchEvent: (ev: Event) => {
         const type = ev.type
         const list = listeners[type]
-        if (!list) return
+        if (!list) return true
         for (const fn of [...list]) fn(ev)
+        return true
       },
       CustomEvent: class CustomEvent {
         type: string
@@ -99,13 +100,25 @@ function setupMock() {
       },
       location: { origin: 'http://localhost' },
     }
+    // @ts-expect-error — the stub implements only what sseClient touches
+    global.window = windowStub
   }
 }
 
 function teardown() {
-  // @ts-ignore
+  // @ts-expect-error — the test stub is narrower than the DOM type
   delete global.EventSource
 }
+
+/** Builds a syntactically valid JWT with the given expiry (seconds since epoch). */
+function jwtExpiringAt(expSeconds: number): string {
+  const encode = (value: object) =>
+    Buffer.from(JSON.stringify(value)).toString('base64url')
+  return `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ exp: expSeconds })}.signature`
+}
+
+const futureExp = () => Math.floor(Date.now() / 1000) + 900
+const pastExp = () => Math.floor(Date.now() / 1000) - 60
 
 // ─── Helper: build a fresh client per test ────────────────────────────────────
 
@@ -260,7 +273,7 @@ test('status transitions to failed after MAX_ATTEMPTS errors', async () => {
     // Each error triggers a setTimeout; we override setTimeout to fire
     // asynchronously via a microtask so the async callback can complete.
     const origSetTimeout = global.setTimeout
-    // @ts-ignore
+    // @ts-expect-error — the test stub is narrower than the DOM type
     global.setTimeout = (fn: () => void) => { void Promise.resolve().then(fn); return 0 }
 
     const unsub = client.subscribe('crash', 'tok2', () => {})
@@ -280,7 +293,6 @@ test('status transitions to failed after MAX_ATTEMPTS errors', async () => {
     const status = client.getStatus('crash')
     assert.equal(status, 'failed', `expected failed after exhausted retries, got ${status}`)
 
-    // @ts-ignore
     global.setTimeout = origSetTimeout
     unsub()
   } finally {
@@ -355,7 +367,7 @@ test('exponential backoff delay increases with attempt number', () => {
   assert.deepEqual(delays, [1000, 2000, 4000, 8000, 16000, 30000, 30000])
 })
 
-test('setSseTokenRefresher: proactive refresh is called before reconnect when token is stale', async () => {
+test('setSseTokenRefresher: proactive refresh is called before reconnect when the token is expired', async () => {
   setupMock()
 
   // Import the module-level exports from the already-loaded singleton.
@@ -379,10 +391,10 @@ test('setSseTokenRefresher: proactive refresh is called before reconnect when to
   const origSetTimeout = global.setTimeout
   try {
     // Fire timers synchronously so we can assert without awaiting.
-    // @ts-ignore
+    // @ts-expect-error — the test stub is narrower than the DOM type
     global.setTimeout = (fn: () => void) => { void Promise.resolve().then(fn); return 0 }
 
-    const unsub = client.subscribe('match:refresh-test', 'old-token-refresh', () => {})
+    const unsub = client.subscribe('match:refresh-test', jwtExpiringAt(pastExp()), () => {})
     const src0 = MockEventSource.instances[MockEventSource.instances.length - 1]
     src0.emitConnected()
 
@@ -397,7 +409,41 @@ test('setSseTokenRefresher: proactive refresh is called before reconnect when to
     unsub()
   } finally {
     setSseTokenRefresher(null as unknown as () => Promise<boolean>)
-    // @ts-ignore
+    global.setTimeout = origSetTimeout
+    client.dispose()
+    teardown()
+  }
+})
+
+test('setSseTokenRefresher: a valid token does not trigger a refresh on transient errors', async () => {
+  setupMock()
+
+  const mod = await import('./sseClient.ts')
+  const { SSEClient, setSseTokenRefresher } = mod
+
+  let refreshCalled = 0
+  setSseTokenRefresher(async () => {
+    refreshCalled += 1
+    return true
+  })
+
+  const client = new SSEClient()
+  const origSetTimeout = global.setTimeout
+  try {
+    // @ts-expect-error — the test stub is narrower than the DOM type
+    global.setTimeout = (fn: () => void) => { void Promise.resolve().then(fn); return 0 }
+
+    const unsub = client.subscribe('match:valid-token', jwtExpiringAt(futureExp()), () => {})
+    const src0 = MockEventSource.instances[MockEventSource.instances.length - 1]
+    src0.emitConnected()
+    src0.emitError()
+
+    await new Promise((r) => origSetTimeout(r, 50))
+
+    assert.equal(refreshCalled, 0, 'a valid token must not be refreshed just because the stream dropped')
+    unsub()
+  } finally {
+    setSseTokenRefresher(null as unknown as () => Promise<boolean>)
     global.setTimeout = origSetTimeout
     client.dispose()
     teardown()
@@ -415,7 +461,7 @@ test('setSseTokenRefresher: reconnect continues when refresh throws', async () =
   const client = new SSEClient()
   const origSetTimeout = global.setTimeout
   try {
-    // @ts-ignore
+    // @ts-expect-error — the test stub is narrower than the DOM type
     global.setTimeout = (fn: () => void) => { void Promise.resolve().then(fn); return 0 }
 
     const unsub = client.subscribe('match:refresh-fail', 'token-fail', () => {})
@@ -436,7 +482,6 @@ test('setSseTokenRefresher: reconnect continues when refresh throws', async () =
     unsub()
   } finally {
     setSseTokenRefresher(null as unknown as () => Promise<boolean>)
-    // @ts-ignore
     global.setTimeout = origSetTimeout
     client.dispose()
     teardown()
@@ -450,9 +495,9 @@ test('reconnect: status transitions reconnecting → connecting → live and cha
   const client = new SSEClient()
   const origSetTimeout = global.setTimeout
   try {
-    // Fire timers synchronously.
-    // @ts-ignore
-    global.setTimeout = (fn: () => void) => { fn(); return 0 }
+    // Fire timers on a microtask: the retry path awaits the token check first.
+    // @ts-expect-error — the test stub is narrower than the DOM type
+    global.setTimeout = (fn: () => void) => { void Promise.resolve().then(fn); return 0 }
 
     const unsub = client.subscribe('reconnect-test', 'tok-rc', () => {})
     const src0 = MockEventSource.instances[MockEventSource.instances.length - 1]
@@ -463,7 +508,8 @@ test('reconnect: status transitions reconnecting → connecting → live and cha
     // Trigger an error → reconnecting → timer fires → _reopenSource → connecting
     src0.emitError()
 
-    // After the synchronous timer, _reopenSource should have run.
+    // Let the async retry path run.
+    await new Promise((r) => origSetTimeout(r, 20))
     // The new EventSource should be in 'connecting' status.
     const status1 = client.getStatus('reconnect-test')
     assert.ok(
@@ -479,7 +525,6 @@ test('reconnect: status transitions reconnecting → connecting → live and cha
 
     unsub()
   } finally {
-    // @ts-ignore
     global.setTimeout = origSetTimeout
     client.dispose()
     teardown()
@@ -497,10 +542,11 @@ test('reconnect: _refreshSession returning false marks channel as failed', async
   const client = new SSEClient()
   const origSetTimeout = global.setTimeout
   try {
-    // @ts-ignore
+    // @ts-expect-error — the test stub is narrower than the DOM type
     global.setTimeout = (fn: () => void) => { void Promise.resolve().then(fn); return 0 }
 
-    const unsub = client.subscribe('refresh-dead', 'tok-dead', () => {})
+    // Only an expired access token triggers the proactive refresh path.
+    const unsub = client.subscribe('refresh-dead', jwtExpiringAt(pastExp()), () => {})
     const src0 = MockEventSource.instances[MockEventSource.instances.length - 1]
     src0.emitConnected()
 
@@ -518,7 +564,6 @@ test('reconnect: _refreshSession returning false marks channel as failed', async
     unsub()
   } finally {
     setSseTokenRefresher(null as unknown as () => Promise<boolean>)
-    // @ts-ignore
     global.setTimeout = origSetTimeout
     client.dispose()
     teardown()
@@ -538,7 +583,7 @@ test('reconnect: _refreshSession returning true but token unchanged still reopen
   const client = new SSEClient()
   const origSetTimeout = global.setTimeout
   try {
-    // @ts-ignore
+    // @ts-expect-error — the test stub is narrower than the DOM type
     global.setTimeout = (fn: () => void) => { void Promise.resolve().then(fn); return 0 }
 
     const unsub = client.subscribe('refresh-same', 'tok-same', () => {})
@@ -565,9 +610,180 @@ test('reconnect: _refreshSession returning true but token unchanged still reopen
     unsub()
   } finally {
     setSseTokenRefresher(null as unknown as () => Promise<boolean>)
-    // @ts-ignore
     global.setTimeout = origSetTimeout
     client.dispose()
     teardown()
   }
+})
+
+// ─── Regression tests: a dropped stream must always be able to recover ────────
+
+test('token refresh keeps the channel and its subscribers (no orphaned handler)', () => {
+  setupMock()
+  const client = new SSEClient()
+  try {
+    const received: unknown[] = []
+    const oldToken = jwtExpiringAt(futureExp())
+    const newToken = jwtExpiringAt(futureExp() + 10)
+
+    const unsub = client.subscribe('p2p_match:abc', oldToken, (ev) => received.push(ev))
+
+    // Simulate api.ts dispatching a token refresh.
+    window.dispatchEvent(new CustomEvent('auth:token-refreshed', { detail: { token: newToken } }))
+
+    assert.equal(client._channelCount(), 1, 'channel key must not change when the token rotates')
+    assert.equal(client.getStatus('p2p_match:abc'), 'connecting')
+
+    // The migrated source is the newest EventSource; it must still reach the
+    // subscriber exactly once (the previous implementation leaked a duplicate).
+    const src = MockEventSource.instances[MockEventSource.instances.length - 1]
+    assert.ok(src.url.includes(encodeURIComponent(newToken)), 'reopened with the new token')
+    src.emitMessage({ type: 'p2p.move_made', payload: {} })
+    assert.equal(received.length, 1, 'subscriber receives each event once')
+
+    unsub()
+    assert.equal(client._channelCount(), 0, 'last unsubscribe closes the migrated channel')
+  } finally {
+    client.dispose()
+    teardown()
+  }
+})
+
+test('a failed channel restarts when a subscriber remounts', async () => {
+  setupMock()
+  const client = new SSEClient()
+  const origSetTimeout = global.setTimeout
+  try {
+    // @ts-expect-error — the test stub is narrower than the DOM type
+    global.setTimeout = (fn: () => void) => { void Promise.resolve().then(fn); return 0 }
+
+    const unsub = client.subscribe('failed-channel', jwtExpiringAt(futureExp()), () => {})
+    for (let i = 0; i <= MAX_ATTEMPTS; i++) {
+      const instances = MockEventSource.instances
+      instances[instances.length - 1].emitError()
+      await new Promise((r) => origSetTimeout(r, 5))
+    }
+    assert.equal(client.getStatus('failed-channel'), 'failed')
+
+    const before = MockEventSource.instances.length
+    // A remount (route change, StrictMode remount) must revive the channel.
+    const unsub2 = client.subscribe('failed-channel', jwtExpiringAt(futureExp()), () => {})
+    await new Promise((r) => origSetTimeout(r, 5))
+
+    assert.ok(
+      MockEventSource.instances.length > before,
+      'a new subscriber restarts a failed channel',
+    )
+    assert.notEqual(client.getStatus('failed-channel'), 'failed')
+
+    unsub()
+    unsub2()
+  } finally {
+    global.setTimeout = origSetTimeout
+    client.dispose()
+    teardown()
+  }
+})
+
+test('retryNow revives a failed channel immediately and resets the retry budget', async () => {
+  setupMock()
+  const client = new SSEClient()
+  const origSetTimeout = global.setTimeout
+  try {
+    // @ts-expect-error — the test stub is narrower than the DOM type
+    global.setTimeout = (fn: () => void) => { void Promise.resolve().then(fn); return 0 }
+
+    const unsub = client.subscribe('manual-retry', jwtExpiringAt(futureExp()), () => {})
+    for (let i = 0; i <= MAX_ATTEMPTS; i++) {
+      const instances = MockEventSource.instances
+      instances[instances.length - 1].emitError()
+      await new Promise((r) => origSetTimeout(r, 5))
+    }
+    assert.equal(client.getStatus('manual-retry'), 'failed')
+
+    client.retryNow('manual-retry')
+
+    assert.equal(client.getStatus('manual-retry'), 'connecting')
+    assert.equal(client._getChannelState('manual-retry')?.attempts, 0)
+
+    const src = MockEventSource.instances[MockEventSource.instances.length - 1]
+    src.emitConnected()
+    assert.equal(client.getStatus('manual-retry'), 'live')
+
+    unsub()
+  } finally {
+    global.setTimeout = origSetTimeout
+    client.dispose()
+    teardown()
+  }
+})
+
+test('a late error from a replaced source cannot downgrade the live connection', () => {
+  setupMock()
+  const client = new SSEClient()
+  try {
+    const unsub = client.subscribe('stale-source', jwtExpiringAt(futureExp()), () => {})
+    const first = MockEventSource.instances[0]
+
+    // A newer stream replaces the old one (same channel, rotated token).
+    window.dispatchEvent(new CustomEvent('auth:token-refreshed', { detail: { token: jwtExpiringAt(futureExp() + 5) } }))
+    const second = MockEventSource.instances[MockEventSource.instances.length - 1]
+    second.emitConnected()
+    assert.equal(client.getStatus('stale-source'), 'live')
+
+    // The dead socket delivers its error after being replaced.
+    first.emitError()
+
+    assert.equal(client.getStatus('stale-source'), 'live', 'stale error must not reset the live stream')
+    unsub()
+  } finally {
+    client.dispose()
+    teardown()
+  }
+})
+
+test('attempts are only reset after a connection stays live (no flapping loop)', async () => {
+  setupMock()
+  const client = new SSEClient()
+  const origSetTimeout = global.setTimeout
+  try {
+    // @ts-expect-error — the test stub is narrower than the DOM type
+    global.setTimeout = (fn: () => void, ms?: number) => {
+      // Fire the retry timers, never the 5 s stability timer.
+      if ((ms ?? 0) >= STABLE_RESET_MS) return 0
+      void Promise.resolve().then(fn)
+      return 0
+    }
+
+    const unsub = client.subscribe('flapping', jwtExpiringAt(futureExp()), () => {})
+    for (let i = 0; i < 4; i++) {
+      const instances = MockEventSource.instances
+      const latest = instances[instances.length - 1]
+      latest.emitConnected() // brief success, then immediate drop
+      latest.emitError()
+      // Let the retry reopen the source so the next cycle starts from a live one.
+      await new Promise((r) => origSetTimeout(r, 5))
+    }
+    await new Promise((r) => origSetTimeout(r, 10))
+
+    const state = client._getChannelState('flapping')
+    assert.ok(
+      (state?.attempts ?? 0) >= 4,
+      `consecutive failures must accumulate, got ${state?.attempts}`,
+    )
+    assert.notEqual(client.getStatus('flapping'), 'live')
+
+    unsub()
+  } finally {
+    global.setTimeout = origSetTimeout
+    client.dispose()
+    teardown()
+  }
+})
+
+test('tokenExpiresSoon only refreshes tokens that are actually expiring', async () => {
+  const mod = await import('./sseClient.ts')
+  assert.equal(mod.tokenExpiresSoon(jwtExpiringAt(pastExp())), true)
+  assert.equal(mod.tokenExpiresSoon(jwtExpiringAt(futureExp())), false)
+  assert.equal(mod.tokenExpiresSoon('not-a-jwt'), false)
 })

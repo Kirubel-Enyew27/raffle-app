@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -15,6 +15,7 @@ import {
   Send,
   Share2,
   AlertTriangle,
+  Trophy,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -32,6 +33,7 @@ import {
   copyToClipboard,
 } from '@/lib/telegram'
 import { useP2PStream, type P2PEvent } from '@/features/p2p/useP2PStream'
+import { deriveMatchConnection } from '@/features/p2p/matchConnection'
 import { TicTacToeBoard } from '@/features/p2p/TicTacToeBoard'
 import { PlayerOneMarker, PlayerTwoMarker, TicTacToeMarker } from '@/features/p2p/TicTacToeMarkers'
 import { ConnectFourToken } from '@/features/p2p/ConnectFourToken'
@@ -84,12 +86,13 @@ export function Component() {
     isError,
     error,
     refetch,
+    dataUpdatedAt,
   } = useQuery<P2PMatch>({
     queryKey: ['p2p-match', matchId],
     queryFn: () => p2pApi.getMatchState(matchId!),
     enabled: !!matchId,
-    // No polling: the match channel pushes player_joined / match_started, and
-    // onReconnect refetches after a dropped stream.
+    // The match channel pushes state changes; a fallback poll below keeps the
+    // board in sync while that stream is down (see "resyncFromServer").
   })
 
   // Web Audio sound effects manager
@@ -119,17 +122,24 @@ export function Component() {
     (event: P2PEvent) => {
       // SSE payloads are dynamic — cast to a loose record for field access.
       const payload = event.payload as Record<string, unknown>
-      if (event.type === 'p2p.move_made' && payload?.state) {
-        queryClient.setQueryData(['p2p-match', matchId], payload.state)
+      // State-bearing events carry a view built for *this* player under `state`
+      // (see P2PService.publishMatchState). Older/partial payloads without a
+      // `state` field fall through to an authoritative refetch.
+      const eventState = (payload?.state ?? null) as P2PMatch | null
+      if (event.type === 'p2p.move_made' && eventState) {
+        queryClient.setQueryData(['p2p-match', matchId], eventState)
       } else if (
         event.type === 'p2p.match_started' ||
         event.type === 'p2p.match_completed' ||
+        // A round break ends with the next round's board and turn; the event
+        // itself only announces it, so fetch the authoritative state.
+        event.type === 'p2p.round_started' ||
         event.type === 'p2p.turn_timeout'
       ) {
-        // For match_completed and turn_timeout the payload may be the full match
-        // state or a partial update — always refetch for canonical state.
-        if (event.type === 'p2p.match_started') {
-          queryClient.setQueryData(['p2p-match', matchId], payload)
+        // match_started carries the started match; the other two are signals to
+        // refetch the canonical (possibly settled) state.
+        if (event.type === 'p2p.match_started' && eventState) {
+          queryClient.setQueryData(['p2p-match', matchId], eventState)
         } else {
           refetch()
         }
@@ -140,8 +150,8 @@ export function Component() {
         refetch()
       } else if (event.type === 'p2p.player_reconnected') {
         // Payload contains the full match state under `state`.
-        if (payload?.state) {
-          queryClient.setQueryData(['p2p-match', matchId], payload.state)
+        if (eventState) {
+          queryClient.setQueryData(['p2p-match', matchId], eventState)
         } else {
           refetch()
         }
@@ -183,7 +193,11 @@ export function Component() {
     },
   })
 
-  const { isLive, status: streamStatus } = useP2PStream({
+  const {
+    isLive,
+    status: streamStatus,
+    retry: retryStream,
+  } = useP2PStream({
     matchId,
     token,
     enabled: !!matchId && !!token,
@@ -199,27 +213,127 @@ export function Component() {
     },
   })
 
-  const [prevTurnKey, setPrevTurnKey] = useState<string>('')
-  const turnKey = `${match?.current_turn_user_id}_${match?.turn_seconds_left}`
-  if (match?.status === 'in_progress' && turnKey !== prevTurnKey) {
-    setPrevTurnKey(turnKey)
-    setSecondsLeft(match.turn_seconds_left || 0)
-  }
+  // ── Authoritative-state fallback ────────────────────────────────────────────
+  // A dropped stream used to mean a frozen board: the server kept advancing the
+  // match while this client showed stale state, and the turn clock then forfeited
+  // the player who never saw their turn. Whenever the stream is not live — or a
+  // live stream has gone quiet mid-match — poll the authoritative snapshot.
+  const liveRef = useRef(isLive)
+  const matchStatusRef = useRef<string | undefined>(match?.status)
+  const updatedAtRef = useRef<number>(dataUpdatedAt)
+  // Mirror the latest render's inputs into the refs the poll timer reads.
+  // Done in an effect (not during render) so a render never mutates state it
+  // is reading.
+  useEffect(() => {
+    liveRef.current = isLive
+    matchStatusRef.current = match?.status
+    updatedAtRef.current = dataUpdatedAt
+  })
 
-  // Turn timer countdown locally
+  const isTerminalMatch = !!match && ['completed', 'tied', 'forfeited', 'cancelled'].includes(match.status)
+
+  // Staleness is observed by the poll timer below — the clock is read inside a
+  // callback, never during render — and only published when it flips, so a
+  // healthy page does not re-render on every tick.
+  const [streamStale, setStreamStale] = useState(false)
+
+  useEffect(() => {
+    if (!matchId || isTerminalMatch) return
+
+    const timer = setInterval(() => {
+      const inProgress = matchStatusRef.current === 'in_progress'
+      const streamHealthy = liveRef.current
+      const quietForMs = Date.now() - updatedAtRef.current
+      const stale = inProgress && quietForMs > 10_000
+      setStreamStale((prev) => (prev === stale ? prev : stale))
+
+      if (!streamHealthy || stale) {
+        refetch()
+      }
+    }, 2_000)
+
+    return () => clearInterval(timer)
+  }, [matchId, isTerminalMatch, refetch])
+
+  // Resync as soon as the tab becomes visible again or the network returns:
+  // backgrounded mobile tabs are the most common way a stream silently dies.
+  useEffect(() => {
+    if (!matchId) return
+    const resync = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      refetch()
+      if (!liveRef.current) retryStream()
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') resync()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('online', resync)
+    window.addEventListener('focus', resync)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('online', resync)
+      window.removeEventListener('focus', resync)
+    }
+  }, [matchId, refetch, retryStream])
+
+  // Report sustained transport loss so the server's reconnection grace period
+  // governs the match instead of the turn clock. Without this the player whose
+  // UI was stuck simply timed out and lost.
+  const reportedDisconnectRef = useRef(false)
+  useEffect(() => {
+    if (!matchId || match?.status !== 'in_progress') {
+      reportedDisconnectRef.current = false
+      return
+    }
+    if (isLive) {
+      reportedDisconnectRef.current = false
+      return
+    }
+
+    const timer = setTimeout(() => {
+      if (reportedDisconnectRef.current) return
+      reportedDisconnectRef.current = true
+      p2pApi.disconnectFromMatch(matchId).catch(() => {
+        // Offline: the grace period is only a server-side courtesy; gameplay
+        // still recovers when the stream returns.
+      })
+    }, 5_000)
+
+    return () => clearTimeout(timer)
+  }, [matchId, match?.status, isLive])
+
+  // Turn clock: count down to the server's absolute deadline, shifted by the
+  // observed clock offset. A local "seconds left" snapshot drifts with every
+  // refetch (and across devices), which is how a player ends up seeing 3 s left
+  // when the server has already timed them out.
   useEffect(() => {
     if (!match || match.status !== 'in_progress') return
 
-    const initialSeconds = match.turn_seconds_left || 0
-    const startedAt = Date.now()
+    const deadlineMs = match.turn_deadline_at ? new Date(match.turn_deadline_at).getTime() : null
+    const serverNow = match.server_time ? new Date(match.server_time).getTime() : null
+    const clockOffsetMs = serverNow !== null ? Date.now() - serverNow : 0
 
-    const timer = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - startedAt) / 1000)
-      setSecondsLeft(Math.max(0, initialSeconds - elapsed))
-    }, 1000)
+    const remaining = () => {
+      if (deadlineMs !== null) {
+        return Math.max(0, Math.ceil((deadlineMs + clockOffsetMs - Date.now()) / 1000))
+      }
+      return Math.max(0, match.turn_seconds_left || 0)
+    }
 
+    // First value lands in a microtask (before paint) so the effect body does
+    // not set state synchronously.
+    queueMicrotask(() => setSecondsLeft(remaining()))
+    const timer = setInterval(() => setSecondsLeft(remaining()), 250)
     return () => clearInterval(timer)
-  }, [match?.current_turn_user_id, match?.turn_seconds_left, match?.status, match])
+  }, [
+    match?.current_turn_user_id,
+    match?.turn_deadline_at,
+    match?.turn_seconds_left,
+    match?.status,
+    match?.server_time,
+    match,
+  ])
 
   // Waiting room countdown using backend expiration time
   useEffect(() => {
@@ -404,7 +518,25 @@ export function Component() {
   const isP0 = myPlayer?.player_index === 0
   const isP1 = myPlayer?.player_index === 1
 
+  // One derived lifecycle state for the whole page. Transport status alone used
+  // to drive the badge, so a client whose stream was down showed "Connecting…"
+  // even after the server had started the match.
+  const connection = deriveMatchConnection({
+    transport: streamStatus,
+    hasState: true,
+    matchStatus: match.status,
+    isParticipant: !!myPlayer,
+    playersPresent: match.players?.length ?? 0,
+    allReady: (match.players?.length ?? 0) >= 2 && (match.players ?? []).every((p) => p.status === 'ready'),
+    // Staleness is the poll timer's observation; reading the clock here would
+    // be an impure render.
+    stale: streamStale,
+  })
+
   const isMyTurn = match.status === 'in_progress' && match.current_turn_user_id === user?.id
+  // Between rounds the server holds the finished board (with its winning line)
+  // for a moment and clears the turn, so nobody is on the clock.
+  const isRoundBreak = match.status === 'in_progress' && !match.current_turn_user_id
   // Tic-Tac-Toe identifies seats by shape; every other game keeps its symbol text.
   const isTicTacToe = match.game_slug === 'tic-tac-toe'
   const mySeat = isTicTacToe ? seatForPlayerIndex(myPlayer?.player_index) : null
@@ -422,6 +554,12 @@ export function Component() {
 
   // Rematch state: a finished match either has the caller waiting on the
   // opponent, or the opponent waiting on the caller to accept.
+  // Readiness comes from the server's per-player rows, so both clients display
+  // the same thing instead of guessing from their own click.
+  const opponentPlayer = match.players?.find((p) => p.user_id !== user?.id)
+  const iAmReady = myPlayer?.status === 'ready'
+  const opponentReady = opponentPlayer?.status === 'ready'
+
   const iRequestedRematch = !!match.rematch_requested_by && match.rematch_requested_by === user?.id
   const opponentRequestedRematch = !!match.rematch_requested_by && match.rematch_requested_by !== user?.id
   const canRematch = (match.players?.length ?? 0) === 2
@@ -511,50 +649,86 @@ export function Component() {
             </Badge>
           )}
 
-          <Badge variant="outline" className="text-xs px-2.5 py-0.5 gap-1 border-border">
-            {isLive ? (
-              <span className="flex items-center gap-1 text-emerald-500">
-                <Wifi className="w-3 h-3" />
-                Live
+          <Badge
+            variant="outline"
+            className="text-xs px-2.5 py-0.5 gap-1 border-border"
+            data-testid="match-connection-badge"
+            data-state={connection.state}
+            title={connection.description}
+          >
+            {connection.state === 'failed' || connection.state === 'disconnected' ? (
+              <span className="flex items-center gap-1 text-destructive">
+                <WifiOff className="w-3 h-3" />
+                {connection.label}
+              </span>
+            ) : connection.state === 'reconnecting' || connection.state === 'connecting' ? (
+              <span className="flex items-center gap-1 text-amber-500">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                {connection.label}
+              </span>
+            ) : connection.state === 'completed' ? (
+              <span className="flex items-center gap-1 text-muted-foreground">
+                <Flag className="w-3 h-3" />
+                {connection.label}
               </span>
             ) : (
-              <span className="flex items-center gap-1 text-amber-500">
-                <WifiOff className="w-3 h-3" />
-                Connecting
+              <span className="flex items-center gap-1 text-emerald-500">
+                <Wifi className="w-3 h-3" />
+                {connection.label}
               </span>
             )}
           </Badge>
         </div>
       </div>
 
-      {/* Show reconnecting banner only during active gameplay — not while waiting or on game-over screens */}
-      {streamStatus === 'reconnecting' && match.status === 'in_progress' && (
+      {/* Live stream lost mid-match: the board keeps syncing from the server. */}
+      {connection.state === 'reconnecting' && (
         <div
           role="status"
-          className="flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-700 dark:text-amber-300"
+          className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-700 dark:text-amber-300"
         >
-          <WifiOff className="h-4 w-4 shrink-0" />
-          <span>Reconnecting to the live match… your moves are safe on the server.</span>
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            <span>Reconnecting to the live match… your moves are safe on the server.</span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs shrink-0 border-amber-500/40 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
+            onClick={() => {
+              retryStream()
+              refetch()
+            }}
+          >
+            Retry now
+          </Button>
         </div>
       )}
 
-      {/* Connection failed after all retries — prompt the player to recover */}
-      {streamStatus === 'failed' && !isGameOver && (
+      {/* The stream gave up. Keep polling the authoritative state and offer a
+          real retry instead of forcing a page reload (which lost the match UI). */}
+      {connection.state === 'failed' && !isGameOver && (
         <div
           role="alert"
           className="flex items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive"
         >
           <div className="flex items-center gap-2">
             <WifiOff className="h-4 w-4 shrink-0" />
-            <span>Live connection lost. Your match is still active on the server.</span>
+            <span>
+              Live connection lost. Your match is still active on the server and is being
+              reloaded from it automatically.
+            </span>
           </div>
           <Button
             variant="outline"
             size="sm"
             className="h-7 text-xs shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10"
-            onClick={() => window.location.reload()}
+            onClick={() => {
+              retryStream()
+              refetch()
+            }}
           >
-            Reconnect
+            Retry connection
           </Button>
         </div>
       )}
@@ -650,21 +824,35 @@ export function Component() {
 
               {match.status === 'in_progress' ? (
                 <div className="space-y-1">
-                  <div
-                    className={[
-                      'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all',
-                      isMyTurn
-                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 animate-pulse'
-                        : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30',
-                    ].join(' ')}
-                  >
-                    {mySeat && <TicTacToeMarker seat={mySeat} variant="plain" className="h-3.5 w-3.5" />}
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>{isMyTurn ? 'YOUR TURN' : 'OPPONENT TURN'}</span>
-                  </div>
-                  <div className="text-2xl font-black tabular-nums tracking-tight">
-                    {secondsLeft}s
-                  </div>
+                  {isRoundBreak ? (
+                    <>
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                        <Trophy className="w-3.5 h-3.5" />
+                        <span>ROUND WON</span>
+                      </div>
+                      <div className="text-[11px] font-semibold text-muted-foreground animate-pulse">
+                        Next round starting…
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div
+                        className={[
+                          'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all',
+                          isMyTurn
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 animate-pulse'
+                            : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30',
+                        ].join(' ')}
+                      >
+                        {mySeat && <TicTacToeMarker seat={mySeat} variant="plain" className="h-3.5 w-3.5" />}
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>{isMyTurn ? 'YOUR TURN' : 'OPPONENT TURN'}</span>
+                      </div>
+                      <div className="text-2xl font-black tabular-nums tracking-tight">
+                        {secondsLeft}s
+                      </div>
+                    </>
+                  )}
                   <div className="text-[11px] text-muted-foreground">
                     Round {match.current_round} of {match.max_rounds}
                   </div>
@@ -889,19 +1077,28 @@ export function Component() {
                 </p>
               </div>
 
-              {myPlayer?.status === 'ready' ? (
+              {iAmReady ? (
                 <div className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-4 py-2 rounded-full border border-emerald-500/20">
-                  <span>You are ready! Waiting for opponent…</span>
+                  <span>
+                    {opponentReady
+                      ? 'Both players are ready — starting the match…'
+                      : 'You are ready! Waiting for opponent…'}
+                  </span>
                 </div>
               ) : (
-                <Button
-                  size="lg"
-                  disabled={readyMutation.isPending}
-                  onClick={() => readyMutation.mutate()}
-                  className="w-full font-bold shadow-lg shadow-primary/20 text-base"
-                >
-                  {readyMutation.isPending ? 'Confirming…' : 'I am Ready! ⚔️'}
-                </Button>
+                <div className="space-y-2">
+                  <Button
+                    size="lg"
+                    disabled={readyMutation.isPending}
+                    onClick={() => readyMutation.mutate()}
+                    className="w-full font-bold shadow-lg shadow-primary/20 text-base"
+                  >
+                    {readyMutation.isPending ? 'Confirming…' : 'I am Ready! ⚔️'}
+                  </Button>
+                  <p className="text-[11px] text-muted-foreground">
+                    {opponentReady ? 'Your opponent is ready.' : 'Your opponent has not readied up yet.'}
+                  </p>
+                </div>
               )}
             </div>
           )}

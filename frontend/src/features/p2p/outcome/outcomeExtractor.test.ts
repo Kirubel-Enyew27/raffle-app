@@ -15,6 +15,7 @@ const baseMatch: P2PMatch = {
   winner_user_id: undefined,
   current_turn_user_id: 'user-0',
   turn_seconds_left: 15,
+  disconnect_seconds_left: 0,
   current_round: 1,
   max_rounds: 3,
   scores: { '0': 0, '1': 0 },

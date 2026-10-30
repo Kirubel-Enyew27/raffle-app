@@ -44,16 +44,22 @@ type MatchView struct {
 	CreatedBy         string                 `json:"created_by"`
 	// Rematch state, so the result screen knows whether the opponent already
 	// asked for a return game.
-	RematchRequestedBy *string               `json:"rematch_requested_by,omitempty"`
-	RematchMatchID     *string               `json:"rematch_match_id,omitempty"`
-	DisconnectUserID   *string               `json:"disconnect_user_id,omitempty"`
-	DisconnectSecondsLeft int                 `json:"disconnect_seconds_left"`
-	MyPlayerIndex      *int                  `json:"my_player_index,omitempty"`
-	Players            []*domain.MatchPlayer `json:"players"`
-	StartedAt          *time.Time            `json:"started_at,omitempty"`
-	CompletedAt        *time.Time            `json:"completed_at,omitempty"`
-	ExpiresAt          *time.Time            `json:"expires_at,omitempty"`
-	CreatedAt          time.Time             `json:"created_at"`
+	RematchRequestedBy    *string `json:"rematch_requested_by,omitempty"`
+	RematchMatchID        *string `json:"rematch_match_id,omitempty"`
+	DisconnectUserID      *string `json:"disconnect_user_id,omitempty"`
+	DisconnectSecondsLeft int     `json:"disconnect_seconds_left"`
+	// Absolute deadlines let clients tick their clocks against the server's
+	// clock instead of recomputing from a countdown that goes stale the moment
+	// it is rendered. ServerTime is the reference point for both.
+	TurnDeadlineAt       *time.Time            `json:"turn_deadline_at,omitempty"`
+	DisconnectDeadlineAt *time.Time            `json:"disconnect_deadline_at,omitempty"`
+	ServerTime           time.Time             `json:"server_time"`
+	MyPlayerIndex        *int                  `json:"my_player_index,omitempty"`
+	Players              []*domain.MatchPlayer `json:"players"`
+	StartedAt            *time.Time            `json:"started_at,omitempty"`
+	CompletedAt          *time.Time            `json:"completed_at,omitempty"`
+	ExpiresAt            *time.Time            `json:"expires_at,omitempty"`
+	CreatedAt            time.Time             `json:"created_at"`
 }
 
 // Rematch outcomes returned by RequestRematch.
@@ -470,12 +476,9 @@ func (s *P2PService) JoinMatch(ctx context.Context, userID, matchID, inviteCode 
 
 	match.Players = append(existingPlayers, p2)
 
-	if s.realtime != nil {
-		_ = s.realtime.PublishToChannel(ctx, matchChannel(match.ID), "p2p.player_joined", map[string]interface{}{
-			"match_id": match.ID,
-			"player":   p2,
-		})
-	}
+	s.publishMatchState(ctx, "p2p.player_joined", match, match.Players, map[string]interface{}{
+		"player": p2,
+	})
 	// The room is no longer joinable, so it must leave every open lobby list.
 	publishLobbyUpdate(ctx, s.realtime, "joined", match)
 
@@ -524,9 +527,8 @@ func (s *P2PService) CancelMatch(ctx context.Context, userID, matchID string) (*
 	match.Players = players
 
 	if s.realtime != nil {
-		_ = s.realtime.PublishToChannel(ctx, matchChannel(match.ID), "p2p.match_cancelled", map[string]interface{}{
-			"match_id": match.ID,
-			"reason":   "cancelled by host",
+		s.publishMatchState(ctx, "p2p.match_cancelled", match, players, map[string]interface{}{
+			"reason": "cancelled by host",
 		})
 	}
 	publishLobbyUpdate(ctx, s.realtime, "cancelled", match)
@@ -686,15 +688,12 @@ func (s *P2PService) ReadyUp(ctx context.Context, userID, matchID string) (*Matc
 	match.Players = players
 	view := s.buildView(match, userID)
 
-	if s.realtime != nil {
-		_ = s.realtime.PublishToChannel(ctx, matchChannel(match.ID), "p2p.ready_status", map[string]interface{}{
-			"match_id": match.ID,
-			"user_id":  userID,
-		})
+	s.publishMatchState(ctx, "p2p.ready_status", match, players, map[string]interface{}{
+		"user_id": userID,
+	})
 
-		if allReady {
-			_ = s.realtime.PublishToChannel(ctx, matchChannel(match.ID), "p2p.match_started", view)
-		}
+	if allReady {
+		s.publishMatchState(ctx, "p2p.match_started", match, players, nil)
 	}
 
 	return view, nil
@@ -802,20 +801,46 @@ func (s *P2PService) SubmitMove(ctx context.Context, userID, matchID string, act
 		isMatchOver, matchWinnerIdx = engine.CheckMatchOver(match.Scores, match.CurrentRound, match.MaxRounds)
 
 		if !isMatchOver {
-			// Advance to next round, reset board
-			match.CurrentRound++
-			match.BoardState = engine.InitBoard()
+			nextBoard := engine.InitBoard()
 			// Carry the finished round's reveal into the fresh board. Without
 			// this, simultaneous-move games (RPS) would wipe the players'
 			// choices before either client could display them.
 			if result, ok := newBoard["last_round_result"]; ok && result != nil {
-				match.BoardState["last_round_result"] = result
+				nextBoard["last_round_result"] = result
 			}
-			// Switch starter for next round
-			nextTurn := opponentPlayer.UserID
-			match.CurrentTurnUserID = &nextTurn
-			deadline := now.Add(time.Duration(turnSecondsFor(match.GameSlug)) * time.Second)
-			match.TurnDeadline = &deadline
+
+			// A round can end on a winning line (Tic-Tac-Toe). Hold that
+			// finished board for a short reveal, with the clock stopped, so both
+			// players actually see the winning combination; the background
+			// sweeper starts the next round when the reveal deadline passes.
+			// Resetting here instead replaced the winning line with an empty
+			// board in the very same event that announced it.
+			if newBoard["winning_line"] != nil && roundWinnerIdx != nil {
+				reveal := make(map[string]interface{}, len(newBoard)+1)
+				for k, v := range newBoard {
+					reveal[k] = v
+				}
+				reveal[roundTransitionKey] = map[string]interface{}{
+					"next_board":           nextBoard,
+					"next_round":           match.CurrentRound + 1,
+					"next_starter_user_id": opponentPlayer.UserID,
+					"round_winner_index":   *roundWinnerIdx,
+				}
+				match.BoardState = reveal
+				// Nobody may move during the reveal. A nil turn also keeps the
+				// turn-timeout path from forfeiting anyone for it.
+				match.CurrentTurnUserID = nil
+				deadline := now.Add(roundRevealDelay)
+				match.TurnDeadline = &deadline
+			} else {
+				match.CurrentRound++
+				match.BoardState = nextBoard
+				// Switch starter for next round
+				nextTurn := opponentPlayer.UserID
+				match.CurrentTurnUserID = &nextTurn
+				deadline := now.Add(time.Duration(turnSecondsFor(match.GameSlug)) * time.Second)
+				match.TurnDeadline = &deadline
+			}
 		}
 	} else if !turnComplete {
 		// Same player must continue capturing. Refresh the clock so a long chain
@@ -872,6 +897,16 @@ func (s *P2PService) SubmitMove(ctx context.Context, userID, matchID string, act
 			_ = s.playerRepo.SetLedgerTxIDs(ctx, tx, players[*matchWinnerIdx].ID, nil, &creditTxID, &feeTxID)
 		}
 
+		// Persist the final board (and the series scores that go with it) before
+		// closing the match. MarkCompletedTx only writes terminal columns, so
+		// without this the completed match is read back as it was *before* the
+		// winning move: the final piece and the whole winning_line disappear the
+		// moment either client refetches the terminal state, leaving no winning
+		// combination to highlight on the board.
+		if err := s.matchRepo.UpdateStateTx(ctx, tx, match); err != nil {
+			return nil, err
+		}
+
 		if err := s.matchRepo.MarkCompletedTx(ctx, tx, match.ID, winnerUserID, status, settlement.FeeCents, now); err != nil {
 			return nil, err
 		}
@@ -888,16 +923,12 @@ func (s *P2PService) SubmitMove(ctx context.Context, userID, matchID string, act
 	match.Players = players
 	view := s.buildView(match, userID)
 
-	if s.realtime != nil {
-		_ = s.realtime.PublishToChannel(ctx, matchChannel(match.ID), "p2p.move_made", map[string]interface{}{
-			"match_id": match.ID,
-			"move":     action,
-			"state":    view,
-		})
+	s.publishMatchState(ctx, "p2p.move_made", match, players, map[string]interface{}{
+		"move": action,
+	})
 
-		if isMatchOver {
-			_ = s.realtime.PublishToChannel(ctx, matchChannel(match.ID), "p2p.match_completed", view)
-		}
+	if isMatchOver {
+		s.publishMatchState(ctx, "p2p.match_completed", match, players, nil)
 	}
 
 	return view, nil
@@ -974,9 +1005,7 @@ func (s *P2PService) ResignMatch(ctx context.Context, userID, matchID string) (*
 	match.Players = players
 	view := s.buildView(match, userID)
 
-	if s.realtime != nil {
-		_ = s.realtime.PublishToChannel(ctx, matchChannel(match.ID), "p2p.match_completed", view)
-	}
+	s.publishMatchState(ctx, "p2p.match_completed", match, players, nil)
 
 	return view, nil
 }
@@ -1042,9 +1071,8 @@ func (s *P2PService) HandlePlayerDisconnect(ctx context.Context, userID, matchID
 	view := s.buildView(match, userID)
 
 	if s.realtime != nil {
-		_ = s.realtime.PublishToChannel(ctx, matchChannel(match.ID), "p2p.player_disconnected", map[string]interface{}{
-			"match_id":             match.ID,
-			"disconnect_user_id":   userID,
+		s.publishMatchState(ctx, "p2p.player_disconnected", match, players, map[string]interface{}{
+			"disconnect_user_id":      userID,
 			"disconnect_seconds_left": view.DisconnectSecondsLeft,
 		})
 	}
@@ -1097,6 +1125,14 @@ func (s *P2PService) HandlePlayerReconnect(ctx context.Context, userID, matchID 
 	match.DisconnectUserID = nil
 	match.DisconnectDeadline = nil
 
+	// Give the returning player a full turn clock: otherwise they would resume
+	// with whatever fragment was left when their transport dropped and lose on
+	// a timeout they never had a chance to beat.
+	if match.CurrentTurnUserID != nil && *match.CurrentTurnUserID == userID {
+		deadline := time.Now().Add(time.Duration(turnSecondsFor(match.GameSlug)) * time.Second)
+		match.TurnDeadline = &deadline
+	}
+
 	if err := s.matchRepo.UpdateStateTx(ctx, tx, match); err != nil {
 		return nil, err
 	}
@@ -1109,10 +1145,8 @@ func (s *P2PService) HandlePlayerReconnect(ctx context.Context, userID, matchID 
 	view := s.buildView(match, userID)
 
 	if s.realtime != nil {
-		_ = s.realtime.PublishToChannel(ctx, matchChannel(match.ID), "p2p.player_reconnected", map[string]interface{}{
-			"match_id": match.ID,
-			"user_id":  userID,
-			"state":    view,
+		s.publishMatchState(ctx, "p2p.player_reconnected", match, players, map[string]interface{}{
+			"user_id": userID,
 		})
 	}
 
@@ -1190,9 +1224,8 @@ func (s *P2PService) RequestRematch(ctx context.Context, userID, matchID string)
 		match.Players = players
 
 		if s.realtime != nil {
-			_ = s.realtime.PublishToChannel(ctx, matchChannel(match.ID), "p2p.rematch_requested", map[string]interface{}{
-				"match_id": match.ID,
-				"user_id":  userID,
+			s.publishMatchState(ctx, "p2p.rematch_requested", match, players, map[string]interface{}{
+				"user_id": userID,
 			})
 		}
 		return &RematchResult{Status: RematchRequested, Match: s.buildView(match, userID)}, nil
@@ -1217,10 +1250,8 @@ func (s *P2PService) RequestRematch(ctx context.Context, userID, matchID string)
 	next.Players = nextPlayers
 
 	if s.realtime != nil {
-		_ = s.realtime.PublishToChannel(ctx, matchChannel(match.ID), "p2p.rematch_created", map[string]interface{}{
-			"match_id":      match.ID,
+		s.publishMatchState(ctx, "p2p.rematch_created", match, players, map[string]interface{}{
 			"next_match_id": next.ID,
-			"state":         s.buildView(next, ""),
 		})
 	}
 
@@ -1359,6 +1390,20 @@ func (s *P2PService) buildView(m *domain.Match, userID string) *MatchView {
 	}
 
 	boardState := m.BoardState
+	// The staged next-round board is server bookkeeping, not something a client
+	// renders or should be able to see before the round starts.
+	if boardState != nil {
+		if _, pending := boardState[roundTransitionKey]; pending {
+			stripped := make(map[string]interface{}, len(boardState))
+			for k, v := range boardState {
+				if k == roundTransitionKey {
+					continue
+				}
+				stripped[k] = v
+			}
+			boardState = stripped
+		}
+	}
 	if m.GameSlug == "rock-paper-scissors" && m.Status == domain.StatusInProgress && boardState != nil {
 		if rawChoices, ok := boardState["choices"].(map[string]interface{}); ok && len(rawChoices) < 2 {
 			clonedBoard := make(map[string]interface{})
@@ -1392,6 +1437,18 @@ func (s *P2PService) buildView(m *domain.Match, userID string) *MatchView {
 		}
 	}
 
+	var turnDeadlineAt *time.Time
+	if m.TurnDeadline != nil && m.Status == domain.StatusInProgress {
+		deadline := *m.TurnDeadline
+		turnDeadlineAt = &deadline
+	}
+
+	var disconnectDeadlineAt *time.Time
+	if m.DisconnectDeadline != nil && m.Status == domain.StatusInProgress {
+		deadline := *m.DisconnectDeadline
+		disconnectDeadlineAt = &deadline
+	}
+
 	return &MatchView{
 		ID:                    m.ID,
 		GameSlug:              m.GameSlug,
@@ -1399,9 +1456,9 @@ func (s *P2PService) buildView(m *domain.Match, userID string) *MatchView {
 		MatchType:             m.MatchType,
 		InviteCode:            m.InviteCode,
 		StakeAmount:           m.StakeAmount,
-		PrizePool:              m.PrizePoolCents.Float(),
+		PrizePool:             m.PrizePoolCents.Float(),
 		ServiceFeePercent:     float64(m.ServiceFeeBP) / 100.0,
-		TotalFee:               m.TotalFeeCents.Float(),
+		TotalFee:              m.TotalFeeCents.Float(),
 		WinnerUserID:          m.WinnerUserID,
 		CurrentTurnUserID:     m.CurrentTurnUserID,
 		TurnSecondsLeft:       secondsLeft,
@@ -1410,11 +1467,14 @@ func (s *P2PService) buildView(m *domain.Match, userID string) *MatchView {
 		Scores:                m.Scores,
 		BoardState:            boardState,
 		CreatedBy:             m.CreatedBy,
-		RematchRequestedBy:     m.RematchRequestedBy,
-		RematchMatchID:         m.RematchMatchID,
-		DisconnectUserID:       m.DisconnectUserID,
-		DisconnectSecondsLeft:  disconnectSecondsLeft,
-		MyPlayerIndex:          myIdx,
+		RematchRequestedBy:    m.RematchRequestedBy,
+		RematchMatchID:        m.RematchMatchID,
+		DisconnectUserID:      m.DisconnectUserID,
+		DisconnectSecondsLeft: disconnectSecondsLeft,
+		TurnDeadlineAt:        turnDeadlineAt,
+		DisconnectDeadlineAt:  disconnectDeadlineAt,
+		ServerTime:            time.Now(),
+		MyPlayerIndex:         myIdx,
 		Players:               m.Players,
 		StartedAt:             m.StartedAt,
 		CompletedAt:           m.CompletedAt,
@@ -1425,6 +1485,45 @@ func (s *P2PService) buildView(m *domain.Match, userID string) *MatchView {
 
 func matchChannel(matchID string) string {
 	return "p2p_match:" + matchID
+}
+
+// publishMatchState delivers a match event to every seated player with a view
+// built for that player.
+//
+// A single channel broadcast cannot carry per-viewer state: it would ship one
+// player's my_player_index to both clients and, in Rock-Paper-Scissors, reveal
+// the mover's committed choice before both players have picked. Publishing one
+// user-targeted event per player keeps each client's payload authoritative for
+// that client while still arriving on its match-channel subscription.
+func (s *P2PService) publishMatchState(
+	ctx context.Context,
+	eventType string,
+	match *domain.Match,
+	players []*domain.MatchPlayer,
+	extra map[string]interface{},
+) {
+	if s.realtime == nil || match == nil {
+		return
+	}
+
+	match.Players = players
+
+	seen := make(map[string]bool, len(players))
+	for _, p := range players {
+		if p == nil || p.UserID == "" || seen[p.UserID] {
+			continue
+		}
+		seen[p.UserID] = true
+
+		payload := make(map[string]interface{}, len(extra)+2)
+		for key, value := range extra {
+			payload[key] = value
+		}
+		payload["match_id"] = match.ID
+		payload["state"] = s.buildView(match, p.UserID)
+
+		_ = s.realtime.Publish(ctx, eventType, p.UserID, "", payload)
+	}
 }
 
 // lobbyChannel is the shared channel for public matchmaking changes. Lobby
@@ -1477,6 +1576,17 @@ func symbolFor(gameSlug string, playerIndex int) string {
 		return "O"
 	}
 }
+
+// roundTransitionKey is the board_state entry that stages a between-round
+// reveal: the finished board stays visible until the sweeper promotes
+// `next_board` and hands the turn to `next_starter_user_id`. It is internal
+// state and is stripped from every client view (see buildView).
+const roundTransitionKey = "round_transition"
+
+// roundRevealDelay is how long the winning line stays on screen between rounds.
+// The next round's turn clock starts only after it, so the reveal costs no
+// playing time. A variable so tests can shorten it.
+var roundRevealDelay = 2 * time.Second
 
 // turnSecondsFor is the server-enforced move clock for each game. Dama gets a
 // slightly longer clock because capture chains require several hops.

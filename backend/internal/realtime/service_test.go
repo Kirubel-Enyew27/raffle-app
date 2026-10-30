@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -369,5 +370,96 @@ func TestEventCountIncrements(t *testing.T) {
 	svc.eventCount.Add(3)
 	if svc.EventCount() != 3 {
 		t.Fatalf("expected EventCount=3, got %d", svc.EventCount())
+	}
+}
+
+// ── Connection replacement (regression: endless 429 on reconnect) ────────────
+
+// A page reload, a React StrictMode remount or a second tab re-opens the same
+// logical stream while the server may still hold the previous socket. The new
+// connection must win: rejecting it left the player permanently on "Connecting…"
+// while the other player kept playing.
+func TestConnect_ReplacesPreviousConnectionForSameSession(t *testing.T) {
+	svc := newTestService()
+
+	first := svc.Connect("user-replace", "user", "p2p_match:abc")
+	if got := svc.ConnectedCount(); got != 1 {
+		t.Fatalf("expected 1 connection, got %d", got)
+	}
+
+	second := svc.Connect("user-replace", "user", "p2p_match:abc")
+	if got := svc.ConnectedCount(); got != 1 {
+		t.Fatalf("a second stream for the same session must replace the first, got %d connections", got)
+	}
+
+	select {
+	case _, open := <-first.Ch:
+		if open {
+			t.Fatal("the replaced connection should have been closed")
+		}
+	default:
+		t.Fatal("expected the replaced connection channel to be closed")
+	}
+
+	// The replacement receives events for the session.
+	svc.broadcastLocal(Event{Type: "p2p.move_made", UserID: "user-replace"})
+	select {
+	case ev := <-second.Ch:
+		if ev.Type != "p2p.move_made" {
+			t.Fatalf("unexpected event on the replacement connection: %s", ev.Type)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the replacement connection received no events")
+	}
+}
+
+func TestConnect_DistinctChannelsAreAllAccepted(t *testing.T) {
+	svc := newTestService()
+
+	svc.Connect("user-multi", "user", "global")
+	svc.Connect("user-multi", "user", "p2p_lobby")
+	svc.Connect("user-multi", "user", "p2p_match:abc")
+
+	if got := svc.ConnectedCount(); got != 3 {
+		t.Fatalf("expected 3 distinct channel connections, got %d", got)
+	}
+}
+
+// Beyond the per-user cap the oldest connection is evicted, never the newest.
+func TestConnect_EvictsOldestInsteadOfRejectingNewest(t *testing.T) {
+	svc := newTestService()
+
+	oldest := svc.Connect("user-cap", "user", "channel-1")
+	for i := 2; i <= maxConnectionsPerUser; i++ {
+		svc.Connect("user-cap", "user", fmt.Sprintf("channel-%d", i))
+	}
+	if got := svc.ConnectedCount(); got != maxConnectionsPerUser {
+		t.Fatalf("expected %d connections before the cap, got %d", maxConnectionsPerUser, got)
+	}
+
+	newest := svc.Connect("user-cap", "user", "channel-new")
+	if got := svc.ConnectedCount(); got != maxConnectionsPerUser {
+		t.Fatalf("expected the new connection to replace an old one (cap %d), got %d",
+			maxConnectionsPerUser, got)
+	}
+
+	select {
+	case _, open := <-oldest.Ch:
+		if open {
+			t.Fatal("the oldest connection should have been evicted")
+		}
+	default:
+		t.Fatal("expected the oldest connection to be closed")
+	}
+
+	// The newest connection is alive.
+	svc.broadcastLocal(Event{Type: "p2p.match_started", UserID: "user-cap"})
+	select {
+	case ev := <-newest.Ch:
+		if ev.Type != "p2p.match_started" {
+			t.Fatalf("unexpected event: %s", ev.Type)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the newest connection received no events")
 	}
 }

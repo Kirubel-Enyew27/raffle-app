@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { sseClient } from '@/lib/sseClient'
 import type { SSEStatus } from '@/lib/sseClient'
 
@@ -23,11 +23,19 @@ interface Options {
 }
 
 export function useP2PStream({ matchId, channel, token, enabled, onEvent, onReconnect }: Options) {
-  const [status, setStatus] = useState<P2PStreamStatus>('connecting')
+  const target = channel ?? (matchId ? `p2p_match:${matchId}` : '')
+
+  // Seed from the real channel status so an already-live channel (remount,
+  // navigating back) never looks stuck on "Connecting…".
+  const [status, setStatus] = useState<P2PStreamStatus>(() =>
+    enabled && target && token ? sseClient.getStatus(target) : 'closed',
+  )
+  // Mirror of what React is currently showing, so the poll loop below compares
+  // against React's value instead of a value captured at an earlier moment.
+  const statusRef = useRef<P2PStreamStatus>(status)
+
   const onEventRef = useRef(onEvent)
   const onReconnectRef = useRef(onReconnect)
-  // Track whether we've seen a 'live' event before so we can fire onReconnect.
-  const everLiveRef = useRef(false)
 
   useEffect(() => {
     onEventRef.current = onEvent
@@ -35,67 +43,49 @@ export function useP2PStream({ matchId, channel, token, enabled, onEvent, onReco
   })
 
   useEffect(() => {
-    const target = channel ?? (matchId ? `p2p_match:${matchId}` : '')
-    if (!enabled || !target || !token) {
-      setStatus('closed')
-      return
-    }
+    if (!enabled || !target || !token) return
 
-    let lastStatus: P2PStreamStatus = 'connecting'
-    // Track whether the stream went through a reconnecting cycle since the
-    // last 'live' state. The SSE client transitions through:
-    //   reconnecting → connecting → live
-    // so checking lastStatus === 'reconnecting' at the moment status becomes
-    // 'live' is unreliable — lastStatus has already advanced to 'connecting'.
-    // Instead we set a flag when we observe 'reconnecting' and consume it
-    // when we reach 'live'.
-    let sawReconnecting = false
-    setStatus('connecting')
+    let lastStatus: P2PStreamStatus = statusRef.current
+    // The SSE client transitions reconnecting → connecting → live, so a
+    // 'reconnecting' observation is latched and consumed on the next 'live'.
+    let sawReconnecting = lastStatus === 'reconnecting'
 
     const unsub = sseClient.subscribe(target, token, (ev) => {
-      // Forward game events.
       onEventRef.current(ev as P2PEvent)
-
-      // Track live/reconnect transitions via connection events if the server
-      // publishes them as SSE events (type: 'connected').
-      if (ev.type === 'connected') {
-        if (everLiveRef.current) {
-          onReconnectRef.current?.()
-        }
-        everLiveRef.current = true
-        lastStatus = 'live'
-        sawReconnecting = false
-        setStatus('live')
-      }
     })
 
-    // Poll the client status because EventSource status changes are not
-    // surfaced as events on the handler — they come from the source itself.
-    // We attach a small interval to mirror sseClient status into React state.
     const interval = setInterval(() => {
       const s = sseClient.getStatus(target)
-      if (s !== lastStatus) {
-        // Remember that the stream entered a reconnecting state so we can
-        // fire onReconnect when it eventually reaches 'live', even though
-        // the status passes through 'connecting' in between.
-        if (s === 'reconnecting') {
-          sawReconnecting = true
-        }
-        if (s === 'live' && sawReconnecting) {
-          onReconnectRef.current?.()
-          sawReconnecting = false
-        }
-        lastStatus = s
-        setStatus(s)
+      if (s === lastStatus) return
+
+      if (s === 'reconnecting' || s === 'failed') sawReconnecting = true
+      if (s === 'live' && sawReconnecting) {
+        // Resync authoritative state after any outage, including one that only
+        // reached 'failed' and was revived by a retry.
+        sawReconnecting = false
+        onReconnectRef.current?.()
       }
-    }, 200)
+      lastStatus = s
+      statusRef.current = s
+      setStatus(s)
+    }, 150)
 
     return () => {
       clearInterval(interval)
       unsub()
-      setStatus('closed')
     }
-  }, [matchId, channel, token, enabled])
+  }, [target, token, enabled])
 
-  return { status, isLive: status === 'live' }
+  /** Force an immediate reconnect (used by the "Retry connection" action). */
+  const retry = useCallback(() => {
+    if (!target) return
+    sseClient.retryNow(target)
+    const next = sseClient.getStatus(target)
+    statusRef.current = next
+    setStatus(next)
+  }, [target])
+
+  const derived: P2PStreamStatus = !enabled || !target || !token ? 'closed' : status
+
+  return { status: derived, isLive: derived === 'live', retry }
 }
