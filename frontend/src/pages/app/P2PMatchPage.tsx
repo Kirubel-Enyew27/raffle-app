@@ -72,7 +72,7 @@ export function Component() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { toast } = useToast()
-  const handledRematchRequestsRef = useRef(new Set<string>())
+  // const handledRematchRequestsRef = useRef(new Set<string>())
   const openedRematchIdRef = useRef<string | null>(null)
 
   const openRematch = useCallback(
