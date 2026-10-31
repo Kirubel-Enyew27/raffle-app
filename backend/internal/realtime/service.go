@@ -31,12 +31,13 @@ const (
 
 // Event is the payload that flows from Redis Pub/Sub to every connected client.
 type Event struct {
-	Type      string      `json:"type"`
-	UserID    string      `json:"user_id,omitempty"`
-	Role      string      `json:"role,omitempty"`
-	Channel   string      `json:"channel,omitempty"`
-	Payload   interface{} `json:"payload"`
-	CreatedAt time.Time   `json:"created_at"`
+	Type                    string      `json:"type"`
+	UserID                  string      `json:"user_id,omitempty"`
+	Role                    string      `json:"role,omitempty"`
+	Channel                 string      `json:"channel,omitempty"`
+	Payload                 interface{} `json:"payload"`
+	CreatedAt               time.Time   `json:"created_at"`
+	ServerDeliveryLatencyMS float64     `json:"server_delivery_latency_ms,omitempty"`
 }
 
 // Client represents a single SSE connection.
@@ -54,6 +55,11 @@ type Client struct {
 	// It is read and written by multiple goroutines so it uses atomic
 	// operations (stored as int64 UnixNano).
 	lastPing atomic.Int64
+}
+
+type overflowedClient struct {
+	client    *Client
+	eventType string
 }
 
 // SetLastPing records the current time as the last successful ping.
@@ -78,15 +84,39 @@ type Service struct {
 
 	mu      sync.RWMutex
 	clients map[*Client]bool
+	byUser  map[string]map[*Client]bool
+	byRole  map[string]map[*Client]bool
+	byChan  map[string]map[*Client]bool
 
 	// userConns tracks per-user connection counts for the per-user cap.
 	userConnsMu sync.Mutex
 	userConns   map[string]int
 
 	// Atomic counters — hot-path read/write without the mutex.
-	dropCount  atomic.Int64
-	eventCount atomic.Int64
-	connectSeq atomic.Int64
+	dropCount        atomic.Int64
+	slowClientCount  atomic.Int64
+	eventCount       atomic.Int64
+	publishedCount   atomic.Int64
+	publishFailures  atomic.Int64
+	publishTimeNanos atomic.Int64
+	publishBytes     atomic.Int64
+	connectSeq       atomic.Int64
+}
+
+// QueueStats summarizes current local SSE buffering without exposing clients.
+type QueueStats struct {
+	Clients    int `json:"clients"`
+	TotalDepth int `json:"total_depth"`
+	MaxDepth   int `json:"max_depth"`
+	Capacity   int `json:"capacity"`
+}
+
+// PublishStats summarizes Redis publication work since process start.
+type PublishStats struct {
+	Published           int64   `json:"published"`
+	Failures            int64   `json:"failures"`
+	AverageLatencyMS    float64 `json:"average_latency_ms"`
+	AverageMessageBytes float64 `json:"average_message_bytes"`
 }
 
 // NewService creates a new realtime service backed by the given Redis client.
@@ -96,6 +126,9 @@ func NewService(rdb *redis.Client, log *zap.Logger) *Service {
 		log:       log,
 		channel:   "raffle_realtime_events",
 		clients:   make(map[*Client]bool),
+		byUser:    make(map[string]map[*Client]bool),
+		byRole:    make(map[string]map[*Client]bool),
+		byChan:    make(map[string]map[*Client]bool),
 		userConns: make(map[string]int),
 	}
 }
@@ -144,6 +177,9 @@ func (s *Service) Shutdown(ctx context.Context) {
 	}
 	// Clear the map so no new events are routed while we drain.
 	s.clients = make(map[*Client]bool)
+	s.byUser = make(map[string]map[*Client]bool)
+	s.byRole = make(map[string]map[*Client]bool)
+	s.byChan = make(map[string]map[*Client]bool)
 	s.mu.Unlock()
 
 	// Close every remaining client channel so their goroutines unblock.
@@ -184,11 +220,22 @@ func (s *Service) PublishToChannel(ctx context.Context, channel, eventType strin
 }
 
 func (s *Service) publish(ctx context.Context, ev Event) error {
+	started := time.Now()
 	data, err := json.Marshal(ev)
 	if err != nil {
+		s.publishFailures.Add(1)
+		s.publishTimeNanos.Add(time.Since(started).Nanoseconds())
 		return err
 	}
-	return s.rdb.Publish(ctx, s.channel, data).Err()
+	err = s.rdb.Publish(ctx, s.channel, data).Err()
+	s.publishTimeNanos.Add(time.Since(started).Nanoseconds())
+	if err != nil {
+		s.publishFailures.Add(1)
+		return err
+	}
+	s.publishedCount.Add(1)
+	s.publishBytes.Add(int64(len(data)))
+	return nil
 }
 
 // Subscribe registers a local client and returns it.
@@ -237,9 +284,10 @@ func (s *Service) Connect(userID, role, channel string) *Client {
 		//    session (reload, remount, duplicate tab): it replaces the old one.
 		kept := make([]*Client, 0, len(sameUser))
 		for _, existing := range sameUser {
-			if channel != "" && existing.Channel == channel {
-				delete(s.clients, existing)
-				evicted = append(evicted, existing)
+			if existing.Channel == channel {
+				if s.removeClientLocked(existing) {
+					evicted = append(evicted, existing)
+				}
 				continue
 			}
 			kept = append(kept, existing)
@@ -249,11 +297,12 @@ func (s *Service) Connect(userID, role, channel string) *Client {
 		//    new one still fits under the cap; evict the oldest ones.
 		evictCount := len(kept) - (maxConnectionsPerUser - 1)
 		for i := 0; i < evictCount && i < len(kept); i++ {
-			delete(s.clients, kept[i])
-			evicted = append(evicted, kept[i])
+			if s.removeClientLocked(kept[i]) {
+				evicted = append(evicted, kept[i])
+			}
 		}
 	}
-	s.clients[c] = true
+	s.addClientLocked(c)
 	s.mu.Unlock()
 
 	for _, old := range evicted {
@@ -285,7 +334,7 @@ func (s *Service) SubscribeChannel(userID, role, channel string) *Client {
 	c.SetLastPing(time.Now())
 
 	s.mu.Lock()
-	s.clients[c] = true
+	s.addClientLocked(c)
 	s.mu.Unlock()
 
 	s.log.Debug("Client subscribed to real-time events",
@@ -299,8 +348,7 @@ func (s *Service) SubscribeChannel(userID, role, channel string) *Client {
 // Unsubscribe unregisters a local client and closes its channel.
 func (s *Service) Unsubscribe(c *Client) {
 	s.mu.Lock()
-	_, existed := s.clients[c]
-	delete(s.clients, c)
+	existed := s.removeClientLocked(c)
 	s.mu.Unlock()
 
 	if existed {
@@ -357,47 +405,160 @@ func (s *Service) DroppedCount() int {
 	return int(s.dropCount.Load())
 }
 
+// SlowClientDisconnectCount returns the number of slow SSE clients disconnected
+// after their outbound queue overflowed. They reconnect and reload authoritative
+// state instead of remaining attached after losing an event.
+func (s *Service) SlowClientDisconnectCount() int {
+	return int(s.slowClientCount.Load())
+}
+
 // EventCount returns the total number of events processed from Redis since the
 // service started.
 func (s *Service) EventCount() int {
 	return int(s.eventCount.Load())
 }
 
+// QueueStats reports the current SSE queue depth across local clients.
+func (s *Service) QueueStats() QueueStats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	stats := QueueStats{Clients: len(s.clients), Capacity: ClientChannelBuffer}
+	for client := range s.clients {
+		depth := len(client.Ch)
+		stats.TotalDepth += depth
+		if depth > stats.MaxDepth {
+			stats.MaxDepth = depth
+		}
+	}
+	return stats
+}
+
+// PublishStats reports Redis publication counts and the average serialization
+// plus Redis publish call duration since process start.
+func (s *Service) PublishStats() PublishStats {
+	published := s.publishedCount.Load()
+	failures := s.publishFailures.Load()
+	count := published + failures
+	var average float64
+	var averageBytes float64
+	if count > 0 {
+		average = float64(s.publishTimeNanos.Load()) / float64(count) / float64(time.Millisecond)
+	}
+	if published > 0 {
+		averageBytes = float64(s.publishBytes.Load()) / float64(published)
+	}
+	return PublishStats{
+		Published:           published,
+		Failures:            failures,
+		AverageLatencyMS:    average,
+		AverageMessageBytes: averageBytes,
+	}
+}
+
 // broadcastLocal fans out ev to every matching local client.
 // It is called from the Redis subscriber goroutine and MUST NOT block.
 func (s *Service) broadcastLocal(ev Event) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
 
-	for client := range s.clients {
-		match := false
-		switch {
-		case ev.UserID != "":
-			match = client.UserID == ev.UserID
-		case ev.Role != "":
-			match = client.Role == ev.Role
-		case ev.Channel != "":
-			match = client.Channel == ev.Channel
-		default:
-			match = true // Broadcast to all connected clients
-		}
+	var recipients map[*Client]bool
+	switch {
+	case ev.UserID != "":
+		recipients = s.byUser[ev.UserID]
+	case ev.Role != "":
+		recipients = s.byRole[ev.Role]
+	case ev.Channel != "":
+		recipients = s.byChan[ev.Channel]
+	default:
+		recipients = s.clients
+	}
 
-		if !match {
-			continue
-		}
+	var overflowed []overflowedClient
+	for client := range recipients {
 
 		select {
 		case client.Ch <- ev:
 		default:
-			// Buffer full — count and log but never block.
+			// Never block other players on a slow consumer. Record the affected
+			// connection and disconnect it after releasing the read lock; its
+			// reconnect path fetches a fresh authoritative snapshot.
 			s.dropCount.Add(1)
-			s.log.Warn("Event dropped: client channel full",
-				zap.String("user_id", client.UserID),
-				zap.String("channel", client.Channel),
-				zap.String("event_type", ev.Type),
-				zap.Int64("total_drops", s.dropCount.Load()),
-			)
+			overflowed = append(overflowed, overflowedClient{client: client, eventType: ev.Type})
 		}
+	}
+	s.mu.RUnlock()
+
+	if len(overflowed) > 0 {
+		s.disconnectSlowClients(overflowed)
+	}
+}
+
+func (s *Service) disconnectSlowClients(clients []overflowedClient) {
+	var removed []overflowedClient
+	s.mu.Lock()
+	for _, overflow := range clients {
+		if s.removeClientLocked(overflow.client) {
+			removed = append(removed, overflow)
+		}
+	}
+	s.mu.Unlock()
+
+	for _, overflow := range removed {
+		close(overflow.client.Ch)
+		s.ReleaseConnection(overflow.client.UserID)
+		s.slowClientCount.Add(1)
+		s.log.Warn("SSE client disconnected after outbound queue overflow",
+			zap.String("user_id", overflow.client.UserID),
+			zap.String("channel", overflow.client.Channel),
+			zap.String("event_type", overflow.eventType),
+			zap.Int64("total_drops", s.dropCount.Load()),
+		)
+	}
+}
+
+// addClientLocked and removeClientLocked maintain recipient indexes alongside
+// the canonical connection set. Callers must hold s.mu for writing.
+func (s *Service) addClientLocked(c *Client) {
+	if s.clients == nil {
+		s.clients = make(map[*Client]bool)
+	}
+	s.clients[c] = true
+	addClientIndex(s.byUser, c.UserID, c)
+	addClientIndex(s.byRole, c.Role, c)
+	addClientIndex(s.byChan, c.Channel, c)
+}
+
+func (s *Service) removeClientLocked(c *Client) bool {
+	if !s.clients[c] {
+		return false
+	}
+	delete(s.clients, c)
+	removeClientIndex(s.byUser, c.UserID, c)
+	removeClientIndex(s.byRole, c.Role, c)
+	removeClientIndex(s.byChan, c.Channel, c)
+	return true
+}
+
+func addClientIndex(index map[string]map[*Client]bool, key string, c *Client) {
+	if key == "" {
+		return
+	}
+	clients := index[key]
+	if clients == nil {
+		clients = make(map[*Client]bool)
+		index[key] = clients
+	}
+	clients[c] = true
+}
+
+func removeClientIndex(index map[string]map[*Client]bool, key string, c *Client) {
+	if key == "" {
+		return
+	}
+	clients := index[key]
+	delete(clients, c)
+	if len(clients) == 0 {
+		delete(index, key)
 	}
 }
 
@@ -421,24 +582,23 @@ func (s *Service) removeStaleClients() {
 	now := time.Now()
 	var stale []*Client
 
-	s.mu.RLock()
+	// Select and remove stale clients under one exclusive lock. A separate
+	// read pass followed by a write pass let Connect evict and close one of the
+	// same channels in between, creating a possible double close.
+	s.mu.Lock()
 	for c := range s.clients {
 		lp := c.LastPing()
 		if !lp.IsZero() && now.Sub(lp) > staleTimeout {
-			stale = append(stale, c)
+			if s.removeClientLocked(c) {
+				stale = append(stale, c)
+			}
 		}
 	}
-	s.mu.RUnlock()
+	s.mu.Unlock()
 
 	if len(stale) == 0 {
 		return
 	}
-
-	s.mu.Lock()
-	for _, c := range stale {
-		delete(s.clients, c)
-	}
-	s.mu.Unlock()
 
 	for _, c := range stale {
 		close(c.Ch)

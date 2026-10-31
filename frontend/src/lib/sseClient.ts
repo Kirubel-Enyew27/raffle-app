@@ -51,6 +51,7 @@ export interface SSEEvent {
   channel?: string
   payload: unknown
   created_at?: string
+  server_delivery_latency_ms?: number
 }
 
 export type SSEEventHandler = (ev: SSEEvent) => void

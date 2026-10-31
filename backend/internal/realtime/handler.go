@@ -150,6 +150,9 @@ func (h *Handler) Stream(c *gin.Context) {
 				// Channel closed by Unsubscribe, eviction or Shutdown.
 				return
 			}
+			if !ev.CreatedAt.IsZero() {
+				ev.ServerDeliveryLatencyMS = float64(time.Since(ev.CreatedAt).Microseconds()) / 1000
+			}
 			if err := writeEvent(c, "message", ev); err != nil {
 				return
 			}

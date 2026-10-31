@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page, type TestInfo } from '@playwright/test'
 import {
   backendReachable,
   createPrivateMatch,
@@ -34,12 +34,28 @@ async function clickCell(page: Page, index: number) {
   await page.getByRole('button', { name: new RegExp(`^Cell ${index + 1},`) }).click()
 }
 
+function percentile(values: number[], p: number): number {
+  const ordered = [...values].sort((a, b) => a - b)
+  return ordered[Math.max(0, Math.ceil((p / 100) * ordered.length) - 1)]
+}
+
+function latencyStats(values: number[]) {
+  if (values.length === 0) return null
+  return {
+    samples: values.length,
+    average_ms: values.reduce((sum, value) => sum + value, 0) / values.length,
+    p50_ms: percentile(values, 50),
+    p95_ms: percentile(values, 95),
+    p99_ms: percentile(values, 99),
+  }
+}
+
 test.describe('P2P multiplayer', () => {
   test.beforeEach(async () => {
     test.skip(!(await backendReachable()), 'backend is not reachable on localhost:8080')
   })
 
-  test('two sessions join, both leave Connecting, and moves stay in sync', async ({ browser }) => {
+  test('two sessions join, recover after refresh/network loss, and moves stay in sync', async ({ browser }, testInfo: TestInfo) => {
     const hostSession = await createSession('host')
     const guestSession = await createSession('guest')
     const match = await createPrivateMatch(hostSession)
@@ -75,24 +91,287 @@ test.describe('P2P multiplayer', () => {
     await expect.poll(() => badgeState(host), { timeout: 15_000 }).toBe('in_progress')
     await expect.poll(() => badgeState(guest), { timeout: 15_000 }).toBe('in_progress')
 
-    // The host opens; once they move, the guest's board and turn update.
+    // A reload must recover the same active match from the authoritative API.
+    await host.reload()
+    await expect.poll(() => badgeState(host), { timeout: 15_000 }).toBe('in_progress')
+
+    // Measure browser-to-browser move-to-board latency in this Playwright run.
+    // This includes REST, server validation/commit, Redis/SSE, React update and
+    // the opponent DOM becoming observable. It is not a backend microbenchmark.
+    const moveLatenciesMs: number[] = []
+
+    // The host opens; once they move, the guest's board updates.
     await expect(host.getByText('YOUR TURN')).toBeVisible()
+    const firstMoveStart = performance.now()
     await clickCell(host, 0)
-
     await expect
-      .poll(async () => (await bodyText(guest)).includes('YOUR TURN'), { timeout: 10_000 })
-      .toBe(true)
-    await expect(guest.getByRole('button', { name: /^Cell 1, / })).toBeVisible()
+      .poll(async () => guest.getByRole('button', { name: /^Cell 1,/ }).getAttribute('aria-label'), { timeout: 10_000 })
+      .not.toContain('empty')
+    moveLatenciesMs.push(performance.now() - firstMoveStart)
 
-    // The guest replies; the host sees it and it becomes the host's turn again.
+    // Simulate an internet outage while the players continue through several
+    // turns. The host must recover all intervening moves on the same match.
+    await hostContext.setOffline(true)
     await clickCell(guest, 4)
+    expect(await submitMove(hostSession, match.id, { cell: 1 })).toBe(200)
+    expect(await submitMove(guestSession, match.id, { cell: 3 })).toBe(200)
+    const recoveryStart = performance.now()
+    await hostContext.setOffline(false)
     await expect
-      .poll(async () => (await bodyText(host)).includes('YOUR TURN'), { timeout: 10_000 })
-      .toBe(true)
+      .poll(async () => host.getByRole('button', { name: /^Cell 5,/ }).getAttribute('aria-label'), { timeout: 15_000 })
+      .not.toContain('empty')
+    await expect
+      .poll(async () => host.getByRole('button', { name: /^Cell 2,/ }).getAttribute('aria-label'), { timeout: 10_000 })
+      .not.toContain('empty')
+    await expect
+      .poll(async () => host.getByRole('button', { name: /^Cell 4,/ }).getAttribute('aria-label'), { timeout: 10_000 })
+      .not.toContain('empty')
+    const recoveryLatencyMs = performance.now() - recoveryStart
+    await expect(host.getByText('YOUR TURN')).toBeVisible()
 
-    // Both clients agree with the server about the turn.
+    // The host completes round one now that the stale view is recovered.
+    const roundOneMoves: Array<[Page, Page, number]> = [[host, guest, 2]]
+    for (const [actor, opponent, cell] of roundOneMoves) {
+      const startedAt = performance.now()
+      await clickCell(actor, cell)
+      await expect
+        .poll(async () => opponent.getByRole('button', { name: new RegExp(`^Cell ${cell + 1},`) }).getAttribute('aria-label'), { timeout: 10_000 })
+        .not.toContain('empty')
+      moveLatenciesMs.push(performance.now() - startedAt)
+    }
+
+    // Round two opens with the guest. A second host win completes the best of
+    // three, letting this same two-browser flow verify terminal agreement.
+    await expect.poll(async () => (await fetchMatch(hostSession, match.id)).current_round, { timeout: 12_000 }).toBe(2)
+    // Recover both views from the same authoritative match after the reveal;
+    // this also covers a missing round-start notification.
+    await Promise.all([host.reload(), guest.reload()])
+    await expect.poll(() => badgeState(host), { timeout: 15_000 }).toBe('in_progress')
+    await expect.poll(() => badgeState(guest), { timeout: 15_000 }).toBe('in_progress')
+    await expect(guest.getByText('YOUR TURN')).toBeVisible({ timeout: 10_000 })
+    const roundTwoMoves: Array<[Page, Page, number]> = [
+      [guest, host, 0],
+      [host, guest, 4],
+      [guest, host, 1],
+      [host, guest, 3],
+      [guest, host, 8],
+      [host, guest, 5],
+    ]
+    for (const [actor, opponent, cell] of roundTwoMoves) {
+      const startedAt = performance.now()
+      await clickCell(actor, cell)
+      await expect
+        .poll(async () => opponent.getByRole('button', { name: new RegExp(`^Cell ${cell + 1},`) }).getAttribute('aria-label'), { timeout: 10_000 })
+        .not.toContain('empty')
+      moveLatenciesMs.push(performance.now() - startedAt)
+    }
+
+    await expect.poll(() => badgeState(host), { timeout: 10_000 }).toBe('completed')
+    await expect.poll(() => badgeState(guest), { timeout: 10_000 }).toBe('completed')
+
+    const serverTimingSamples = await guest.evaluate((matchId) =>
+      performance
+        .getEntriesByType('mark')
+        .filter((entry) => entry.name.startsWith(`p2p-move:${matchId}:`))
+        .map((entry) => ({
+          version: entry.name.slice(entry.name.lastIndexOf(':') + 1),
+          ...(entry as PerformanceMark).detail as {
+            server_timing_ms?: Record<string, number>
+            server_delivery_latency_ms?: number
+            event_payload_bytes?: number
+          },
+        })),
+    match.id)
+    const stageValues = (stage: string) => serverTimingSamples
+      .map((sample) => sample.server_timing_ms?.[stage])
+      .filter((value): value is number => typeof value === 'number')
+    expect(stageValues('application_to_commit').length).toBeGreaterThan(0)
+    const observedVersions = serverTimingSamples.map((sample) => sample.version)
+    const duplicateMoveEvents = observedVersions.length - new Set(observedVersions).size
+    let outOfOrderMoveEvents = 0
+    let highestVersion = -Infinity
+    for (const version of observedVersions) {
+      const numericVersion = Number(version)
+      if (!Number.isFinite(numericVersion)) continue
+      if (numericVersion < highestVersion) outOfOrderMoveEvents++
+      highestVersion = Math.max(highestVersion, numericVersion)
+    }
+    const summary = {
+      browser_to_opponent_dom: latencyStats(moveLatenciesMs),
+      backend_transaction_work: latencyStats(stageValues('transaction_work')),
+      move_validation: latencyStats(stageValues('move_validation')),
+      database_commit: latencyStats(stageValues('database_commit')),
+      application_to_commit: latencyStats(stageValues('application_to_commit')),
+      publish_to_sse_delivery: latencyStats(serverTimingSamples
+        .map((sample) => sample.server_delivery_latency_ms)
+        .filter((value): value is number => typeof value === 'number')),
+      full_snapshot_payload_bytes: (() => {
+        const values = serverTimingSamples
+          .map((sample) => sample.event_payload_bytes)
+          .filter((value): value is number => typeof value === 'number')
+        if (values.length === 0) return null
+        return {
+          samples: values.length,
+          average_bytes: values.reduce((sum, value) => sum + value, 0) / values.length,
+          p50_bytes: percentile(values, 50),
+          p95_bytes: percentile(values, 95),
+          p99_bytes: percentile(values, 99),
+        }
+      })(),
+      reconnect_recovery_ms: recoveryLatencyMs,
+      duplicate_move_events: duplicateMoveEvents,
+      out_of_order_move_events: outOfOrderMoveEvents,
+    }
+    await testInfo.attach('multiplayer-latency-summary.json', {
+      body: Buffer.from(JSON.stringify(summary, null, 2)),
+      contentType: 'application/json',
+    })
+    console.log(`[multiplayer-latency] ${JSON.stringify(summary)}`)
+
+    // Both clients and the authoritative API agree the match completed.
     const state = await fetchMatch(hostSession, match.id)
-    expect(state.current_turn_user_id).toBe(hostSession.user.id)
+    expect(state.status).toBe('completed')
+  })
+
+  test('Ethiopian Dama move is applied to the opponent board over SSE', async ({ browser }) => {
+    const hostSession = await createSession('dama-host')
+    const guestSession = await createSession('dama-guest')
+    const match = await createPrivateMatch(hostSession, 'ethiopian-dama')
+
+    const hostContext = await browser.newContext()
+    const guestContext = await browser.newContext()
+    await seedSession(hostContext, hostSession)
+    await seedSession(guestContext, guestSession)
+
+    const host = await hostContext.newPage()
+    const guest = await guestContext.newPage()
+    await joinByCode(guestSession, match.invite_code)
+    await host.goto(`/games/match/${match.id}`)
+    await guest.goto(`/games/match/${match.id}`)
+    await host.getByRole('button', { name: /I am Ready/ }).click()
+    await guest.getByRole('button', { name: /I am Ready/ }).click()
+    await expect.poll(() => badgeState(host), { timeout: 15_000 }).toBe('in_progress')
+    await expect.poll(() => badgeState(guest), { timeout: 15_000 }).toBe('in_progress')
+
+    // The opening move is a3 → b4 for the first seat in the server's standard
+    // Ethiopian Dama position.
+    await host.getByRole('button', { name: /^a3, ivory checker/ }).click()
+    await host.getByRole('button', { name: /^b4, empty, legal destination/ }).click()
+    await expect
+      .poll(async () => guest.getByRole('button', { name: /^b4, ivory checker/ }).count(), { timeout: 10_000 })
+      .toBe(1)
+
+    const state = await fetchMatch(hostSession, match.id)
+    expect(state.status).toBe('in_progress')
+    const board = state.board_state as { move_count?: number }
+    expect(board.move_count).toBe(1)
+    await hostContext.close()
+    await guestContext.close()
+  })
+
+  test('Rock Paper Scissors choices stay private until both players lock in', async ({ browser }) => {
+    const hostSession = await createSession('rps-host')
+    const guestSession = await createSession('rps-guest')
+    const match = await createPrivateMatch(hostSession, 'rock-paper-scissors')
+
+    const hostContext = await browser.newContext()
+    const guestContext = await browser.newContext()
+    await seedSession(hostContext, hostSession)
+    await seedSession(guestContext, guestSession)
+
+    const host = await hostContext.newPage()
+    const guest = await guestContext.newPage()
+    await joinByCode(guestSession, match.invite_code)
+    await host.goto(`/games/match/${match.id}`)
+    await guest.goto(`/games/match/${match.id}`)
+    await host.getByRole('button', { name: /I am Ready/ }).click()
+    await guest.getByRole('button', { name: /I am Ready/ }).click()
+    await expect.poll(() => badgeState(host), { timeout: 15_000 }).toBe('in_progress')
+    await expect.poll(() => badgeState(guest), { timeout: 15_000 }).toBe('in_progress')
+
+    await host.getByRole('button', { name: /^Rock/ }).click()
+    await host.getByRole('button', { name: /Lock in Rock/ }).click()
+    await expect(host.getByText('Locked in: Rock')).toBeVisible()
+
+    const guestState = await fetchMatch(guestSession, match.id)
+    const hiddenChoices = (guestState.board_state as { choices?: Record<string, string> }).choices
+    expect(hiddenChoices?.['0']).toBe('hidden')
+    await expect(guest.getByText('Locked in: Rock')).toHaveCount(0)
+
+    await guest.getByRole('button', { name: /^Scissors/ }).click()
+    await guest.getByRole('button', { name: /Lock in Scissors/ }).click()
+    await expect(host.getByText('You Won the Round!')).toBeVisible({ timeout: 10_000 })
+    await expect(guest.getByText('Opponent Won the Round!')).toBeVisible({ timeout: 10_000 })
+
+    const state = await fetchMatch(hostSession, match.id)
+    expect(state.status).toBe('in_progress')
+    expect((state.scores as Record<string, number>)['0']).toBe(1)
+    expect((state.board_state as { last_round_result?: { p0_choice?: string; p1_choice?: string } }).last_round_result)
+      .toMatchObject({ p0_choice: 'rock', p1_choice: 'scissors' })
+    await hostContext.close()
+    await guestContext.close()
+  })
+
+  test('one click requests and accepts a rematch for both sessions', async ({ browser }) => {
+    const hostSession = await createSession('rematch-host')
+    const guestSession = await createSession('rematch-guest')
+    const match = await createPrivateMatch(hostSession, 'connect-four')
+
+    const hostContext = await browser.newContext()
+    const guestContext = await browser.newContext()
+    await seedSession(hostContext, hostSession)
+    await seedSession(guestContext, guestSession)
+
+    const host = await hostContext.newPage()
+    const guest = await guestContext.newPage()
+    await joinByCode(guestSession, match.invite_code)
+    await host.goto(`/games/match/${match.id}`)
+    await guest.goto(`/games/match/${match.id}`)
+
+    await host.getByRole('button', { name: /I am Ready/ }).click()
+    await guest.getByRole('button', { name: /I am Ready/ }).click()
+    await expect.poll(() => badgeState(host), { timeout: 15_000 }).toBe('in_progress')
+    await expect.poll(() => badgeState(guest), { timeout: 15_000 }).toBe('in_progress')
+
+    const moves: Array<[typeof hostSession, number]> = [
+      [hostSession, 0], [guestSession, 1],
+      [hostSession, 0], [guestSession, 1],
+      [hostSession, 0], [guestSession, 1],
+      [hostSession, 0],
+    ]
+    for (const [session, column] of moves) {
+      expect(await submitMove(session, match.id, { column })).toBe(200)
+    }
+
+    await host.getByRole('button', { name: 'Play Again' }).click()
+    await expect(host.getByText('Your opponent will be notified. Waiting for their response…')).toBeVisible()
+    await expect(guest.getByText('Your opponent wants to play again.')).toHaveCount(1, { timeout: 10_000 })
+    await expect(guest.getByRole('button', { name: 'Accept' })).toBeVisible()
+
+    // One Accept click must be enough. Both the HTTP acknowledgement and the
+    // rematch_created event can arrive, but they must lead to the same match.
+    const rematchResponsePromise = guest.waitForResponse((response) =>
+      response.request().method() === 'POST' && /\/p2p\/matches\/[^/]+\/rematch/.test(response.url()),
+    )
+    await guest.getByRole('button', { name: 'Accept' }).click()
+    const rematchResponse = await rematchResponsePromise
+    const rematchAcknowledgement = await rematchResponse.json()
+    expect(rematchResponse.ok()).toBe(true)
+    expect(rematchAcknowledgement?.data?.status).toBe('started')
+    expect(rematchAcknowledgement?.data?.match?.id).not.toBe(match.id)
+    const rematchUrl = /\/games\/match\/([0-9a-f-]{36})$/i
+    await expect(host).toHaveURL(rematchUrl, { timeout: 15_000 })
+    await expect(guest).toHaveURL(rematchUrl, { timeout: 15_000 })
+    const hostMatchId = host.url().match(rematchUrl)?.[1]
+    const guestMatchId = guest.url().match(rematchUrl)?.[1]
+    expect(hostMatchId).toBeTruthy()
+    expect(guestMatchId).toBe(hostMatchId)
+    expect(hostMatchId).not.toBe(match.id)
+
+    const rematchState = await fetchMatch(hostSession, hostMatchId!)
+    expect(rematchState.status).toBe('in_progress')
+    const priorState = await fetchMatch(hostSession, match.id)
+    expect(priorState.rematch_match_id).toBe(hostMatchId)
   })
 
   test('a player with a blocked stream still sees the board and can play', async ({ browser }) => {
@@ -267,11 +546,17 @@ test.describe('P2P multiplayer', () => {
         await expect(host.locator(winningCells)).toHaveCount(3, { timeout: 10_000 })
         await expect(guest.locator(winningCells)).toHaveCount(3, { timeout: 10_000 })
 
+        const nextStarter = index === 0 ? guestSession.user.id : hostSession.user.id
+        await expect
+          .poll(async () => (await fetchMatch(hostSession, match.id)).current_round, {
+            timeout: 10_000,
+          })
+          .toBe(index + 2)
         await expect
           .poll(async () => (await fetchMatch(hostSession, match.id)).current_turn_user_id, {
             timeout: 10_000,
           })
-          .toBeTruthy()
+          .toBe(nextStarter)
         await expect(host.locator(winningCells)).toHaveCount(0, { timeout: 10_000 })
         await expect(guest.locator(winningCells)).toHaveCount(0, { timeout: 10_000 })
       }

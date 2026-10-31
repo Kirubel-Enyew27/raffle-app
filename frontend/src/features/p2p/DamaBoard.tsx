@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Lock } from 'lucide-react'
 
 import { DamaPiece } from './DamaPiece'
@@ -9,6 +9,7 @@ import {
   legalTargetsFrom,
   moveNotation,
   orientationFor,
+  orientSquare,
   pieceIsKing,
   pieceSide,
   squareName,
@@ -26,6 +27,16 @@ interface DamaBoardProps {
   disabled?: boolean
   isGameOver?: boolean
   outcome?: GameOutcome | null
+}
+
+interface DamaVisualMove {
+  seq: number
+  from: number
+  to: number
+  player: number
+  captures: number[]
+  king: boolean
+  promotion: boolean
 }
 
 const LIGHT_SQUARE = 'bg-[#e9d6b8]'
@@ -46,6 +57,11 @@ export function DamaBoard({
   outcome = null,
 }: DamaBoardProps) {
   const [selected, setSelected] = useState<number | null>(null)
+  const [movingPiece, setMovingPiece] = useState<DamaVisualMove | null>(null)
+  const [moveQueue, setMoveQueue] = useState<DamaVisualMove[]>([])
+  const [moveArrived, setMoveArrived] = useState(false)
+  const seenMoveSeq = useRef(0)
+  const initializedMoveHistory = useRef(false)
 
   const orientation = orientationFor(myPlayerIndex)
   const cells = useMemo(() => boardState?.cells ?? [], [boardState?.cells])
@@ -70,6 +86,52 @@ export function DamaBoard({
 
   const moveNumber = boardState?.move_count ?? 0
   const turnSeq = boardState?.turn_seq ?? 0
+  const latestHistoryMove = boardState?.move_history?.[boardState.move_history.length - 1]
+
+  // The server commits the board first. Animate that accepted history entry as
+  // a temporary, transform-only overlay so the logical board stays immediate.
+  useEffect(() => {
+    if (!initializedMoveHistory.current) {
+      initializedMoveHistory.current = true
+      seenMoveSeq.current = latestHistoryMove?.seq ?? 0
+      return
+    }
+    const newMoves = (boardState?.move_history ?? []).filter((move) => move.seq > seenMoveSeq.current)
+    if (newMoves.length === 0) return
+    seenMoveSeq.current = newMoves[newMoves.length - 1].seq
+    setMoveQueue((queue) => queue.concat(newMoves.map((move) => ({
+      seq: move.seq,
+      from: move.from,
+      to: move.to,
+      player: move.player,
+      captures: move.captures ?? [],
+      king: !move.promotion && pieceIsKing(cells[move.to] ?? 0),
+      promotion: !!move.promotion,
+    }))))
+  }, [latestHistoryMove?.seq, boardState?.move_history, cells])
+
+  useEffect(() => {
+    if (movingPiece || moveQueue.length === 0) return
+    const frame = requestAnimationFrame(() => {
+      setMovingPiece(moveQueue[0])
+      setMoveQueue((queue) => queue.slice(1))
+      setMoveArrived(false)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [movingPiece, moveQueue])
+
+  useEffect(() => {
+    if (!movingPiece) return
+    const frame = requestAnimationFrame(() => setMoveArrived(true))
+    const timer = window.setTimeout(() => {
+      setMovingPiece(null)
+      setMoveArrived(false)
+    }, 225)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+    }
+  }, [movingPiece])
 
   // Count active pieces on the board
   const { lightCount, darkCount } = useMemo(() => {
@@ -155,6 +217,7 @@ export function DamaBoard({
 
       {/* 8x8 Board */}
       <div className="relative w-full rounded-2xl border-4 border-[#4a2c17] bg-[#4a2c17] p-1.5 shadow-2xl shadow-black/40">
+        <div className="relative">
         <div className="grid grid-cols-8 overflow-hidden rounded-lg" role="grid" aria-label="Ethiopian Dama board">
           {displaySquares(cells, orientation).map(({ index, playable, value }) => {
             const side = pieceSide(value)
@@ -165,7 +228,7 @@ export function DamaBoard({
             const captureTarget = isTarget && isCaptureStep(targetStep)
             const isLastFrom = lastMove?.from === index
             const isLastTo = lastMove?.to === index
-            const wasCaptured = !!lastMove?.captures?.includes(index)
+            const wasCaptured = !!lastMove?.captures?.includes(index) || !!movingPiece?.captures.includes(index)
             const selectable = canInteract && side === myPlayerIndex && (chainFrom === null || chainFrom === index)
 
             // Winning / decisive states:
@@ -223,7 +286,7 @@ export function DamaBoard({
                 {/* Final Move / Capture Indicator */}
                 {wasCaptured && (
                   <span
-                    key={`capture-${moveNumber}`}
+                    key={`capture-${movingPiece?.seq ?? moveNumber}`}
                     aria-hidden="true"
                     className="pointer-events-none absolute inset-1 rounded-md ring-4 ring-rose-400/90 motion-safe:animate-ping motion-reduce:hidden"
                   />
@@ -248,7 +311,7 @@ export function DamaBoard({
                   </span>
                 )}
 
-                {value !== 0 && (
+                {value !== 0 && !(movingPiece && movingPiece.to === index && movingPiece.seq === latestHistoryMove?.seq) && (
                   <span
                     className={[
                       'pointer-events-none absolute inset-[11%] block rounded-full',
@@ -270,6 +333,33 @@ export function DamaBoard({
               </button>
             )
           })}
+        </div>
+        {movingPiece && (() => {
+          const from = orientSquare(movingPiece.from, orientation)
+          const to = orientSquare(movingPiece.to, orientation)
+          const row = Math.floor(from / 8)
+          const col = from % 8
+          const deltaRow = Math.floor(to / 8) - row
+          const deltaCol = (to % 8) - col
+          return (
+            <span
+              key={movingPiece.seq}
+              aria-hidden="true"
+              className="dama-piece-slide pointer-events-none absolute z-30 block"
+              style={{
+                left: `${col * 12.5}%`,
+                top: `${row * 12.5}%`,
+                width: '12.5%',
+                height: '12.5%',
+                transform: moveArrived ? `translate3d(${deltaCol * 100}%, ${deltaRow * 100}%, 0)` : 'translate3d(0, 0, 0)',
+              }}
+            >
+              <span className={movingPiece.promotion && moveArrived ? 'dama-piece-promote block h-full w-full' : 'block h-full w-full'}>
+                <DamaPiece side={movingPiece.player === 0 ? 0 : 1} king={movingPiece.king || (movingPiece.promotion && moveArrived)} className="h-full w-full" />
+              </span>
+            </span>
+          )
+        })()}
         </div>
       </div>
 

@@ -26,6 +26,7 @@ const DisconnectGraceSeconds = 60
 
 type MatchView struct {
 	ID                string                 `json:"id"`
+	StateVersion      int64                  `json:"state_version"`
 	GameSlug          string                 `json:"game_slug"`
 	Status            string                 `json:"status"`
 	MatchType         string                 `json:"match_type"`
@@ -60,6 +61,7 @@ type MatchView struct {
 	CompletedAt          *time.Time            `json:"completed_at,omitempty"`
 	ExpiresAt            *time.Time            `json:"expires_at,omitempty"`
 	CreatedAt            time.Time             `json:"created_at"`
+	UpdatedAt            time.Time             `json:"updated_at"`
 }
 
 // Rematch outcomes returned by RequestRematch.
@@ -506,7 +508,7 @@ func (s *P2PService) CancelMatch(ctx context.Context, userID, matchID string) (*
 	}
 
 	now := time.Now()
-	if err := s.matchRepo.MarkCancelledTx(ctx, tx, match.ID, now); err != nil {
+	if err := s.matchRepo.MarkCancelledTx(ctx, tx, match, now); err != nil {
 		return nil, err
 	}
 
@@ -642,7 +644,8 @@ func (s *P2PService) ReadyUp(ctx context.Context, userID, matchID string) (*Matc
 	now := time.Now()
 	// Ready-up is idempotent: an already-ready player must not error out on a
 	// retried request.
-	if membership.Status != domain.PlayerStatusReady {
+	readyChanged := membership.Status != domain.PlayerStatusReady
+	if readyChanged {
 		if err := s.playerRepo.UpdateStatusTx(ctx, tx, match.ID, userID, domain.PlayerStatusReady, &now); err != nil {
 			return nil, err
 		}
@@ -679,6 +682,12 @@ func (s *P2PService) ReadyUp(ctx context.Context, userID, matchID string) (*Matc
 		if err := s.matchRepo.UpdateStateTx(ctx, tx, match); err != nil {
 			return nil, err
 		}
+	} else if readyChanged {
+		// Readiness is part of the state snapshot before the match starts, so
+		// advance the same sequence that is used to detect missed SSE updates.
+		if err := s.matchRepo.UpdateStateTx(ctx, tx, match); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -700,10 +709,12 @@ func (s *P2PService) ReadyUp(ctx context.Context, userID, matchID string) (*Matc
 }
 
 func (s *P2PService) SubmitMove(ctx context.Context, userID, matchID string, action map[string]interface{}) (*MatchView, error) {
+	applicationStartedAt := time.Now()
 	tx, err := s.matchRepo.BeginTx(ctx)
 	if err != nil {
 		return nil, err
 	}
+	txStartedAt := time.Now()
 	defer tx.Rollback()
 
 	match, err := s.matchRepo.FindByIDForUpdate(ctx, tx, matchID)
@@ -750,10 +761,12 @@ func (s *P2PService) SubmitMove(ctx context.Context, userID, matchID string, act
 	}
 
 	// Validate & apply move
+	validationStartedAt := time.Now()
 	newBoard, isRoundOver, roundWinnerIdx, _, err := engine.ValidateAndApplyMove(match.BoardState, activePlayer.PlayerIndex, action)
 	if err != nil {
 		return nil, err
 	}
+	validationDuration := time.Since(validationStartedAt)
 
 	match.BoardState = newBoard
 
@@ -873,6 +886,10 @@ func (s *P2PService) SubmitMove(ctx context.Context, userID, matchID string, act
 		match.WinnerUserID = winnerUserID
 		match.Status = status
 		match.CompletedAt = &now
+		match.CurrentTurnUserID = nil
+		match.TurnDeadline = nil
+		match.DisconnectUserID = nil
+		match.DisconnectDeadline = nil
 
 		if isTie {
 			// 100% refund to both players
@@ -907,7 +924,9 @@ func (s *P2PService) SubmitMove(ctx context.Context, userID, matchID string, act
 			return nil, err
 		}
 
-		if err := s.matchRepo.MarkCompletedTx(ctx, tx, match.ID, winnerUserID, status, settlement.FeeCents, now); err != nil {
+		// UpdateStateTx already advanced this match's version with the final
+		// board; terminal bookkeeping belongs to that same committed snapshot.
+		if err := s.matchRepo.MarkCompletedTx(ctx, tx, match, winnerUserID, status, settlement.FeeCents, now, false); err != nil {
 			return nil, err
 		}
 	} else {
@@ -916,15 +935,25 @@ func (s *P2PService) SubmitMove(ctx context.Context, userID, matchID string, act
 		}
 	}
 
+	commitStartedAt := time.Now()
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	committedAt := time.Now()
 
 	match.Players = players
 	view := s.buildView(match, userID)
 
 	s.publishMatchState(ctx, "p2p.move_made", match, players, map[string]interface{}{
 		"move": action,
+		// Durations are server-local measurements, independent of client clock
+		// skew. The browser E2E test measures through opponent DOM application.
+		"server_timing_ms": map[string]float64{
+			"transaction_work":      float64(commitStartedAt.Sub(txStartedAt).Microseconds()) / 1000,
+			"move_validation":       float64(validationDuration.Microseconds()) / 1000,
+			"database_commit":       float64(committedAt.Sub(commitStartedAt).Microseconds()) / 1000,
+			"application_to_commit": float64(committedAt.Sub(applicationStartedAt).Microseconds()) / 1000,
+		},
 	})
 
 	if isMatchOver {
@@ -994,7 +1023,7 @@ func (s *P2PService) ResignMatch(ctx context.Context, userID, matchID string) (*
 		}
 	}
 
-	if err := s.matchRepo.MarkCompletedTx(ctx, tx, match.ID, &winnerUserID, domain.StatusForfeited, settlement.FeeCents, now); err != nil {
+	if err := s.matchRepo.MarkCompletedTx(ctx, tx, match, &winnerUserID, domain.StatusForfeited, settlement.FeeCents, now, true); err != nil {
 		return nil, err
 	}
 
@@ -1451,6 +1480,7 @@ func (s *P2PService) buildView(m *domain.Match, userID string) *MatchView {
 
 	return &MatchView{
 		ID:                    m.ID,
+		StateVersion:          m.StateVersion,
 		GameSlug:              m.GameSlug,
 		Status:                m.Status,
 		MatchType:             m.MatchType,
@@ -1480,6 +1510,7 @@ func (s *P2PService) buildView(m *domain.Match, userID string) *MatchView {
 		CompletedAt:           m.CompletedAt,
 		ExpiresAt:             expiresAt,
 		CreatedAt:             m.CreatedAt,
+		UpdatedAt:             m.UpdatedAt,
 	}
 }
 

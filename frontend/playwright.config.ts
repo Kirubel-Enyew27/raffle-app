@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const webPort = Number(process.env.E2E_WEB_PORT || 5173)
+const webUrl = `http://localhost:${webPort}`
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,        // tests share DB state; run serially
@@ -9,7 +12,7 @@ export default defineConfig({
   timeout: 30_000,
 
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: webUrl,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -20,9 +23,9 @@ export default defineConfig({
 
   // Start the dev server before running tests
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
+    command: `npm run dev -- --host 127.0.0.1 --port ${webPort}`,
+    url: webUrl,
+    reuseExistingServer: !process.env.CI && !process.env.E2E_WEB_PORT,
     timeout: 120_000,
   },
 })

@@ -33,6 +33,8 @@ import {
   copyToClipboard,
 } from '@/lib/telegram'
 import { useP2PStream, type P2PEvent } from '@/features/p2p/useP2PStream'
+import { consumeRematchRequest } from '@/features/p2p/rematchEvents'
+import { hasMatchVersionGap, mergeMatchSnapshot } from '@/features/p2p/matchState'
 import { deriveMatchConnection } from '@/features/p2p/matchConnection'
 import { TicTacToeBoard } from '@/features/p2p/TicTacToeBoard'
 import { PlayerOneMarker, PlayerTwoMarker, TicTacToeMarker } from '@/features/p2p/TicTacToeMarkers'
@@ -70,6 +72,17 @@ export function Component() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { toast } = useToast()
+  const handledRematchRequestsRef = useRef(new Set<string>())
+  const openedRematchIdRef = useRef<string | null>(null)
+
+  const openRematch = useCallback(
+    (nextMatchId: string) => {
+      if (!nextMatchId || nextMatchId === matchId || openedRematchIdRef.current === nextMatchId) return
+      openedRematchIdRef.current = nextMatchId
+      navigate(`/games/match/${nextMatchId}`)
+    },
+    [matchId, navigate],
+  )
 
   const [copied, setCopied] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
@@ -89,11 +102,29 @@ export function Component() {
     dataUpdatedAt,
   } = useQuery<P2PMatch>({
     queryKey: ['p2p-match', matchId],
-    queryFn: () => p2pApi.getMatchState(matchId!),
+    queryFn: async () => {
+      const key = ['p2p-match', matchId] as const
+      const incoming = await p2pApi.getMatchState(matchId!)
+      return mergeMatchSnapshot(queryClient.getQueryData<P2PMatch>(key), incoming)
+    },
     enabled: !!matchId,
     // The match channel pushes state changes; a fallback poll below keeps the
     // board in sync while that stream is down (see "resyncFromServer").
   })
+
+  const applyMatchSnapshot = useCallback(
+    (incoming: P2PMatch) => {
+      if (incoming.id !== matchId) return
+      const key = ['p2p-match', matchId] as const
+      const current = queryClient.getQueryData<P2PMatch>(key)
+      const missedVersions = hasMatchVersionGap(current, incoming)
+      queryClient.setQueryData<P2PMatch>(key, (cached) => mergeMatchSnapshot(cached, incoming))
+      // The event already contains a usable full snapshot. Refetch once when
+      // its sequence proves that another committed state was missed.
+      if (missedVersions) void refetch()
+    },
+    [matchId, queryClient, refetch],
+  )
 
   // Web Audio sound effects manager
   const { isMuted, toggleMute } = useGameSounds({
@@ -126,11 +157,26 @@ export function Component() {
       // (see P2PService.publishMatchState). Older/partial payloads without a
       // `state` field fall through to an authoritative refetch.
       const eventState = (payload?.state ?? null) as P2PMatch | null
-      if (event.type === 'p2p.move_made' && eventState) {
-        queryClient.setQueryData(['p2p-match', matchId], eventState)
+      const currentEventState = eventState && eventState.id === matchId ? eventState : null
+      const serverTiming = payload?.server_timing_ms
+      if (
+        event.type === 'p2p.move_made' &&
+        currentEventState &&
+        typeof serverTiming === 'object' &&
+        serverTiming !== null
+      ) {
+        performance.mark(`p2p-move:${matchId}:${currentEventState.state_version ?? 'unknown'}`, {
+          detail: {
+            server_timing_ms: serverTiming,
+            server_delivery_latency_ms: event.server_delivery_latency_ms,
+            event_payload_bytes: new TextEncoder().encode(JSON.stringify(event.payload)).byteLength,
+          },
+        })
+      }
+      if (event.type === 'p2p.move_made' && currentEventState) {
+        applyMatchSnapshot(currentEventState)
       } else if (
         event.type === 'p2p.match_started' ||
-        event.type === 'p2p.match_completed' ||
         // A round break ends with the next round's board and turn; the event
         // itself only announces it, so fetch the authoritative state.
         event.type === 'p2p.round_started' ||
@@ -138,36 +184,61 @@ export function Component() {
       ) {
         // match_started carries the started match; the other two are signals to
         // refetch the canonical (possibly settled) state.
-        if (event.type === 'p2p.match_started' && eventState) {
-          queryClient.setQueryData(['p2p-match', matchId], eventState)
+        if (event.type === 'p2p.match_started' && currentEventState) {
+          applyMatchSnapshot(currentEventState)
+        } else if (event.type === 'p2p.round_started') {
+          // The round transition carries only metadata (no player-specific
+          // snapshot), so read the authoritative version and merge it into the
+          // cache immediately. A direct fetch also avoids reusing an unrelated
+          // pending query refetch started during the winning-line reveal.
+          void p2pApi.getMatchState(matchId!).then(applyMatchSnapshot).catch(() => refetch())
         } else {
           refetch()
         }
+      } else if (event.type === 'p2p.match_completed') {
+        if (currentEventState) applyMatchSnapshot(currentEventState)
+        else refetch()
       } else if (event.type === 'p2p.player_disconnected') {
         // Payload contains disconnect_user_id and disconnect_seconds_left.
-        // Update the cached match so the banner shows immediately, then also
-        // refetch in the background so the full deadline is authoritative.
-        refetch()
+        // Apply a full player-specific view immediately; older events trigger
+        // an authoritative refetch through the version-gap check.
+        if (currentEventState) applyMatchSnapshot(currentEventState)
+        else refetch()
       } else if (event.type === 'p2p.player_reconnected') {
         // Payload contains the full match state under `state`.
-        if (eventState) {
-          queryClient.setQueryData(['p2p-match', matchId], eventState)
+        if (currentEventState) {
+          applyMatchSnapshot(currentEventState)
         } else {
           refetch()
         }
       } else if (event.type === 'p2p.rematch_requested') {
         // The requester is told separately; only the opponent needs a nudge.
-        if (payload?.user_id !== user?.id) {
+        const eventMatchId = payload?.match_id
+        const requesterId = payload?.user_id
+        if (eventMatchId === matchId && currentEventState) {
+          // The event is the server acknowledgement. Apply it now so the
+          // requester sees Waiting and the opponent sees Accept immediately.
+          applyMatchSnapshot(currentEventState)
+        }
+        if (
+          eventMatchId === matchId &&
+          requesterId !== user?.id &&
+          consumeRematchRequest(handledRematchRequestsRef.current, eventMatchId, requesterId)
+        ) {
           toast({
             title: 'Rematch requested',
             description: 'Your opponent wants to play again.',
             type: 'info',
           })
         }
-        refetch()
-      } else if (event.type === 'p2p.rematch_created' && payload?.next_match_id) {
+        if (!(eventMatchId === matchId && currentEventState)) refetch()
+      } else if (
+        event.type === 'p2p.rematch_created' &&
+        payload?.match_id === matchId &&
+        typeof payload?.next_match_id === 'string'
+      ) {
         // toast({ title: 'Rematch started', description: 'Both players agreed — good luck!', type: 'success' })
-        navigate(`/games/match/${payload.next_match_id as string}`)
+        openRematch(payload.next_match_id)
       } else if (event.type === 'p2p.match_cancelled') {
         toast({ title: 'Match cancelled', description: 'This invitation has been cancelled.', type: 'info' })
         refetch()
@@ -175,7 +246,7 @@ export function Component() {
         refetch()
       }
     },
-    [matchId, queryClient, refetch, toast, user?.id, navigate]
+    [matchId, applyMatchSnapshot, refetch, toast, user?.id, openRematch]
   )
 
   // Reconnect mutation: when the SSE stream recovers from a disconnection,
@@ -184,7 +255,7 @@ export function Component() {
   const reconnectMutation = useMutation({
     mutationFn: () => p2pApi.reconnectToMatch(matchId!),
     onSuccess: (updated) => {
-      queryClient.setQueryData(['p2p-match', matchId], updated)
+      applyMatchSnapshot(updated)
     },
     onError: () => {
       // 410 Gone means the match ended while we were disconnected — refetch
@@ -221,6 +292,7 @@ export function Component() {
   const liveRef = useRef(isLive)
   const matchStatusRef = useRef<string | undefined>(match?.status)
   const updatedAtRef = useRef<number>(dataUpdatedAt)
+  const lastFallbackPollRef = useRef(0)
   // Mirror the latest render's inputs into the refs the poll timer reads.
   // Done in an effect (not during render) so a render never mutates state it
   // is reading.
@@ -239,6 +311,7 @@ export function Component() {
 
   useEffect(() => {
     if (!matchId || isTerminalMatch) return
+    lastFallbackPollRef.current = 0
 
     const timer = setInterval(() => {
       const inProgress = matchStatusRef.current === 'in_progress'
@@ -247,7 +320,10 @@ export function Component() {
       const stale = inProgress && quietForMs > 10_000
       setStreamStale((prev) => (prev === stale ? prev : stale))
 
-      if (!streamHealthy || stale) {
+      const now = Date.now()
+      const minimumPollGap = streamHealthy ? 10_000 : 5_000
+      if ((!streamHealthy || stale) && now - lastFallbackPollRef.current >= minimumPollGap) {
+        lastFallbackPollRef.current = now
         refetch()
       }
     }, 2_000)
@@ -324,7 +400,7 @@ export function Component() {
     // First value lands in a microtask (before paint) so the effect body does
     // not set state synchronously.
     queueMicrotask(() => setSecondsLeft(remaining()))
-    const timer = setInterval(() => setSecondsLeft(remaining()), 250)
+    const timer = setInterval(() => setSecondsLeft(remaining()), 1000)
     return () => clearInterval(timer)
   }, [
     match?.current_turn_user_id,
@@ -384,7 +460,7 @@ export function Component() {
   const moveMutation = useMutation({
     mutationFn: (action: Record<string, unknown>) => p2pApi.submitMove(matchId!, action),
     onSuccess: (updated) => {
-      queryClient.setQueryData(['p2p-match', matchId], updated)
+      applyMatchSnapshot(updated)
     },
     onError: (err: unknown) => {
       toast({
@@ -399,7 +475,7 @@ export function Component() {
   const readyMutation = useMutation({
     mutationFn: () => p2pApi.readyUp(matchId!),
     onSuccess: (updated) => {
-      queryClient.setQueryData(['p2p-match', matchId], updated)
+      applyMatchSnapshot(updated)
       // toast({ title: 'Ready!', description: 'Waiting for opponent to ready up...', type: 'success' })
     },
     onError: (err: unknown) => {
@@ -417,13 +493,20 @@ export function Component() {
     mutationFn: () => p2pApi.requestRematch(matchId!),
     onSuccess: (result) => {
       if (result.status === 'started' && result.match) {
-        queryClient.setQueryData(['p2p-match', result.match.id], result.match)
+        queryClient.setQueryData<P2PMatch>(['p2p-match', result.match.id], (current) =>
+          mergeMatchSnapshot(current, result.match!),
+        )
         // toast({ title: 'Rematch started', description: 'Both players agreed — good luck!', type: 'success' })
-        navigate(`/games/match/${result.match.id}`)
+        openRematch(result.match.id)
         return
       }
       if (result.match) {
-        queryClient.setQueryData(['p2p-match', matchId], result.match)
+        applyMatchSnapshot(result.match)
+        toast({
+          title: 'Rematch requested',
+          description: 'Your opponent will be notified. Waiting for their response…',
+          type: 'info',
+        })
       }
       // toast({
       //   title: 'Rematch requested',
@@ -444,7 +527,7 @@ export function Component() {
   const resignMutation = useMutation({
     mutationFn: () => p2pApi.resignMatch(matchId!),
     onSuccess: (updated) => {
-      queryClient.setQueryData(['p2p-match', matchId], updated)
+      applyMatchSnapshot(updated)
       toast({ title: 'You resigned the match', type: 'info' })
     },
     onError: (err: unknown) => {
@@ -460,7 +543,7 @@ export function Component() {
   const cancelMutation = useMutation({
     mutationFn: () => p2pApi.cancelMatch(matchId!),
     onSuccess: (updated) => {
-      queryClient.setQueryData(['p2p-match', matchId], updated)
+      applyMatchSnapshot(updated)
       toast({ title: 'Invitation cancelled', description: 'The room has been closed.', type: 'info' })
     },
     onError: (err: unknown) => {

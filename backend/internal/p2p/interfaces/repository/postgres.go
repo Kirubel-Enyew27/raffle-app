@@ -100,7 +100,7 @@ func (r *MatchRepo) BeginTx(ctx context.Context) (*sql.Tx, error) {
 const matchColumns = `id, game_slug, status, match_type, invite_code, stake_cents, stake_amount,
 	prize_pool_cents, service_fee_bp, total_fee_cents, winner_user_id, current_turn_user_id,
 	turn_deadline, current_round, max_rounds, scores, board_state, created_by,
-	started_at, completed_at, created_at, updated_at, rematch_requested_by, rematch_match_id,
+	started_at, completed_at, created_at, updated_at, state_version, rematch_requested_by, rematch_match_id,
 	disconnect_user_id, disconnect_deadline`
 
 // matchColumnsM is the same list qualified with the `m` alias. Queries that join
@@ -109,7 +109,7 @@ const matchColumns = `id, game_slug, status, match_type, invite_code, stake_cent
 const matchColumnsM = `m.id, m.game_slug, m.status, m.match_type, m.invite_code, m.stake_cents, m.stake_amount,
 	m.prize_pool_cents, m.service_fee_bp, m.total_fee_cents, m.winner_user_id, m.current_turn_user_id,
 	m.turn_deadline, m.current_round, m.max_rounds, m.scores, m.board_state, m.created_by,
-	m.started_at, m.completed_at, m.created_at, m.updated_at, m.rematch_requested_by, m.rematch_match_id,
+	m.started_at, m.completed_at, m.created_at, m.updated_at, m.state_version, m.rematch_requested_by, m.rematch_match_id,
 	m.disconnect_user_id, m.disconnect_deadline`
 
 func scanMatch(row interface {
@@ -126,7 +126,7 @@ func scanMatch(row interface {
 	err := row.Scan(&m.ID, &m.GameSlug, &m.Status, &m.MatchType, &inviteCode, &stakeCents, &m.StakeAmount,
 		&poolCents, &m.ServiceFeeBP, &feeCents, &winnerID, &turnUserID,
 		&turnDeadline, &m.CurrentRound, &m.MaxRounds, &scoresRaw, &boardRaw, &m.CreatedBy,
-		&startedAt, &completedAt, &m.CreatedAt, &m.UpdatedAt, &rematchRequestedBy, &rematchMatchID,
+		&startedAt, &completedAt, &m.CreatedAt, &m.UpdatedAt, &m.StateVersion, &rematchRequestedBy, &rematchMatchID,
 		&disconnectUserID, &disconnectDeadline)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -207,7 +207,7 @@ func (r *MatchRepo) CreateTx(ctx context.Context, tx *sql.Tx, match *domain.Matc
 		turn_deadline, current_round, max_rounds, scores, board_state, created_by,
 		rematch_requested_by, rematch_match_id, started_at, created_at, updated_at
 	) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,NOW(),NOW())
-	RETURNING created_at, updated_at`
+	RETURNING created_at, updated_at, state_version`
 
 	return tx.QueryRowContext(ctx, query,
 		match.ID, match.GameSlug, match.Status, match.MatchType, nullIfEmpty(match.InviteCode),
@@ -216,7 +216,7 @@ func (r *MatchRepo) CreateTx(ctx context.Context, tx *sql.Tx, match *domain.Matc
 		nullIfEmpty(ptrStr(match.CurrentTurnUserID)), match.TurnDeadline, match.CurrentRound,
 		match.MaxRounds, string(scoresJSON), string(boardJSON), match.CreatedBy,
 		nullIfEmpty(ptrStr(match.RematchRequestedBy)), nullIfEmpty(ptrStr(match.RematchMatchID)),
-		match.StartedAt).Scan(&match.CreatedAt, &match.UpdatedAt)
+		match.StartedAt).Scan(&match.CreatedAt, &match.UpdatedAt, &match.StateVersion)
 }
 
 func (r *MatchRepo) FindByID(ctx context.Context, id string) (*domain.Match, error) {
@@ -361,7 +361,7 @@ func (r *MatchRepo) UpdateStateTx(ctx context.Context, tx *sql.Tx, match *domain
 	scoresJSON, _ := json.Marshal(match.Scores)
 	boardJSON, _ := json.Marshal(match.BoardState)
 
-	_, err := tx.ExecContext(ctx, `UPDATE p2p_matches SET
+	err := tx.QueryRowContext(ctx, `UPDATE p2p_matches SET
 		status = $2,
 		current_turn_user_id = $3,
 		turn_deadline = $4,
@@ -374,17 +374,18 @@ func (r *MatchRepo) UpdateStateTx(ctx context.Context, tx *sql.Tx, match *domain
 		rematch_match_id = $11,
 		disconnect_user_id = $12,
 		disconnect_deadline = $13,
-		updated_at = NOW()
-		WHERE id = $1`,
+		updated_at = GREATEST(clock_timestamp(), updated_at + INTERVAL '1 microsecond'),
+		state_version = state_version + 1
+		WHERE id = $1 RETURNING updated_at, state_version`,
 		match.ID, match.Status, nullIfEmpty(ptrStr(match.CurrentTurnUserID)), match.TurnDeadline,
 		match.CurrentRound, string(scoresJSON), string(boardJSON), int64(match.PrizePoolCents), match.StartedAt,
 		nullIfEmpty(ptrStr(match.RematchRequestedBy)), nullIfEmpty(ptrStr(match.RematchMatchID)),
-		nullIfEmpty(ptrStr(match.DisconnectUserID)), match.DisconnectDeadline)
+		nullIfEmpty(ptrStr(match.DisconnectUserID)), match.DisconnectDeadline).Scan(&match.UpdatedAt, &match.StateVersion)
 	return err
 }
 
-func (r *MatchRepo) MarkCompletedTx(ctx context.Context, tx *sql.Tx, matchID string, winnerUserID *string, status string, totalFeeCents money.Cents, completedAt time.Time) error {
-	_, err := tx.ExecContext(ctx, `UPDATE p2p_matches SET
+func (r *MatchRepo) MarkCompletedTx(ctx context.Context, tx *sql.Tx, match *domain.Match, winnerUserID *string, status string, totalFeeCents money.Cents, completedAt time.Time, incrementVersion bool) error {
+	err := tx.QueryRowContext(ctx, `UPDATE p2p_matches SET
 		status = $2,
 		winner_user_id = $3,
 		total_fee_cents = $4,
@@ -393,21 +394,37 @@ func (r *MatchRepo) MarkCompletedTx(ctx context.Context, tx *sql.Tx, matchID str
 		turn_deadline = NULL,
 		disconnect_user_id = NULL,
 		disconnect_deadline = NULL,
-		updated_at = NOW()
-		WHERE id = $1`,
-		matchID, status, nullIfEmpty(ptrStr(winnerUserID)), int64(totalFeeCents), completedAt)
+		updated_at = GREATEST(clock_timestamp(), updated_at + INTERVAL '1 microsecond'),
+		state_version = state_version + CASE WHEN $6 THEN 1 ELSE 0 END
+		WHERE id = $1 RETURNING updated_at, state_version`,
+		match.ID, status, nullIfEmpty(ptrStr(winnerUserID)), int64(totalFeeCents), completedAt, incrementVersion).Scan(&match.UpdatedAt, &match.StateVersion)
+	if err == nil {
+		match.Status = status
+		match.WinnerUserID = winnerUserID
+		match.TotalFeeCents = totalFeeCents
+		match.CompletedAt = &completedAt
+		match.CurrentTurnUserID = nil
+		match.TurnDeadline = nil
+		match.DisconnectUserID = nil
+		match.DisconnectDeadline = nil
+	}
 	return err
 }
 
-func (r *MatchRepo) MarkCancelledTx(ctx context.Context, tx *sql.Tx, matchID string, cancelledAt time.Time) error {
-	_, err := tx.ExecContext(ctx, `UPDATE p2p_matches SET
+func (r *MatchRepo) MarkCancelledTx(ctx context.Context, tx *sql.Tx, match *domain.Match, cancelledAt time.Time) error {
+	err := tx.QueryRowContext(ctx, `UPDATE p2p_matches SET
 		status = 'cancelled',
 		completed_at = $2,
 		current_turn_user_id = NULL,
 		turn_deadline = NULL,
-		updated_at = NOW()
-		WHERE id = $1 AND status = 'waiting'`,
-		matchID, cancelledAt)
+		updated_at = GREATEST(clock_timestamp(), updated_at + INTERVAL '1 microsecond'),
+		state_version = state_version + 1
+		WHERE id = $1 AND status = 'waiting' RETURNING updated_at, state_version`,
+		match.ID, cancelledAt).Scan(&match.UpdatedAt, &match.StateVersion)
+	if err == nil {
+		match.Status = domain.StatusCancelled
+		match.CompletedAt = &cancelledAt
+	}
 	return err
 }
 

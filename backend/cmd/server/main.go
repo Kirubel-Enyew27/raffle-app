@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	runtimemetrics "runtime/metrics"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -310,15 +311,36 @@ func main() {
 
 	// Metrics endpoint (admin-only): exposes operational health counters.
 	api.GET("/metrics", middleware.AuthMiddleware(), middleware.AdminMiddleware(), func(c *gin.Context) {
+		queueStats := realtimeSvc.QueueStats()
+		publishStats := realtimeSvc.PublishStats()
+		databaseStats := db.Stats()
+		cpuTotal, cpuIdle := readGoCPUTime()
 		c.JSON(http.StatusOK, gin.H{
 			"code": "success",
 			"data": gin.H{
 				"realtime": gin.H{
-					"connected_clients":    realtimeSvc.ConnectedCount(),
-					"total_dropped_events": realtimeSvc.DroppedCount(),
-					"total_events":         realtimeSvc.EventCount(),
+					"connected_clients":             realtimeSvc.ConnectedCount(),
+					"total_dropped_events":          realtimeSvc.DroppedCount(),
+					"slow_client_disconnects":       realtimeSvc.SlowClientDisconnectCount(),
+					"total_events_received":         realtimeSvc.EventCount(),
+					"queue_depth":                   queueStats.TotalDepth,
+					"max_client_queue_depth":        queueStats.MaxDepth,
+					"client_queue_capacity":         queueStats.Capacity,
+					"total_events_published":        publishStats.Published,
+					"publish_failures":              publishStats.Failures,
+					"publish_average_latency_ms":    publishStats.AverageLatencyMS,
+					"publish_average_message_bytes": publishStats.AverageMessageBytes,
 				},
-				"goroutines": runtime.NumGoroutine(),
+				"database": gin.H{
+					"open_connections":   databaseStats.OpenConnections,
+					"in_use_connections": databaseStats.InUse,
+					"idle_connections":   databaseStats.Idle,
+					"wait_count":         databaseStats.WaitCount,
+					"wait_duration_ms":   float64(databaseStats.WaitDuration) / float64(time.Millisecond),
+				},
+				"goroutines":               runtime.NumGoroutine(),
+				"go_cpu_used_seconds":      cpuTotal - cpuIdle,
+				"go_cpu_available_seconds": cpuTotal,
 				"memory": func() gin.H {
 					var ms runtime.MemStats
 					runtime.ReadMemStats(&ms)
@@ -335,4 +357,22 @@ func main() {
 	if err := r.Run(fmt.Sprintf(":%d", cfg.AppPort)); err != nil {
 		panic(err)
 	}
+}
+
+func readGoCPUTime() (total, idle float64) {
+	samples := []runtimemetrics.Sample{
+		{Name: "/cpu/classes/total:cpu-seconds"},
+		{Name: "/cpu/classes/idle:cpu-seconds"},
+	}
+	runtimemetrics.Read(samples)
+	if samples[0].Value.Kind() == runtimemetrics.KindFloat64 {
+		total = samples[0].Value.Float64()
+	}
+	if samples[1].Value.Kind() == runtimemetrics.KindFloat64 {
+		idle = samples[1].Value.Float64()
+	}
+	if idle > total {
+		idle = total
+	}
+	return total, idle
 }

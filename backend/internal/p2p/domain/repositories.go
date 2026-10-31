@@ -27,8 +27,8 @@ type MatchRepository interface {
 	FindIdleWaitingRooms(ctx context.Context, olderThan time.Time) ([]*Match, error)
 	FindExpiredDisconnects(ctx context.Context, now time.Time) ([]*Match, error)
 	UpdateStateTx(ctx context.Context, tx *sql.Tx, match *Match) error
-	MarkCompletedTx(ctx context.Context, tx *sql.Tx, matchID string, winnerUserID *string, status string, totalFeeCents money.Cents, completedAt time.Time) error
-	MarkCancelledTx(ctx context.Context, tx *sql.Tx, matchID string, cancelledAt time.Time) error
+	MarkCompletedTx(ctx context.Context, tx *sql.Tx, match *Match, winnerUserID *string, status string, totalFeeCents money.Cents, completedAt time.Time, incrementVersion bool) error
+	MarkCancelledTx(ctx context.Context, tx *sql.Tx, match *Match, cancelledAt time.Time) error
 	GetLeaderboard(ctx context.Context, filter LeaderboardFilter) (*LeaderboardResult, error)
 }
 

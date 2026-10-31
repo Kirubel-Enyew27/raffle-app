@@ -86,19 +86,20 @@ type Match struct {
 	CreatedBy         string                 `json:"created_by"`
 	// Rematch handshake: who asked for a return game, and the match that the
 	// two players agreed to play next.
-	RematchRequestedBy *string        `json:"rematch_requested_by,omitempty"`
-	RematchMatchID     *string        `json:"rematch_match_id,omitempty"`
+	RematchRequestedBy *string `json:"rematch_requested_by,omitempty"`
+	RematchMatchID     *string `json:"rematch_match_id,omitempty"`
 	// DisconnectUserID is the user_id of the player who has temporarily
 	// disconnected. Cleared when they reconnect or the match is forfeited.
-	DisconnectUserID *string    `json:"disconnect_user_id,omitempty"`
+	DisconnectUserID *string `json:"disconnect_user_id,omitempty"`
 	// DisconnectDeadline is the server-authoritative deadline for the grace
 	// period. If the player has not reconnected by this time, the opponent wins.
-	DisconnectDeadline *time.Time `json:"disconnect_deadline,omitempty"`
+	DisconnectDeadline *time.Time     `json:"disconnect_deadline,omitempty"`
 	Players            []*MatchPlayer `json:"players,omitempty"`
 	StartedAt          *time.Time     `json:"started_at,omitempty"`
 	CompletedAt        *time.Time     `json:"completed_at,omitempty"`
 	CreatedAt          time.Time      `json:"created_at"`
 	UpdatedAt          time.Time      `json:"updated_at"`
+	StateVersion       int64          `json:"state_version"`
 }
 
 // Finished reports whether the match reached a terminal state. Only finished

@@ -113,6 +113,8 @@ export interface P2PMatchPlayer {
 
 export interface P2PMatch {
   id: string
+  /** Consecutive server version used to ignore delayed events and detect gaps. */
+  state_version?: number
   game_slug: string
   status: 'waiting' | 'ready' | 'in_progress' | 'completed' | 'cancelled' | 'tied' | 'forfeited'
   match_type: 'public_queue' | 'private_room'
@@ -153,6 +155,8 @@ export interface P2PMatch {
   completed_at?: string
   expires_at?: string
   created_at: string
+  /** Database update time breaks equal-version ties during rolling deploys. */
+  updated_at?: string
 }
 
 export interface P2PRematchResult {

@@ -30,6 +30,10 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Skipf("skipping integration test, postgres not available: %v", err)
 	}
+	if err := database.RunMigrations(db, "../../../migrations"); err != nil {
+		_ = db.Close()
+		t.Fatalf("failed to apply database migrations for integration test: %v", err)
+	}
 	return db
 }
 
@@ -86,6 +90,9 @@ func TestP2PService_TicTacToeFullMatch(t *testing.T) {
 	if match.Status != p2pdomain.StatusWaiting {
 		t.Fatalf("expected status waiting, got %s", match.Status)
 	}
+	if match.StateVersion < 1 {
+		t.Fatalf("new match should start with a state version, got %d", match.StateVersion)
+	}
 
 	// Verify User A wallet has 50 ETB reserved
 	var reservedA float64
@@ -105,11 +112,17 @@ func TestP2PService_TicTacToeFullMatch(t *testing.T) {
 	if joined.PrizePool != 100.0 {
 		t.Fatalf("expected prize pool 100.0, got %v", joined.PrizePool)
 	}
+	if joined.StateVersion != match.StateVersion+1 {
+		t.Fatalf("joining should advance state version once: created=%d joined=%d", match.StateVersion, joined.StateVersion)
+	}
 
 	// 3. Both ready up
-	_, err = svc.ReadyUp(ctx, userA, match.ID)
+	firstReady, err := svc.ReadyUp(ctx, userA, match.ID)
 	if err != nil {
 		t.Fatalf("User A ReadyUp failed: %v", err)
+	}
+	if firstReady.StateVersion != joined.StateVersion+1 {
+		t.Fatalf("ready status should advance state version once: joined=%d ready=%d", joined.StateVersion, firstReady.StateVersion)
 	}
 	started, err := svc.ReadyUp(ctx, userB, match.ID)
 	if err != nil {
@@ -118,13 +131,22 @@ func TestP2PService_TicTacToeFullMatch(t *testing.T) {
 	if started.Status != p2pdomain.StatusInProgress {
 		t.Fatalf("expected status in_progress, got %s", started.Status)
 	}
+	if started.StateVersion != firstReady.StateVersion+1 {
+		t.Fatalf("starting should advance state version once: ready=%d started=%d", firstReady.StateVersion, started.StateVersion)
+	}
 
 	// 4. Play Game (User A wins round 1: 0, 1, 2)
 	// Round 1
 	// P0: 0, P1: 3
 	// P0: 1, P1: 4
 	// P0: 2 (wins round 1)
-	_, _ = svc.SubmitMove(ctx, userA, match.ID, map[string]interface{}{"cell": 0})
+	firstMove, err := svc.SubmitMove(ctx, userA, match.ID, map[string]interface{}{"cell": 0})
+	if err != nil {
+		t.Fatalf("first move failed: %v", err)
+	}
+	if firstMove.StateVersion != started.StateVersion+1 {
+		t.Fatalf("a committed move should advance state version once: started=%d move=%d", started.StateVersion, firstMove.StateVersion)
+	}
 	_, _ = svc.SubmitMove(ctx, userB, match.ID, map[string]interface{}{"cell": 3})
 	_, _ = svc.SubmitMove(ctx, userA, match.ID, map[string]interface{}{"cell": 1})
 	_, _ = svc.SubmitMove(ctx, userB, match.ID, map[string]interface{}{"cell": 4})
@@ -261,6 +283,49 @@ func TestP2PService_TicTacToeFullMatch(t *testing.T) {
 		WHERE type = 'p2p_platform_fee' AND reference = $1`, "p2p_fee:"+match.ID).Scan(&feeCount, &feeAmount)
 	if feeCount != 1 || feeAmount != 5.0 {
 		t.Errorf("expected 1 fee transaction of 5.0 ETB, got count=%d, amount=%v", feeCount, feeAmount)
+	}
+}
+
+func TestP2PStateVersionTriggerCoversLegacyStateWrites(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	userID := createTestUserWithWallet(t, db, 0)
+	svc := NewP2PService(
+		p2prepo.NewGameRepo(db),
+		p2prepo.NewMatchRepo(db),
+		p2prepo.NewPlayerRepo(db),
+		p2prepo.NewMoveRepo(db),
+		p2prepo.NewSettingsRepo(db),
+		p2prepo.NewEscrowRepo(db, ""),
+		nil,
+		nil,
+	)
+	match, err := svc.CreateMatch(ctx, userID, CreateMatchRequest{
+		GameSlug:  "tic-tac-toe",
+		MatchType: p2pdomain.TypePrivateRoom,
+	})
+	if err != nil {
+		t.Fatalf("CreateMatch failed: %v", err)
+	}
+
+	// Simulate an older app instance that changes gameplay state without
+	// mentioning the state_version column in its UPDATE statement.
+	if _, err := db.ExecContext(ctx, `UPDATE p2p_matches SET
+		current_round = current_round + 1,
+		board_state = '{"cells":[1,0,0,0,0,0,0,0,0]}'::jsonb,
+		updated_at = clock_timestamp()
+		WHERE id = $1`, match.ID); err != nil {
+		t.Fatalf("legacy-style state update failed: %v", err)
+	}
+
+	var version int64
+	if err := db.QueryRowContext(ctx, `SELECT state_version FROM p2p_matches WHERE id = $1`, match.ID).Scan(&version); err != nil {
+		t.Fatalf("failed to read match version: %v", err)
+	}
+	if version != match.StateVersion+1 {
+		t.Fatalf("legacy state updates must advance state_version once: before=%d after=%d", match.StateVersion, version)
 	}
 }
 
@@ -736,6 +801,16 @@ func TestP2PService_RematchRequiresBothPlayersAndStartsFreshMatch(t *testing.T) 
 	}
 	if next.BoardState["move_count"] != 0 && next.BoardState["move_count"] != float64(0) {
 		t.Fatalf("expected an empty board, got move_count=%v", next.BoardState["move_count"])
+	}
+
+	// A repeated Accept (for example, a quick double click or an HTTP retry)
+	// joins the already-created rematch and never creates a second game.
+	repeatAcceptance, err := svc.RequestRematch(ctx, userB, match.ID)
+	if err != nil {
+		t.Fatalf("repeated rematch acceptance failed: %v", err)
+	}
+	if repeatAcceptance.Status != RematchStarted || repeatAcceptance.Match.ID != next.ID {
+		t.Fatalf("repeated acceptance should return the same rematch %s, got %+v", next.ID, repeatAcceptance)
 	}
 
 	// The finished match remembers the rematch, and asking again joins that one

@@ -175,7 +175,7 @@ func (e *P2PEngine) handleDisconnectTimeout(ctx context.Context, matchID string)
 	if winnerUserID == "" {
 		// Both players somehow disconnected: just cancel cleanly.
 		now := time.Now()
-		if err := e.matchRepo.MarkCancelledTx(ctx, tx, match.ID, now); err != nil {
+		if err := e.matchRepo.MarkCancelledTx(ctx, tx, match, now); err != nil {
 			return err
 		}
 		if err := tx.Commit(); err != nil {
@@ -196,7 +196,7 @@ func (e *P2PEngine) handleDisconnectTimeout(ctx context.Context, matchID string)
 		return err
 	}
 	if incomplete {
-		if err := e.matchRepo.MarkCompletedTx(ctx, tx, match.ID, &winnerUserID, domain.StatusForfeited, 0, now); err != nil {
+		if err := e.matchRepo.MarkCompletedTx(ctx, tx, match, &winnerUserID, domain.StatusForfeited, 0, now, true); err != nil {
 			return err
 		}
 		if err := tx.Commit(); err != nil {
@@ -237,8 +237,8 @@ func (e *P2PEngine) handleDisconnectTimeout(ctx context.Context, matchID string)
 		}
 	}
 
-	if err := e.matchRepo.MarkCompletedTx(ctx, tx, match.ID, &winnerUserID, domain.StatusForfeited,
-		settlement.FeeCents, now); err != nil {
+	if err := e.matchRepo.MarkCompletedTx(ctx, tx, match, &winnerUserID, domain.StatusForfeited,
+		settlement.FeeCents, now, true); err != nil {
 		return err
 	}
 
@@ -330,7 +330,7 @@ func (e *P2PEngine) handleTurnTimeout(ctx context.Context, matchID string) error
 		return err
 	}
 	if incomplete {
-		if err := e.matchRepo.MarkCompletedTx(ctx, tx, match.ID, &winnerUserID, domain.StatusForfeited, 0, now); err != nil {
+		if err := e.matchRepo.MarkCompletedTx(ctx, tx, match, &winnerUserID, domain.StatusForfeited, 0, now, true); err != nil {
 			return err
 		}
 		if err := tx.Commit(); err != nil {
@@ -366,7 +366,7 @@ func (e *P2PEngine) handleTurnTimeout(ctx context.Context, matchID string) error
 		}
 	}
 
-	if err := e.matchRepo.MarkCompletedTx(ctx, tx, match.ID, &winnerUserID, domain.StatusForfeited, settlement.FeeCents, now); err != nil {
+	if err := e.matchRepo.MarkCompletedTx(ctx, tx, match, &winnerUserID, domain.StatusForfeited, settlement.FeeCents, now, true); err != nil {
 		return err
 	}
 
@@ -487,7 +487,7 @@ func (e *P2PEngine) sweepIdleRooms(ctx context.Context) {
 			continue
 		}
 
-		if err := e.matchRepo.MarkCancelledTx(ctx, tx, r.ID, now); err != nil {
+		if err := e.matchRepo.MarkCancelledTx(ctx, tx, r, now); err != nil {
 			_ = tx.Rollback()
 			continue
 		}

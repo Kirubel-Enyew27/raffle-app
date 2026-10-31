@@ -7,6 +7,7 @@ export interface P2PEvent<T = unknown> {
   channel?: string
   payload: T
   created_at?: string
+  server_delivery_latency_ms?: number
 }
 
 export type P2PStreamStatus = SSEStatus

@@ -13,11 +13,14 @@ import (
 // All tests that call broadcastLocal / subscribe / unsubscribe work purely
 // in-memory, which avoids the need for a running Redis instance.
 func newTestService() *Service {
-	log, _ := zap.NewDevelopment()
+	log := zap.NewNop()
 	return &Service{
 		log:       log,
 		channel:   "test_channel",
 		clients:   make(map[*Client]bool),
+		byUser:    make(map[string]map[*Client]bool),
+		byRole:    make(map[string]map[*Client]bool),
+		byChan:    make(map[string]map[*Client]bool),
 		userConns: make(map[string]int),
 	}
 }
@@ -82,6 +85,20 @@ func TestConnectedCountIncrementDecrement(t *testing.T) {
 	svc.Unsubscribe(c3)
 	if svc.ConnectedCount() != 0 {
 		t.Fatalf("want 0, got %d", svc.ConnectedCount())
+	}
+}
+
+func TestQueueStatsReportBufferedEvents(t *testing.T) {
+	svc := newTestService()
+	client := svc.Subscribe("user1", "player")
+	defer svc.Unsubscribe(client)
+
+	svc.broadcastLocal(Event{Type: "one", UserID: "user1"})
+	svc.broadcastLocal(Event{Type: "two", UserID: "user1"})
+
+	stats := svc.QueueStats()
+	if stats.Clients != 1 || stats.TotalDepth != 2 || stats.MaxDepth != 2 || stats.Capacity != ClientChannelBuffer {
+		t.Fatalf("unexpected queue stats: %+v", stats)
 	}
 }
 
@@ -222,6 +239,49 @@ func TestDropCounterIncrementsOnFullBuffer(t *testing.T) {
 	if after != before+1 {
 		t.Fatalf("expected drop count to increase by 1: before=%d after=%d", before, after)
 	}
+	if got := svc.SlowClientDisconnectCount(); got != 1 {
+		t.Fatalf("a queue overflow should disconnect the slow client, got %d disconnects", got)
+	}
+	if got := svc.ConnectedCount(); got != 0 {
+		t.Fatalf("the overflowing client should no longer be registered, got %d connections", got)
+	}
+}
+
+func TestQueueOverflowDisconnectsOnlySlowClient(t *testing.T) {
+	svc := newTestService()
+	slow := svc.Subscribe("slow", "player")
+	fast := svc.Subscribe("fast", "player")
+
+	for i := 0; i < ClientChannelBuffer; i++ {
+		svc.broadcastLocal(Event{Type: "fill", UserID: "slow"})
+	}
+	// A broadcast reaches both clients; overflow evicts only the slow one.
+	svc.broadcastLocal(Event{Type: "state_update"})
+	if got := svc.ConnectedCount(); got != 1 {
+		t.Fatalf("expected only the fast client to remain, got %d", got)
+	}
+	if got := svc.SlowClientDisconnectCount(); got != 1 {
+		t.Fatalf("expected one slow-client disconnect, got %d", got)
+	}
+	select {
+	case event := <-fast.Ch:
+		if event.Type != "state_update" {
+			t.Fatalf("fast client received %q instead of state_update", event.Type)
+		}
+	default:
+		t.Fatal("slow client overflow blocked delivery to fast client")
+	}
+
+	// Once the event queue drains, the disconnected session can reconnect.
+	for len(slow.Ch) > 0 {
+		<-slow.Ch
+	}
+	if _, open := <-slow.Ch; open {
+		t.Fatal("slow client's SSE queue should be closed to trigger reconnect")
+	}
+	reconnected := svc.Connect("slow", "player", "match-1")
+	defer svc.Unsubscribe(reconnected)
+	svc.Unsubscribe(fast)
 }
 
 // ── CanConnect / ReleaseConnection ────────────────────────────────────────────
@@ -290,6 +350,8 @@ func TestStaleClientSweep(t *testing.T) {
 	default:
 		// closed channel unblocks immediately
 	}
+	// Removed clients must also disappear from targeted recipient indexes.
+	svc.broadcastLocal(Event{Type: "after-sweep", UserID: "staleUser"})
 }
 
 func TestFreshClientNotSwept(t *testing.T) {
@@ -320,6 +382,7 @@ func TestShutdownClosesAllClients(t *testing.T) {
 	defer cancel()
 
 	svc.Shutdown(ctx)
+	svc.broadcastLocal(Event{Type: "after-shutdown", UserID: "user"})
 
 	if svc.ConnectedCount() != 0 {
 		t.Fatalf("expected 0 clients after Shutdown, got %d", svc.ConnectedCount())
@@ -413,6 +476,34 @@ func TestConnect_ReplacesPreviousConnectionForSameSession(t *testing.T) {
 	}
 }
 
+func TestConnect_ReplacesPreviousGlobalConnection(t *testing.T) {
+	svc := newTestService()
+
+	first := svc.Connect("user-global", "user", "")
+	second := svc.Connect("user-global", "user", "")
+	if got := svc.ConnectedCount(); got != 1 {
+		t.Fatalf("a second global stream must replace the first, got %d connections", got)
+	}
+	select {
+	case _, open := <-first.Ch:
+		if open {
+			t.Fatal("the replaced global connection should have been closed")
+		}
+	default:
+		t.Fatal("expected the replaced global connection channel to be closed")
+	}
+
+	svc.broadcastLocal(Event{Type: "wallet_update", UserID: "user-global"})
+	select {
+	case event := <-second.Ch:
+		if event.Type != "wallet_update" {
+			t.Fatalf("unexpected event on global replacement: %s", event.Type)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("replacement global connection received no event")
+	}
+}
+
 func TestConnect_DistinctChannelsAreAllAccepted(t *testing.T) {
 	svc := newTestService()
 
@@ -461,5 +552,48 @@ func TestConnect_EvictsOldestInsteadOfRejectingNewest(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("the newest connection received no events")
+	}
+}
+
+func BenchmarkBroadcastLocalUserFanout(b *testing.B) {
+	for _, connectionCount := range []int{16, 256, 4096} {
+		b.Run(fmt.Sprintf("connections-%d", connectionCount), func(b *testing.B) {
+			svc := newTestService()
+			var target *Client
+			for i := 0; i < connectionCount; i++ {
+				userID := fmt.Sprintf("user-%d", i)
+				client := svc.Connect(userID, "player", fmt.Sprintf("match-%d", i))
+				if i == connectionCount/2 {
+					target = client
+				}
+			}
+			event := Event{Type: "move", UserID: target.UserID}
+
+			b.Run("indexed", func(b *testing.B) {
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					svc.broadcastLocal(event)
+					<-target.Ch
+				}
+			})
+
+			// The previous implementation scanned the full connection map for
+			// every targeted event. Keep it here as a benchmark baseline.
+			b.Run("linear-baseline", func(b *testing.B) {
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					svc.mu.RLock()
+					for client := range svc.clients {
+						if client.UserID == event.UserID {
+							client.Ch <- event
+						}
+					}
+					svc.mu.RUnlock()
+					<-target.Ch
+				}
+			})
+		})
 	}
 }
