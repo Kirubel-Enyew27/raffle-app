@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -35,12 +36,15 @@ type Config struct {
 }
 
 type DatabaseConfig struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	DBName   string
-	SSLMode  string
+	Host            string
+	Port            string
+	User            string
+	Password        string
+	DBName          string
+	SSLMode         string
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
 }
 
 type RedisConfig struct {
@@ -57,6 +61,25 @@ type JWTConfig struct {
 	// token instead of forcing a new login mid-session.
 	AccessExpiry  time.Duration
 	RefreshExpiry time.Duration
+}
+
+// IsDevelopmentEnvironment reports whether development-only shortcuts may be
+// enabled. Unknown and production-like values fail closed.
+func IsDevelopmentEnvironment() bool {
+	appEnv, explicitlyConfigured := os.LookupEnv("APP_ENV")
+	if !explicitlyConfigured && viper.InConfig("APP_ENV") {
+		appEnv = viper.GetString("APP_ENV")
+		explicitlyConfigured = true
+	}
+	if !explicitlyConfigured {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(appEnv)) {
+	case "development", "dev", "test":
+		return true
+	default:
+		return false
+	}
 }
 
 // CrashConfig holds the multiplayer crash game tunables. Every timing and limit
@@ -132,6 +155,9 @@ func Load() (*Config, error) {
 	viper.SetDefault("DB_PASSWORD", "raffle_dev")
 	viper.SetDefault("DB_NAME", "raffle_db")
 	viper.SetDefault("DB_SSL_MODE", "disable")
+	viper.SetDefault("DB_MAX_OPEN_CONNS", 25)
+	viper.SetDefault("DB_MAX_IDLE_CONNS", 5)
+	viper.SetDefault("DB_CONN_MAX_LIFETIME", 5*time.Minute)
 	viper.SetDefault("REDIS_HOST", "localhost")
 	viper.SetDefault("REDIS_PORT", "6379")
 	viper.SetDefault("REDIS_PASSWORD", "")
@@ -195,12 +221,15 @@ func Load() (*Config, error) {
 		AppPort:  viper.GetInt("APP_PORT"),
 		AppDebug: viper.GetBool("APP_DEBUG"),
 		Database: DatabaseConfig{
-			Host:     viper.GetString("DB_HOST"),
-			Port:     viper.GetString("DB_PORT"),
-			User:     viper.GetString("DB_USER"),
-			Password: viper.GetString("DB_PASSWORD"),
-			DBName:   viper.GetString("DB_NAME"),
-			SSLMode:  viper.GetString("DB_SSL_MODE"),
+			Host:            viper.GetString("DB_HOST"),
+			Port:            viper.GetString("DB_PORT"),
+			User:            viper.GetString("DB_USER"),
+			Password:        viper.GetString("DB_PASSWORD"),
+			DBName:          viper.GetString("DB_NAME"),
+			SSLMode:         viper.GetString("DB_SSL_MODE"),
+			MaxOpenConns:    positiveInt("DB_MAX_OPEN_CONNS", 25),
+			MaxIdleConns:    positiveInt("DB_MAX_IDLE_CONNS", 5),
+			ConnMaxLifetime: positiveDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
 		},
 		Redis: RedisConfig{
 			Host:       viper.GetString("REDIS_HOST"),
@@ -249,4 +278,12 @@ func Load() (*Config, error) {
 			PlatformUserID:     viper.GetString("CRASH_PLATFORM_USER_ID"),
 		},
 	}, nil
+}
+
+func positiveInt(key string, def int) int {
+	n := viper.GetInt(key)
+	if n <= 0 {
+		return def
+	}
+	return n
 }

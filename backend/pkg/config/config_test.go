@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -99,6 +100,52 @@ func TestLoadWithoutDotEnvUsesDefaults(t *testing.T) {
 	}
 	if cfg.AppEnv != "development" {
 		t.Errorf("AppEnv = %q, want the development default", cfg.AppEnv)
+	}
+	if cfg.Database.MaxOpenConns != 25 || cfg.Database.MaxIdleConns != 5 {
+		t.Errorf("database pool defaults = (%d open, %d idle), want (25 open, 5 idle)", cfg.Database.MaxOpenConns, cfg.Database.MaxIdleConns)
+	}
+	if cfg.Database.ConnMaxLifetime != 5*time.Minute {
+		t.Errorf("database connection lifetime = %s, want 5m", cfg.Database.ConnMaxLifetime)
+	}
+}
+
+func TestLoadDatabasePoolSettingsFromEnvironment(t *testing.T) {
+	viper.Reset()
+	t.Setenv("DB_MAX_OPEN_CONNS", "17")
+	t.Setenv("DB_MAX_IDLE_CONNS", "3")
+	t.Setenv("DB_CONN_MAX_LIFETIME", "2m")
+	chdir(t, t.TempDir())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Database.MaxOpenConns != 17 || cfg.Database.MaxIdleConns != 3 {
+		t.Errorf("database pool = (%d open, %d idle), want (17 open, 3 idle)", cfg.Database.MaxOpenConns, cfg.Database.MaxIdleConns)
+	}
+	if cfg.Database.ConnMaxLifetime != 2*time.Minute {
+		t.Errorf("database connection lifetime = %s, want 2m", cfg.Database.ConnMaxLifetime)
+	}
+}
+
+func TestDevelopmentShortcutRequiresExplicitEnvironment(t *testing.T) {
+	previousValue, previouslySet := os.LookupEnv("APP_ENV")
+	if err := os.Unsetenv("APP_ENV"); err != nil {
+		t.Fatalf("unset APP_ENV: %v", err)
+	}
+	t.Cleanup(func() {
+		if previouslySet {
+			_ = os.Setenv("APP_ENV", previousValue)
+		} else {
+			_ = os.Unsetenv("APP_ENV")
+		}
+		viper.Reset()
+	})
+
+	viper.Reset()
+	viper.SetDefault("APP_ENV", "development")
+	if IsDevelopmentEnvironment() {
+		t.Fatal("development shortcut enabled from the default APP_ENV without an explicit environment setting")
 	}
 }
 

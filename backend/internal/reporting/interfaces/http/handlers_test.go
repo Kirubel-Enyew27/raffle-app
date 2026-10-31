@@ -52,6 +52,7 @@ func newRouter() *gin.Engine {
 
 func get(t *testing.T, r *gin.Engine, path string) (int, map[string]interface{}) {
 	t.Helper()
+	t.Setenv("APP_ENV", "test")
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", path, nil)
 	req.Header.Set("Authorization", "Bearer admin")

@@ -60,6 +60,7 @@ import (
 	"github.com/raffle-app/backend/pkg/logger"
 	"github.com/raffle-app/backend/pkg/middleware"
 	"github.com/raffle-app/backend/pkg/money"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -92,6 +93,13 @@ func main() {
 		panic(err)
 	}
 	defer database.CloseRedis(rdb)
+	redisProbeCtx, cancelRedisProbe := context.WithTimeout(context.Background(), time.Second)
+	if err := rdb.Ping(redisProbeCtx).Err(); err != nil {
+		logger.Warn("Redis is unavailable; continuing with PostgreSQL-authoritative gameplay while realtime delivery recovers",
+			zap.Error(err),
+		)
+	}
+	cancelRedisProbe()
 
 	// Run database migrations (safe to run every startup — tracks applied in schema_migrations)
 	if err := database.RunMigrations(db, "migrations"); err != nil {
@@ -302,7 +310,7 @@ func main() {
 	crashHandler.SetRateLimiter(crashinfra.NewRateLimiter(rdb, cfg.Crash.RateLimitPerSecond, time.Second))
 	crashhttp.RegisterCrashRoutes(api, crashHandler)
 
-	p2pHandler := p2phttp.NewP2PHandler(p2pSvc)
+	p2pHandler := p2phttp.NewP2PHandlerWithLogger(p2pSvc, logger.With())
 	p2pRateLimiter := p2phttp.NewP2PRateLimiter(rdb)
 	p2phttp.RegisterP2PRoutes(api, p2pHandler, p2pRateLimiter)
 
@@ -313,6 +321,7 @@ func main() {
 	api.GET("/metrics", middleware.AuthMiddleware(), middleware.AdminMiddleware(), func(c *gin.Context) {
 		queueStats := realtimeSvc.QueueStats()
 		publishStats := realtimeSvc.PublishStats()
+		subscriptionStats := realtimeSvc.SubscriptionStats()
 		databaseStats := db.Stats()
 		cpuTotal, cpuIdle := readGoCPUTime()
 		c.JSON(http.StatusOK, gin.H{
@@ -330,6 +339,9 @@ func main() {
 					"publish_failures":              publishStats.Failures,
 					"publish_average_latency_ms":    publishStats.AverageLatencyMS,
 					"publish_average_message_bytes": publishStats.AverageMessageBytes,
+					"redis_subscription_acks":       subscriptionStats.Acknowledgements,
+					"redis_subscription_restores":   subscriptionStats.Restores,
+					"redis_subscription_failures":   subscriptionStats.Failures,
 				},
 				"database": gin.H{
 					"open_connections":   databaseStats.OpenConnections,

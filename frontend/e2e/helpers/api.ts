@@ -63,6 +63,68 @@ export async function backendReachable(): Promise<boolean> {
   }
 }
 
+/** Logs in an existing user for admin-only setup steps in browser tests. */
+export async function loginUser(identifier: string, password: string): Promise<{ token: string }> {
+  const res = await request<{ token: string }>('POST', '/auth/login', { identifier, password })
+  if (res.status !== 200) {
+    throw new Error(`login failed (${res.status}): ${JSON.stringify(res.data)}`)
+  }
+  return res.data
+}
+
+/** Creates an active raffle with test-safe defaults for omitted fields. */
+export async function createRaffle(
+  token: string,
+  raffle: {
+    title: string
+    ticket_price: number
+    max_tickets: number
+    prize_pool: number
+    draw_date?: string
+    status?: string
+    currency?: string
+  },
+): Promise<{ id: string }> {
+  const res = await request<{ id: string }>(
+    'POST',
+    '/raffles',
+    {
+      ...raffle,
+      draw_date: raffle.draw_date ?? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      status: raffle.status ?? 'active',
+      currency: raffle.currency ?? 'ETB',
+    },
+    token,
+  )
+  if (res.status !== 201) {
+    throw new Error(`create raffle failed (${res.status}): ${JSON.stringify(res.data)}`)
+  }
+  return res.data
+}
+
+export async function commitDraw(token: string, raffleId: string): Promise<void> {
+  const res = await request('POST', `/draw/commit/${raffleId}`, {}, token)
+  if (res.status !== 200) {
+    throw new Error(`commit draw failed (${res.status}): ${JSON.stringify(res.data)}`)
+  }
+}
+
+export async function executeDraw(
+  token: string,
+  raffleId: string,
+): Promise<{ winning_ticket_number: number }> {
+  const res = await request<{ winning_ticket_number: number }>(
+    'POST',
+    `/draw/execute/${raffleId}`,
+    {},
+    token,
+  )
+  if (res.status !== 200) {
+    throw new Error(`execute draw failed (${res.status}): ${JSON.stringify(res.data)}`)
+  }
+  return res.data
+}
+
 export interface TestSession {
   token: string
   refreshToken: string

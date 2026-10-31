@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	appconfig "github.com/raffle-app/backend/pkg/config"
 	appjwt "github.com/raffle-app/backend/pkg/jwt"
 	"go.uber.org/zap"
 )
@@ -60,7 +61,7 @@ func (h *Handler) Stream(c *gin.Context) {
 	// ── 2. Authenticate ────────────────────────────────────────────────────────
 	var userID, role string
 
-	if tokenString == "admin" {
+	if tokenString == "admin" && appconfig.IsDevelopmentEnvironment() {
 		userID = "00000000-0000-0000-0000-000000000002"
 		role = "admin"
 	} else {

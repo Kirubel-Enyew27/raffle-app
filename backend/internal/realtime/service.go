@@ -93,14 +93,17 @@ type Service struct {
 	userConns   map[string]int
 
 	// Atomic counters — hot-path read/write without the mutex.
-	dropCount        atomic.Int64
-	slowClientCount  atomic.Int64
-	eventCount       atomic.Int64
-	publishedCount   atomic.Int64
-	publishFailures  atomic.Int64
-	publishTimeNanos atomic.Int64
-	publishBytes     atomic.Int64
-	connectSeq       atomic.Int64
+	dropCount            atomic.Int64
+	slowClientCount      atomic.Int64
+	eventCount           atomic.Int64
+	subscriptionAcks     atomic.Int64
+	subscriptionRestores atomic.Int64
+	subscriptionFailures atomic.Int64
+	publishedCount       atomic.Int64
+	publishFailures      atomic.Int64
+	publishTimeNanos     atomic.Int64
+	publishBytes         atomic.Int64
+	connectSeq           atomic.Int64
 }
 
 // QueueStats summarizes current local SSE buffering without exposing clients.
@@ -117,6 +120,15 @@ type PublishStats struct {
 	Failures            int64   `json:"failures"`
 	AverageLatencyMS    float64 `json:"average_latency_ms"`
 	AverageMessageBytes float64 `json:"average_message_bytes"`
+}
+
+// SubscriptionStats reports Redis Pub/Sub restoration activity. Redis Pub/Sub
+// is intentionally non-durable; these counters make reconnect behavior visible
+// without implying that messages published during an outage were replayed.
+type SubscriptionStats struct {
+	Acknowledgements int64 `json:"acknowledgements"`
+	Restores         int64 `json:"restores"`
+	Failures         int64 `json:"failures"`
 }
 
 // NewService creates a new realtime service backed by the given Redis client.
@@ -137,30 +149,73 @@ func NewService(rdb *redis.Client, log *zap.Logger) *Service {
 // local clients. It also launches the stale-client sweep goroutine.
 // Call this in a separate goroutine; it returns when ctx is cancelled.
 func (s *Service) Start(ctx context.Context) {
+	go s.sweepStaleClients(ctx)
+	retryDelay := 100 * time.Millisecond
+	for {
+		if ctx.Err() != nil {
+			s.log.Info("Real-time Redis Pub/Sub listener stopping")
+			return
+		}
+		if s.listenRedis(ctx) {
+			return
+		}
+		s.subscriptionFailures.Add(1)
+		s.log.Error("Redis Pub/Sub listener stopped unexpectedly; retrying",
+			zap.Duration("retry_in", retryDelay),
+		)
+		timer := time.NewTimer(retryDelay)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return
+		case <-timer.C:
+		}
+		retryDelay = min(retryDelay*2, 5*time.Second)
+	}
+}
+
+// listenRedis returns false only when the go-redis Pub/Sub stream closes while
+// the service context is still active. Ordinary socket outages are retried and
+// resubscribed by go-redis; the outer Start loop covers terminal stream closure.
+func (s *Service) listenRedis(ctx context.Context) bool {
 	pubsub := s.rdb.Subscribe(ctx, s.channel)
 	defer pubsub.Close()
-
-	ch := pubsub.Channel()
+	ch := pubsub.ChannelWithSubscriptions()
 	s.log.Info("Real-time Redis Pub/Sub listener started")
-
-	go s.sweepStaleClients(ctx)
 
 	for {
 		select {
 		case <-ctx.Done():
-			s.log.Info("Real-time Redis Pub/Sub listener stopping")
-			return
-		case msg, ok := <-ch:
+			return true
+		case raw, ok := <-ch:
 			if !ok {
-				return
+				return ctx.Err() != nil
 			}
-			var ev Event
-			if err := json.Unmarshal([]byte(msg.Payload), &ev); err != nil {
-				s.log.Error("Failed to unmarshal real-time event", zap.Error(err))
-				continue
+			switch msg := raw.(type) {
+			case *redis.Subscription:
+				if msg.Kind == "subscribe" && msg.Channel == s.channel {
+					acknowledgement := s.subscriptionAcks.Add(1)
+					if acknowledgement > 1 {
+						s.subscriptionRestores.Add(1)
+						s.log.Info("Redis Pub/Sub subscription restored",
+							zap.String("channel", s.channel),
+							zap.Int64("restore_count", s.subscriptionRestores.Load()),
+						)
+					}
+				}
+			case *redis.Message:
+				var ev Event
+				if err := json.Unmarshal([]byte(msg.Payload), &ev); err != nil {
+					s.log.Error("Failed to unmarshal real-time event", zap.Error(err))
+					continue
+				}
+				s.eventCount.Add(1)
+				s.broadcastLocal(ev)
+			default:
+				s.log.Warn("Ignoring unexpected Redis Pub/Sub message", zap.Any("message", raw))
 			}
-			s.eventCount.Add(1)
-			s.broadcastLocal(ev)
 		}
 	}
 }
@@ -231,11 +286,23 @@ func (s *Service) publish(ctx context.Context, ev Event) error {
 	s.publishTimeNanos.Add(time.Since(started).Nanoseconds())
 	if err != nil {
 		s.publishFailures.Add(1)
+		s.log.Error("Failed to publish real-time event",
+			zap.String("event_type", ev.Type),
+			zap.Error(err),
+		)
 		return err
 	}
 	s.publishedCount.Add(1)
 	s.publishBytes.Add(int64(len(data)))
 	return nil
+}
+
+func (s *Service) SubscriptionStats() SubscriptionStats {
+	return SubscriptionStats{
+		Acknowledgements: s.subscriptionAcks.Load(),
+		Restores:         s.subscriptionRestores.Load(),
+		Failures:         s.subscriptionFailures.Load(),
+	}
 }
 
 // Subscribe registers a local client and returns it.

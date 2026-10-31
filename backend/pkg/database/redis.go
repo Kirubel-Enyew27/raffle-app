@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/raffle-app/backend/pkg/config"
+	"github.com/redis/go-redis/v9"
 )
 
 func NewRedis(cfg config.RedisConfig) (*redis.Client, error) {
@@ -17,12 +17,11 @@ func NewRedis(cfg config.RedisConfig) (*redis.Client, error) {
 	if cfg.TLSEnabled {
 		opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 	}
-	rdb := redis.NewClient(opts)
-	ctx := context.Background()
-	if err := rdb.Ping(ctx).Err(); err != nil {
-		return nil, err
-	}
-	return rdb, nil
+	// go-redis connects lazily and retries Pub/Sub subscriptions after socket
+	// failures. Do not make Redis availability a process-start requirement:
+	// gameplay writes remain authoritative in PostgreSQL, and the realtime
+	// subscriber plus distributed rate limiter can recover when Redis returns.
+	return redis.NewClient(opts), nil
 }
 
 func CloseRedis(rdb *redis.Client) error {

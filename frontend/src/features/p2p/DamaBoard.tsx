@@ -180,15 +180,7 @@ export function DamaBoard({
         aria-live="polite"
         className="flex min-h-6 items-center justify-center px-2 text-center text-xs font-semibold text-muted-foreground"
       >
-        {chainFrom !== null ? (
-          <span className="text-rose-500 font-bold">
-            Capture chain — keep jumping with the highlighted piece
-          </span>
-        ) : gameOver ? (
-          <span className="font-extrabold text-foreground">
-            {outcome?.subtitle || 'Match finished'}
-          </span>
-        ) : isMyTurn ? (
+        { isMyTurn ? (
           'Your turn — select a piece'
         ) : (
           'Opponent is thinking…'

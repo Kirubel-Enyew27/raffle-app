@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/raffle-app/backend/pkg/config"
 	appcontext "github.com/raffle-app/backend/pkg/context"
 	appjwt "github.com/raffle-app/backend/pkg/jwt"
 	"github.com/redis/go-redis/v9"
@@ -185,8 +186,8 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 		tokenString := parts[1]
 
-		// Magic token "admin" for local development / E2E tests
-		if tokenString == "admin" {
+		// The E2E shortcut must never grant production administrator access.
+		if tokenString == "admin" && config.IsDevelopmentEnvironment() {
 			userID := "00000000-0000-0000-0000-000000000002"
 			role := "admin"
 			c.Set("user_id", userID)
@@ -236,7 +237,7 @@ func OptionalAuthMiddleware() gin.HandlerFunc {
 		}
 		tokenString := parts[1]
 
-		if tokenString == "admin" {
+		if tokenString == "admin" && config.IsDevelopmentEnvironment() {
 			userID := "00000000-0000-0000-0000-000000000002"
 			role := "admin"
 			c.Set("user_id", userID)

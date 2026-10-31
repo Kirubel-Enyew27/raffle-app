@@ -33,7 +33,7 @@ import {
   copyToClipboard,
 } from '@/lib/telegram'
 import { useP2PStream, type P2PEvent } from '@/features/p2p/useP2PStream'
-import { consumeRematchRequest } from '@/features/p2p/rematchEvents'
+// import { consumeRematchRequest } from '@/features/p2p/rematchEvents'
 import { hasMatchVersionGap, mergeMatchSnapshot } from '@/features/p2p/matchState'
 import { deriveMatchConnection } from '@/features/p2p/matchConnection'
 import { TicTacToeBoard } from '@/features/p2p/TicTacToeBoard'
@@ -214,23 +214,23 @@ export function Component() {
       } else if (event.type === 'p2p.rematch_requested') {
         // The requester is told separately; only the opponent needs a nudge.
         const eventMatchId = payload?.match_id
-        const requesterId = payload?.user_id
+        // const requesterId = payload?.user_id
         if (eventMatchId === matchId && currentEventState) {
           // The event is the server acknowledgement. Apply it now so the
           // requester sees Waiting and the opponent sees Accept immediately.
           applyMatchSnapshot(currentEventState)
         }
-        if (
-          eventMatchId === matchId &&
-          requesterId !== user?.id &&
-          consumeRematchRequest(handledRematchRequestsRef.current, eventMatchId, requesterId)
-        ) {
-          toast({
-            title: 'Rematch requested',
-            description: 'Your opponent wants to play again.',
-            type: 'info',
-          })
-        }
+        // if (
+        //   eventMatchId === matchId &&
+        //   requesterId !== user?.id &&
+        //   consumeRematchRequest(handledRematchRequestsRef.current, eventMatchId, requesterId)
+        // ) {
+        //   toast({
+        //     title: 'Rematch requested',
+        //     description: 'Your opponent wants to play again.',
+        //     type: 'info',
+        //   })
+        // }
         if (!(eventMatchId === matchId && currentEventState)) refetch()
       } else if (
         event.type === 'p2p.rematch_created' &&
@@ -500,14 +500,14 @@ export function Component() {
         openRematch(result.match.id)
         return
       }
-      if (result.match) {
-        applyMatchSnapshot(result.match)
-        toast({
-          title: 'Rematch requested',
-          description: 'Your opponent will be notified. Waiting for their response…',
-          type: 'info',
-        })
-      }
+      // if (result.match) {
+      //   applyMatchSnapshot(result.match)
+      //   toast({
+      //     title: 'Rematch requested',
+      //     description: 'Your opponent will be notified. Waiting for their response…',
+      //     type: 'info',
+      //   })
+      // }
       // toast({
       //   title: 'Rematch requested',
       //   description: 'Waiting for your opponent to accept…',

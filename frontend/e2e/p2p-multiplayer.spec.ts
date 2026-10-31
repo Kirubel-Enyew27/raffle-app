@@ -69,8 +69,8 @@ test.describe('P2P multiplayer', () => {
     const guest = await guestContext.newPage()
 
     await joinByCode(guestSession, match.invite_code)
-    await host.goto(`/games/match/${match.id}`)
-    await guest.goto(`/games/match/${match.id}`)
+    await host.goto(`/games/match/${match.id}`, { waitUntil: 'domcontentloaded' })
+    await guest.goto(`/games/match/${match.id}`, { waitUntil: 'domcontentloaded' })
 
     // Both clients must leave "Connecting…" — the reported bug kept one there.
     await expect(host.locator(BADGE)).toBeVisible()
@@ -246,8 +246,8 @@ test.describe('P2P multiplayer', () => {
     const host = await hostContext.newPage()
     const guest = await guestContext.newPage()
     await joinByCode(guestSession, match.invite_code)
-    await host.goto(`/games/match/${match.id}`)
-    await guest.goto(`/games/match/${match.id}`)
+    await host.goto(`/games/match/${match.id}`, { waitUntil: 'domcontentloaded' })
+    await guest.goto(`/games/match/${match.id}`, { waitUntil: 'domcontentloaded' })
     await host.getByRole('button', { name: /I am Ready/ }).click()
     await guest.getByRole('button', { name: /I am Ready/ }).click()
     await expect.poll(() => badgeState(host), { timeout: 15_000 }).toBe('in_progress')
@@ -282,8 +282,8 @@ test.describe('P2P multiplayer', () => {
     const host = await hostContext.newPage()
     const guest = await guestContext.newPage()
     await joinByCode(guestSession, match.invite_code)
-    await host.goto(`/games/match/${match.id}`)
-    await guest.goto(`/games/match/${match.id}`)
+    await host.goto(`/games/match/${match.id}`, { waitUntil: 'domcontentloaded' })
+    await guest.goto(`/games/match/${match.id}`, { waitUntil: 'domcontentloaded' })
     await host.getByRole('button', { name: /I am Ready/ }).click()
     await guest.getByRole('button', { name: /I am Ready/ }).click()
     await expect.poll(() => badgeState(host), { timeout: 15_000 }).toBe('in_progress')
@@ -325,27 +325,40 @@ test.describe('P2P multiplayer', () => {
     const host = await hostContext.newPage()
     const guest = await guestContext.newPage()
     await joinByCode(guestSession, match.invite_code)
-    await host.goto(`/games/match/${match.id}`)
-    await guest.goto(`/games/match/${match.id}`)
+    await host.goto(`/games/match/${match.id}`, { waitUntil: 'domcontentloaded' })
+    await guest.goto(`/games/match/${match.id}`, { waitUntil: 'domcontentloaded' })
 
     await host.getByRole('button', { name: /I am Ready/ }).click()
     await guest.getByRole('button', { name: /I am Ready/ }).click()
     await expect.poll(() => badgeState(host), { timeout: 15_000 }).toBe('in_progress')
     await expect.poll(() => badgeState(guest), { timeout: 15_000 }).toBe('in_progress')
 
-    const moves: Array<[typeof hostSession, number]> = [
-      [hostSession, 0], [guestSession, 1],
-      [hostSession, 0], [guestSession, 1],
-      [hostSession, 0], [guestSession, 1],
-      [hostSession, 0],
-    ]
-    for (const [session, column] of moves) {
-      expect(await submitMove(session, match.id, { column })).toBe(200)
+    const finishConnectFour = async (matchID: string) => {
+      let state = await fetchMatch(hostSession, matchID)
+      for (const column of [0, 1, 0, 1, 0, 1, 0]) {
+        const actor = state.current_turn_user_id === hostSession.user.id ? hostSession : guestSession
+        expect(await submitMove(actor, matchID, { column })).toBe(200)
+        state = await fetchMatch(hostSession, matchID)
+      }
+      return state
     }
+    await finishConnectFour(match.id)
+
+    // A winner and loser returning to a terminal match must see the persisted
+    // result, not a transient loading state or a resurrected live board.
+    await host.reload()
+    await guest.reload()
+    await expect.poll(() => badgeState(host), { timeout: 15_000 }).toBe('completed')
+    await expect.poll(() => badgeState(guest), { timeout: 15_000 }).toBe('completed')
 
     await host.getByRole('button', { name: 'Play Again' }).click()
     await expect(host.getByText('Your opponent will be notified. Waiting for their response…')).toBeVisible()
     await expect(guest.getByText('Your opponent wants to play again.')).toHaveCount(1, { timeout: 10_000 })
+    await expect(guest.getByRole('button', { name: 'Accept' })).toBeVisible()
+    // Pending rematch consent is authoritative server state and survives a
+    // refresh, including the notification's action button.
+    await guest.reload()
+    await expect.poll(() => badgeState(guest), { timeout: 15_000 }).toBe('completed')
     await expect(guest.getByRole('button', { name: 'Accept' })).toBeVisible()
 
     // One Accept click must be enough. Both the HTTP acknowledgement and the
@@ -371,7 +384,40 @@ test.describe('P2P multiplayer', () => {
     const rematchState = await fetchMatch(hostSession, hostMatchId!)
     expect(rematchState.status).toBe('in_progress')
     const priorState = await fetchMatch(hostSession, match.id)
+    expect(priorState.status).toBe('completed')
     expect(priorState.rematch_match_id).toBe(hostMatchId)
+
+    // Complete that rematch and immediately start another. This catches stale
+    // events or cached state from an earlier completed match overwriting the
+    // current match after consecutive rematches.
+    await finishConnectFour(hostMatchId!)
+    await expect.poll(() => badgeState(host), { timeout: 15_000 }).toBe('completed')
+    await expect.poll(() => badgeState(guest), { timeout: 15_000 }).toBe('completed')
+
+    await host.getByRole('button', { name: 'Play Again' }).click()
+    await expect(guest.getByRole('button', { name: 'Accept' })).toBeVisible({ timeout: 10_000 })
+    await expect(guest.getByText('Your opponent wants to play again.')).toHaveCount(1)
+    const secondRematchResponsePromise = guest.waitForResponse((response) =>
+      response.request().method() === 'POST' && /\/p2p\/matches\/[^/]+\/rematch/.test(response.url()),
+    )
+    await guest.getByRole('button', { name: 'Accept' }).click()
+    const secondRematchResponse = await secondRematchResponsePromise
+    const secondRematchAcknowledgement = await secondRematchResponse.json()
+    expect(secondRematchResponse.ok()).toBe(true)
+    expect(secondRematchAcknowledgement?.data?.status).toBe('started')
+    const secondRematchId = secondRematchAcknowledgement?.data?.match?.id
+    expect(secondRematchId).toBeTruthy()
+    expect(secondRematchId).not.toBe(hostMatchId)
+    expect(secondRematchId).not.toBe(match.id)
+    await expect(host).toHaveURL(rematchUrl, { timeout: 15_000 })
+    await expect(guest).toHaveURL(rematchUrl, { timeout: 15_000 })
+    expect(host.url().match(rematchUrl)?.[1]).toBe(secondRematchId)
+    expect(guest.url().match(rematchUrl)?.[1]).toBe(secondRematchId)
+    await expect.poll(() => badgeState(host), { timeout: 15_000 }).toBe('in_progress')
+    await expect.poll(() => badgeState(guest), { timeout: 15_000 }).toBe('in_progress')
+    const firstRematchTerminal = await fetchMatch(hostSession, hostMatchId!)
+    expect(firstRematchTerminal.status).toBe('completed')
+    expect(firstRematchTerminal.rematch_match_id).toBe(secondRematchId)
   })
 
   test('a player with a blocked stream still sees the board and can play', async ({ browser }) => {
@@ -392,8 +438,8 @@ test.describe('P2P multiplayer', () => {
     const guest = await guestContext.newPage()
 
     await joinByCode(guestSession, match.invite_code)
-    await host.goto(`/games/match/${match.id}`)
-    await guest.goto(`/games/match/${match.id}`)
+    await host.goto(`/games/match/${match.id}`, { waitUntil: 'domcontentloaded' })
+    await guest.goto(`/games/match/${match.id}`, { waitUntil: 'domcontentloaded' })
 
     // The guest is candidly degraded — never a bare, endless "Connecting…".
     await expect.poll(() => badgeState(guest), { timeout: 20_000 }).toMatch(/reconnecting|failed/)
@@ -439,8 +485,8 @@ test.describe('P2P multiplayer', () => {
     const guest = await guestContext.newPage()
 
     await joinByCode(guestSession, match.invite_code)
-    await host.goto(`/games/match/${match.id}`)
-    await guest.goto(`/games/match/${match.id}`)
+    await host.goto(`/games/match/${match.id}`, { waitUntil: 'domcontentloaded' })
+    await guest.goto(`/games/match/${match.id}`, { waitUntil: 'domcontentloaded' })
 
     await host.getByRole('button', { name: /I am Ready/ }).click()
     await guest.getByRole('button', { name: /I am Ready/ }).click()
@@ -499,8 +545,8 @@ test.describe('P2P multiplayer', () => {
     const guest = await guestContext.newPage()
 
     await joinByCode(guestSession, match.invite_code)
-    await host.goto(`/games/match/${match.id}`)
-    await guest.goto(`/games/match/${match.id}`)
+    await host.goto(`/games/match/${match.id}`, { waitUntil: 'domcontentloaded' })
+    await guest.goto(`/games/match/${match.id}`, { waitUntil: 'domcontentloaded' })
 
     await host.getByRole('button', { name: /I am Ready/ }).click()
     await guest.getByRole('button', { name: /I am Ready/ }).click()

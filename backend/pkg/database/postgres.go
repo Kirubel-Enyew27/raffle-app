@@ -9,10 +9,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/lib/pq"
-	apperrors "github.com/raffle-app/backend/pkg/errors"
 	"github.com/raffle-app/backend/pkg/config"
+	apperrors "github.com/raffle-app/backend/pkg/errors"
 )
 
 func NewPostgres(cfg config.DatabaseConfig) (*sql.DB, error) {
@@ -22,10 +23,33 @@ func NewPostgres(cfg config.DatabaseConfig) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	applyPostgresPoolSettings(db, cfg)
 	if err := db.Ping(); err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 	return db, nil
+}
+
+func applyPostgresPoolSettings(db *sql.DB, cfg config.DatabaseConfig) {
+	maxOpen := cfg.MaxOpenConns
+	if maxOpen <= 0 {
+		maxOpen = 25
+	}
+	maxIdle := cfg.MaxIdleConns
+	if maxIdle <= 0 {
+		maxIdle = 5
+	}
+	if maxIdle > maxOpen {
+		maxIdle = maxOpen
+	}
+	connMaxLifetime := cfg.ConnMaxLifetime
+	if connMaxLifetime <= 0 {
+		connMaxLifetime = 5 * time.Minute
+	}
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
+	db.SetConnMaxLifetime(connMaxLifetime)
 }
 
 // RunMigrations reads .up.sql files from migrationsDir, sorts them by name,
