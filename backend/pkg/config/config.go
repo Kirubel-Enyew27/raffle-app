@@ -12,12 +12,15 @@ import (
 )
 
 type Config struct {
-	AppEnv              string
-	AppPort             int
-	AppDebug            bool
-	Database            DatabaseConfig
-	Redis               RedisConfig
-	JWT                 JWTConfig
+	AppEnv   string
+	AppPort  int
+	AppDebug bool
+	Database DatabaseConfig
+	Redis    RedisConfig
+	JWT      JWTConfig
+	Google   GoogleConfig
+	// FrontendURL is where the browser returns after an OAuth callback.
+	FrontendURL         string
 	Crash               CrashConfig
 	SMSAPIKey           string
 	TeleVerifyURL       string
@@ -53,6 +56,20 @@ type RedisConfig struct {
 	Password   string
 	DB         int
 	TLSEnabled bool
+}
+
+// GoogleConfig holds the OAuth 2.0 client used for "Sign in with Google".
+// ClientID and ClientSecret must come from the environment; RedirectURL has to
+// match an authorized redirect URI in the Google Cloud console exactly.
+type GoogleConfig struct {
+	ClientID     string
+	ClientSecret string
+	RedirectURL  string
+}
+
+// Enabled reports whether Google sign-in can be offered.
+func (g GoogleConfig) Enabled() bool {
+	return g.ClientID != "" && g.ClientSecret != "" && g.RedirectURL != ""
 }
 
 type JWTConfig struct {
@@ -163,6 +180,12 @@ func Load() (*Config, error) {
 	viper.SetDefault("REDIS_PASSWORD", "")
 	viper.SetDefault("REDIS_DB", 0)
 	viper.SetDefault("REDIS_TLS_ENABLED", false)
+	viper.SetDefault("GOOGLE_CLIENT_ID", "")
+	viper.SetDefault("GOOGLE_CLIENT_SECRET", "")
+	viper.SetDefault("GOOGLE_REDIRECT_URL", "")
+	// Where the browser is sent after a provider callback. In production this
+	// is the deployed frontend origin.
+	viper.SetDefault("FRONTEND_URL", "http://localhost:5173")
 	viper.SetDefault("JWT_SECRET", "change-me-in-production")
 	viper.SetDefault("JWT_ACCESS_EXPIRY", 15*time.Minute)
 	viper.SetDefault("JWT_REFRESH_EXPIRY", 7*24*time.Hour)
@@ -243,6 +266,12 @@ func Load() (*Config, error) {
 			AccessExpiry:  positiveDuration("JWT_ACCESS_EXPIRY", 15*time.Minute),
 			RefreshExpiry: positiveDuration("JWT_REFRESH_EXPIRY", 7*24*time.Hour),
 		},
+		Google: GoogleConfig{
+			ClientID:     viper.GetString("GOOGLE_CLIENT_ID"),
+			ClientSecret: viper.GetString("GOOGLE_CLIENT_SECRET"),
+			RedirectURL:  viper.GetString("GOOGLE_REDIRECT_URL"),
+		},
+		FrontendURL:         viper.GetString("FRONTEND_URL"),
 		SMSAPIKey:           viper.GetString("SMS_API_KEY"),
 		TeleVerifyURL:       viper.GetString("TELE_VERIFY_URL"),
 		TeleVerifyKey:       viper.GetString("TELE_VERIFY_KEY"),

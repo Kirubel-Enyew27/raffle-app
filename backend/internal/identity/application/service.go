@@ -34,6 +34,13 @@ type IdentityService struct {
 	// now is the clock used for rotation windows; tests swap it to avoid
 	// sleeping through a real grace period.
 	now func() time.Time
+
+	// Google sign-in. All four are nil unless SetGoogleOAuth was called, and
+	// the endpoints report the feature as unavailable while they are.
+	googleProvider  domain.GoogleProvider
+	oauthIdentities domain.OAuthIdentityRepository
+	oauthStates     domain.OAuthStateStore
+	loginHandoffs   domain.LoginHandoffStore
 }
 
 // Session is the credential pair returned by login and refresh. AccessToken is
@@ -161,6 +168,13 @@ func (s *IdentityService) Login(ctx context.Context, identifier, password string
 
 	if user.IsBanned {
 		return nil, errors.New("user is banned")
+	}
+
+	// Accounts created through Google have no local password. Comparing
+	// against an empty hash can only fail, so say what the user should do
+	// instead of reporting a generic bad password.
+	if user.PasswordHash == "" {
+		return nil, errors.New("this account has no password set; continue with Google sign-in")
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))

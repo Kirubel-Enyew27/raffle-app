@@ -5,10 +5,10 @@ import { setSseTokenRefresher } from '@/lib/sseClient'
 
 // In production (Vercel), VITE_API_URL points to the Render backend.
 // In development, Vite's proxy handles /api requests to localhost:8080.
-const BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
+export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
 export const api = axios.create({
-  baseURL: BASE_URL,
+  baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -29,7 +29,7 @@ export class ApiError extends Error {
 // A raw client for the refresh call itself: it must never pass through the auth
 // interceptor, or a failing refresh would recurse forever.
 const refreshClient = axios.create({
-  baseURL: BASE_URL,
+  baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -87,7 +87,8 @@ export const sessionRefresher = installAuthInterceptors(api, {
     url.includes('/auth/login') ||
     url.includes('/auth/register') ||
     url.includes('/auth/refresh') ||
-    url.includes('/auth/logout'),
+    url.includes('/auth/logout') ||
+    url.includes('/auth/google'),
 })
 
 // Allow the SSE connection manager to proactively refresh an expired token

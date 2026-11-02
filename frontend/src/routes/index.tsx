@@ -68,6 +68,9 @@ export const router = createBrowserRouter([
           { path: '/admin/crash-settings', lazy: () => import('@/pages/admin/AdminCrashSettingsPage') },
         ],
       },
+      // Lives outside AuthLayout: the callback signs the user in itself and
+      // must choose the destination before the layout redirects to /dashboard.
+      { path: '/auth/google/callback', lazy: () => import('@/pages/auth/GoogleCallbackPage') },
       { path: '/', lazy: () => import('@/pages/app/DashboardPage') },
       { path: '*', lazy: () => import('@/pages/NotFoundPage') },
     ],

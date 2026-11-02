@@ -23,6 +23,8 @@ import (
 	drawhttp "github.com/raffle-app/backend/internal/draw/interfaces/http"
 	drawrepo "github.com/raffle-app/backend/internal/draw/interfaces/repository"
 	identityapp "github.com/raffle-app/backend/internal/identity/application"
+	identitydomain "github.com/raffle-app/backend/internal/identity/domain"
+	identitygoogle "github.com/raffle-app/backend/internal/identity/infrastructure/google"
 	identityhttp "github.com/raffle-app/backend/internal/identity/interfaces/http"
 	identityrepo "github.com/raffle-app/backend/internal/identity/interfaces/repository"
 	notificationapp "github.com/raffle-app/backend/internal/notification/application"
@@ -121,6 +123,28 @@ func main() {
 		cfg.JWT.RefreshExpiry,
 		identityrepo.NewRefreshTokenStore(rdb),
 	)
+
+	// "Sign in with Google" stays optional: without credentials the endpoints
+	// report the feature as unavailable instead of failing at startup.
+	var googleProvider identitydomain.GoogleProvider
+	if cfg.Google.Enabled() {
+		googleProvider = identitygoogle.NewProvider(identitygoogle.Config{
+			ClientID:     cfg.Google.ClientID,
+			ClientSecret: cfg.Google.ClientSecret,
+			RedirectURL:  cfg.Google.RedirectURL,
+		})
+	} else {
+		logger.Warn("GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REDIRECT_URL are not set: Google sign-in is disabled")
+	}
+	identitySvc.SetGoogleOAuth(
+		googleProvider,
+		identityrepo.NewOAuthIdentityRepo(db),
+		identityrepo.NewOAuthStateStore(rdb),
+		identityrepo.NewLoginHandoffStore(rdb),
+	)
+	if cfg.FrontendURL == "" {
+		logger.Warn("FRONTEND_URL is not set: OAuth callbacks will redirect to localhost")
+	}
 
 	depositRepo := walletrepo.NewDepositRepo(db)
 	cbeVerifier := verifier.NewCBEDirectVerifier(cfg.CBEReceiptAPI, cfg.CBEAppID, cfg.CBEAppVersion, 30*time.Second)
@@ -296,6 +320,11 @@ func main() {
 	})
 
 	identityhttp.RegisterIdentityRoutes(api, identityhttp.NewIdentityHandler(identitySvc))
+	identityhttp.RegisterGoogleAuthRoutes(
+		api,
+		identityhttp.NewGoogleAuthHandler(identitySvc, cfg.FrontendURL),
+		middleware.RateLimiter(rdb, 30, time.Minute),
+	)
 	wallethttp.RegisterWalletRoutes(api, wallethttp.NewWalletHandler(walletSvc))
 	rafflehttp.RegisterRaffleRoutes(api, rafflehttp.NewRaffleHandler(raffleSvc))
 	tickethttp.RegisterTicketRoutes(api, tickethttp.NewTicketHandler(ticketSvc))

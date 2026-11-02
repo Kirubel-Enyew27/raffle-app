@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -52,11 +53,32 @@ func applyPostgresPoolSettings(db *sql.DB, cfg config.DatabaseConfig) {
 	db.SetConnMaxLifetime(connMaxLifetime)
 }
 
+// migrationLockKey is an arbitrary but stable advisory-lock key.
+const migrationLockKey int64 = 727_011_001
+
 // RunMigrations reads .up.sql files from migrationsDir, sorts them by name,
 // and applies any that haven't been recorded in the schema_migrations table.
 func RunMigrations(db *sql.DB, migrationsDir string) error {
+	// Serialize the entire run across processes. Every backend instance runs
+	// migrations on startup, so two replicas starting together would otherwise
+	// both apply (and record) the same new migration and one would fail on the
+	// schema_migrations primary key.
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to acquire a migration connection: %w", err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, migrationLockKey); err != nil {
+		return fmt.Errorf("failed to serialize migrations: %w", err)
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, migrationLockKey)
+	}()
+
 	// Ensure the tracking table exists
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+	_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
 		version VARCHAR(255) PRIMARY KEY,
 		applied_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 	)`)
@@ -85,19 +107,19 @@ func RunMigrations(db *sql.DB, migrationsDir string) error {
 	// This happens when migrating from a pre-existing (manually seeded) database.
 	// In that case, record all migrations as applied without re-executing them.
 	var totalApplied int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&totalApplied); err != nil {
+	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&totalApplied); err != nil {
 		return fmt.Errorf("failed to count applied migrations: %w", err)
 	}
 	if totalApplied == 0 {
 		// Check if the database was pre-seeded by looking for the users table
 		var tableCount int
-		if err := db.QueryRow(`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name != 'schema_migrations'`).Scan(&tableCount); err != nil {
+		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name != 'schema_migrations'`).Scan(&tableCount); err != nil {
 			return fmt.Errorf("failed to check existing tables: %w", err)
 		}
 		if tableCount > 0 {
 			log.Printf("🔍 Detected pre-existing database (%d tables). Recording %d migrations as applied without re-executing.", tableCount, len(files))
 			for _, f := range files {
-				if _, err := db.Exec(`INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING`, f.Name()); err != nil {
+				if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING`, f.Name()); err != nil {
 					return fmt.Errorf("failed to record migration %s: %w", f.Name(), err)
 				}
 			}
@@ -107,7 +129,7 @@ func RunMigrations(db *sql.DB, migrationsDir string) error {
 
 	for _, f := range files {
 		var count int
-		err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = $1`, f.Name()).Scan(&count)
+		err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version = $1`, f.Name()).Scan(&count)
 		if err != nil {
 			return fmt.Errorf("failed to check migration %s: %w", f.Name(), err)
 		}
@@ -120,11 +142,11 @@ func RunMigrations(db *sql.DB, migrationsDir string) error {
 			return fmt.Errorf("failed to read migration %s: %w", f.Name(), err)
 		}
 
-		if _, err := db.Exec(string(content)); err != nil {
+		if _, err := conn.ExecContext(ctx, string(content)); err != nil {
 			return fmt.Errorf("failed to apply migration %s: %w", f.Name(), err)
 		}
 
-		if _, err := db.Exec(`INSERT INTO schema_migrations (version) VALUES ($1)`, f.Name()); err != nil {
+		if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING`, f.Name()); err != nil {
 			return fmt.Errorf("failed to record migration %s: %w", f.Name(), err)
 		}
 

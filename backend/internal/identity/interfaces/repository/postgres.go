@@ -24,8 +24,10 @@ func scanUser(row scannable, user *domain.User) error {
 	var banReason sql.NullString
 	var fullName sql.NullString
 	var avatarURL sql.NullString
+	// Google-only accounts have no local password (migration 22).
+	var passwordHash sql.NullString
 	var deletedAt sql.NullTime
-	err := row.Scan(&user.ID, &email, &phone, &fullName, &avatarURL, &user.PasswordHash, &user.Role, &user.IsBanned, &banReason, &deletedAt, &user.CreatedAt, &user.UpdatedAt)
+	err := row.Scan(&user.ID, &email, &phone, &fullName, &avatarURL, &passwordHash, &user.Role, &user.IsBanned, &banReason, &deletedAt, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -33,6 +35,7 @@ func scanUser(row scannable, user *domain.User) error {
 	user.Phone = phone.String
 	user.FullName = fullName.String
 	user.AvatarURL = avatarURL.String
+	user.PasswordHash = passwordHash.String
 	if banReason.Valid {
 		user.BanReason = &banReason.String
 	}
@@ -65,7 +68,7 @@ func (r *UserRepo) Create(ctx context.Context, user *domain.User) error {
 	query := `INSERT INTO users (id, email, phone, full_name, avatar_url, password_hash, role, is_banned, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
 	// Optional profile fields must be NULL, not "". users.phone is UNIQUE, so
 	// storing '' makes every phone-less registration after the first fail.
-	_, err := r.db.ExecContext(ctx, query, user.ID, user.Email, nullIfEmpty(user.Phone), nullIfEmpty(user.FullName), nullIfEmpty(user.AvatarURL), user.PasswordHash, user.Role, user.IsBanned, time.Now(), time.Now())
+	_, err := r.db.ExecContext(ctx, query, user.ID, user.Email, nullIfEmpty(user.Phone), nullIfEmpty(user.FullName), nullIfEmpty(user.AvatarURL), nullIfEmpty(user.PasswordHash), user.Role, user.IsBanned, time.Now(), time.Now())
 	return err
 }
 

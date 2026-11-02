@@ -1,12 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Eye, EyeOff } from 'lucide-react'
 import { AuthCard } from '@/features/auth/AuthCard'
+import { GoogleSignInButton } from '@/features/auth/GoogleSignInButton'
+import { googleErrorKey } from '@/features/auth/google'
 import { authApi } from '@/features/auth/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -37,6 +39,29 @@ export function Component() {
 
   const [showPassword, setShowPassword] = useState(false)
 
+  // Only offer Google when this server actually has credentials configured:
+  // an unconfigured server answers {"google":false} and the button would only
+  // lead to a 503 page.
+  const { data: providers, isError: providersUnavailable } = useQuery({
+    queryKey: ['auth', 'providers'],
+    queryFn: () => authApi.providers(),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  })
+  const googleEnabled = providers?.google === true
+
+  // Hiding the button is correct when the server says Google is off, but a
+  // failed lookup is a different problem (stale backend, proxy, CORS) and used
+  // to disappear without a trace. Surface it during development.
+  useEffect(() => {
+    if (import.meta.env.DEV && providersUnavailable) {
+      console.warn('[auth] /auth/providers is unreachable, so Google sign-in stays hidden')
+    }
+  }, [providersUnavailable])
+
+  // A failed Google round trip comes back as ?error=<reason>.
+  const googleError = searchParams.get('error')
+
   const { mutate, isPending, error } = useMutation({
     mutationFn: ({ identifier, password }: Fields) => authApi.login(identifier, password),
     onSuccess: ({ token, user, refresh_token }) => {
@@ -55,6 +80,12 @@ export function Component() {
   return (
     <AuthCard title={t('auth.signIn')} subtitle={t('auth.welcomeBack')}>
       <form onSubmit={handleSubmit(d => mutate(d))} className="space-y-4">
+        {googleError && (
+          <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {t(googleErrorKey(googleError))}
+          </p>
+        )}
+
         {error && (
           <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {error.message}
@@ -98,6 +129,22 @@ export function Component() {
         <Button type="submit" className="w-full" disabled={isPending}>
           {isPending ? t('auth.signingIn') : t('auth.signIn')}
         </Button>
+
+        {googleEnabled && (
+          <>
+            <div className="relative py-1">
+              <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                <span className="w-full border-t border-border" />
+              </div>
+              <div className="relative flex justify-center">
+                <span className="bg-card px-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  {t('auth.or')}
+                </span>
+              </div>
+            </div>
+            <GoogleSignInButton redirect={pendingRedirect} />
+          </>
+        )}
 
         <p className="text-center text-sm text-muted-foreground">
           {t('auth.noAccount')}{' '}

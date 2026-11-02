@@ -1,16 +1,19 @@
 import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
 import { authStorage } from '@/lib/authStorage'
+import { authApi } from '@/features/auth/api'
+import { googleLinkErrorKey } from '@/features/auth/google'
+import { GoogleIcon } from '@/features/auth/GoogleIcon'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { FormField } from '@/components/forms/FormField'
-import { Loader2, CheckCircle2, AlertCircle, KeyRound, User as UserIcon, Camera, X } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, KeyRound, Link2, User as UserIcon, Camera, X } from 'lucide-react'
 import type { User } from '@/types/api'
 import { cn } from '@/lib/utils'
 
@@ -25,6 +28,35 @@ export function Component() {
   const [successMsg, setSuccessMsg] = useState('')
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // The Google callback returns here with a one-time outcome. Read it once and
+  // strip it from the address bar so a reload does not repeat the message.
+  const [googleOutcome] = useState(() => {
+    if (typeof window === 'undefined') return null
+    const params = new URLSearchParams(window.location.search)
+    const value = params.get('google')
+    if (!value) return null
+    params.delete('google')
+    const query = params.toString()
+    window.history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : ''))
+    return value
+  })
+  const googleLinkSucceeded = googleOutcome === 'linked'
+
+  const googleStatus = useQuery({
+    queryKey: ['auth', 'google-link'],
+    queryFn: authApi.googleLinkStatus,
+    retry: 0,
+    staleTime: 60_000,
+  })
+  const [confirmingGoogle, setConfirmingGoogle] = useState(false)
+  const [googlePassword, setGooglePassword] = useState('')
+  const linkGoogleMutation = useMutation({
+    mutationFn: (password: string) => authApi.startGoogleLink(password),
+    // The authorization happens on Google's own origin.
+    onSuccess: ({ url }) => window.location.assign(url),
+  })
+  const googleLinked = googleStatus.data?.linked === true
 
   const { register, handleSubmit, formState: { errors, isDirty } } = useForm<ProfileForm>({
     defaultValues: { full_name: user?.full_name || '', phone: user?.phone || '' },
@@ -236,6 +268,116 @@ export function Component() {
               )}
             </div>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Connected accounts */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Link2 className="h-4 w-4 shrink-0" />
+            {t('profile.connectedAccounts')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">{t('profile.connectedAccountsSubtitle')}</p>
+
+          {googleOutcome && (
+            <div
+              role="status"
+              className={cn(
+                'flex items-center gap-2 rounded-md border px-3 py-2 text-sm',
+                googleLinkSucceeded
+                  ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-400'
+                  : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400',
+              )}
+            >
+              {googleLinkSucceeded ? (
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+              ) : (
+                <AlertCircle className="h-4 w-4 shrink-0" />
+              )}
+              {googleLinkSucceeded
+                ? t('profile.googleLinked')
+                : t(googleLinkErrorKey(googleOutcome))}
+            </div>
+          )}
+
+          {googleStatus.isError ? (
+            <p className="text-sm text-muted-foreground">{t('profile.googleUnavailable')}</p>
+          ) : googleStatus.data && (
+            <div className="flex flex-col gap-3 rounded-md border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2.5">
+                <GoogleIcon className="h-5 w-5" />
+                <div>
+                  <p className="text-sm font-medium">Google</p>
+                  <p className="text-xs text-muted-foreground">
+                    {googleLinked ? t('profile.googleConnected') : t('profile.googleNotConnected')}
+                  </p>
+                </div>
+              </div>
+              {googleLinked ? (
+                <span className="self-start rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 sm:self-auto">
+                  {t('profile.connected')}
+                </span>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="self-start sm:self-auto"
+                  disabled={confirmingGoogle || linkGoogleMutation.isPending}
+                  onClick={() => setConfirmingGoogle(true)}
+                >
+                  {t('profile.connectGoogle')}
+                </Button>
+              )}
+            </div>
+          )}
+
+          {confirmingGoogle && !googleLinked && (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault()
+                linkGoogleMutation.mutate(googlePassword)
+              }}
+              className="space-y-3 rounded-md border border-border bg-muted/30 p-3"
+            >
+              <label htmlFor="google-link-password" className="block text-sm text-muted-foreground">
+                {t('profile.googleLinkPrompt')}
+              </label>
+              <Input
+                id="google-link-password"
+                type="password"
+                autoComplete="current-password"
+                value={googlePassword}
+                onChange={(event) => setGooglePassword(event.target.value)}
+              />
+              {linkGoogleMutation.isError && (
+                <p role="alert" className="text-sm text-destructive">
+                  {linkGoogleMutation.error?.message || t('profile.googleLinkFailed')}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" size="sm" disabled={!googlePassword || linkGoogleMutation.isPending}>
+                  {linkGoogleMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {linkGoogleMutation.isPending ? t('profile.connecting') : t('profile.googleLinkConfirm')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setConfirmingGoogle(false)
+                    setGooglePassword('')
+                    linkGoogleMutation.reset()
+                  }}
+                >
+                  {t('profile.cancel')}
+                </Button>
+              </div>
+            </form>
+          )}
         </CardContent>
       </Card>
     </div>
