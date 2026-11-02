@@ -259,8 +259,8 @@ function Navbar() {
   const unreadCount = unreadData?.unread || 0
 
   const sections = [
-    { key: 'raffles', label: t('nav.raffles'), to: '/raffles', items: raffleItems },
     { key: 'games',   label: t('nav.games'),   to: '/games',   items: gameItems   },
+    { key: 'raffles', label: t('nav.raffles'), to: '/raffles', items: raffleItems },
   ]
 
   const navLinks = [
