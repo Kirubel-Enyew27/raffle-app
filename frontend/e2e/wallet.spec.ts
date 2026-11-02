@@ -13,7 +13,7 @@ test.describe('Wallet Transactions', () => {
     await page.fill('#password', password)
     await page.fill('#confirm', password)
     await page.click('button[type="submit"]')
-    await page.waitForURL('/dashboard')
+    await page.waitForURL('/games')
 
     // 2. Navigate to Wallet
     await page.goto('/wallet')

@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"runtime"
 	runtimemetrics "runtime/metrics"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -133,6 +135,17 @@ func main() {
 			ClientSecret: cfg.Google.ClientSecret,
 			RedirectURL:  cfg.Google.RedirectURL,
 		})
+		// The redirect URI is forwarded to Google verbatim. A typo therefore
+		// reaches the consent screen as an unregistered redirect_uri, and Google
+		// answers with a message about OAuth policy compliance instead of naming
+		// the wrong character. Surface the effective value once at startup.
+		if parsed, err := url.Parse(cfg.Google.RedirectURL); err != nil || !strings.HasSuffix(parsed.Path, "/auth/google/callback") {
+			logger.Warn("GOOGLE_REDIRECT_URL does not point at the Google callback route; sign-in will fail until it matches the authorized redirect URI exactly",
+				zap.String("redirect_url", cfg.Google.RedirectURL),
+			)
+		} else {
+			logger.Info("Google sign-in enabled", zap.String("redirect_url", cfg.Google.RedirectURL))
+		}
 	} else {
 		logger.Warn("GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REDIRECT_URL are not set: Google sign-in is disabled")
 	}

@@ -35,7 +35,7 @@ test.describe('Raffle Lifecycle, Draw, and Winner Verification', () => {
     await page.fill('#password', password)
     await page.fill('#confirm', password)
     await page.click('button[type="submit"]')
-    await page.waitForURL('/dashboard')
+    await page.waitForURL('/games')
 
     // Navigate to wallet to deposit funds
     await page.goto('/wallet')

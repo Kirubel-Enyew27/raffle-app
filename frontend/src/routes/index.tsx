@@ -7,7 +7,7 @@ import { AdminLayout } from '@/layouts/AdminLayout'
 /**
  * Route tree:
  *
- * /                     RootLayout
+ * /                     RootLayout → HomeRedirectPage (role-based landing)
  * ├── /login            AuthLayout  → LoginPage   (stub)
  * ├── /register         AuthLayout  → RegisterPage (stub)
  * ├── /dashboard        AppLayout   → DashboardPage
@@ -69,9 +69,11 @@ export const router = createBrowserRouter([
         ],
       },
       // Lives outside AuthLayout: the callback signs the user in itself and
-      // must choose the destination before the layout redirects to /dashboard.
+      // must choose the destination before the layout redirects it away.
       { path: '/auth/google/callback', lazy: () => import('@/pages/auth/GoogleCallbackPage') },
-      { path: '/', lazy: () => import('@/pages/app/DashboardPage') },
+      // `/` resolves to the role's landing page (games for players, the admin
+      // dashboard for admins) or to the sign-in form for visitors.
+      { path: '/', lazy: () => import('@/pages/HomeRedirectPage') },
       { path: '*', lazy: () => import('@/pages/NotFoundPage') },
     ],
   },

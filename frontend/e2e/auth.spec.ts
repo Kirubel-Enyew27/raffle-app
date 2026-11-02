@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { createSession, uid } from './helpers/api'
+import { createSession, seedSession, uid } from './helpers/api'
 
 test.describe('Authentication Flow', () => {
   const email = `user_${uid()}@example.com`
@@ -19,9 +19,9 @@ test.describe('Authentication Flow', () => {
     // 3. Submit
     await page.click('button[type="submit"]')
 
-    // 4. Verify auto-login and redirect to dashboard
-    await page.waitForURL('/dashboard')
-    await expect(page.locator('h1')).toHaveText('Dashboard')
+    // 4. Verify auto-login and redirect to the games lobby (player landing page)
+    await page.waitForURL('/games')
+    await expect(page.locator('h1')).toHaveText('Play Live Against Other Players')
     await expect(page.getByRole('button', { name: 'Test User' })).toBeVisible()
   })
 
@@ -41,9 +41,28 @@ test.describe('Authentication Flow', () => {
     // 3. Submit
     await page.click('button[type="submit"]')
 
-    // 4. Verify login and redirect to dashboard
-    await page.waitForURL('/dashboard')
-    await expect(page.locator('h1')).toHaveText('Dashboard')
+    // 4. Verify login and redirect to the games lobby
+    await page.waitForURL('/games')
+    await expect(page.locator('h1')).toHaveText('Play Live Against Other Players')
+  })
+
+  test('an authenticated player opening the root URL lands on the games lobby', async ({ page }) => {
+    const session = await createSession('root_redirect')
+    await seedSession(page.context(), session)
+
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+
+    await page.waitForURL('/games')
+    await expect(page.locator('h1')).toHaveText('Play Live Against Other Players')
+  })
+
+  test('an authenticated player opening the login page is sent to the games lobby', async ({ page }) => {
+    const session = await createSession('login_redirect')
+    await seedSession(page.context(), session)
+
+    await page.goto('/login', { waitUntil: 'domcontentloaded' })
+
+    await page.waitForURL('/games')
   })
 
   test('should show validation error on incorrect credentials', async ({ page }) => {

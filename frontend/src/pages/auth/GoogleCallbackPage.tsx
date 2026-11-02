@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react'
 import { AuthCard } from '@/features/auth/AuthCard'
 import { authApi } from '@/features/auth/api'
 import { parseGoogleCallbackHash } from '@/features/auth/google'
+import { resolvePostAuthPath } from '@/features/auth/landing'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { Button } from '@/components/ui/button'
@@ -45,12 +46,12 @@ export function Component() {
       .exchangeGoogleCode(callback.code)
       .then(({ token, user, refresh_token, redirect: serverRedirect }) => {
         login(token, user, refresh_token)
-        const target = callback.redirect || serverRedirect
-        if (target) {
-          navigate(target, { replace: true })
-        } else {
-          navigate(user.role === 'admin' ? '/admin/dashboard' : '/dashboard', { replace: true })
-        }
+        // Google sign-in follows the same rule as the password form: an
+        // explicit internal redirect if one was requested, otherwise the role's
+        // landing page.
+        navigate(resolvePostAuthPath({ redirect: callback.redirect || serverRedirect, role: user.role }), {
+          replace: true,
+        })
       })
       .catch((err: Error) => {
         setError(err.message || t('auth.googleSignInFailed'))

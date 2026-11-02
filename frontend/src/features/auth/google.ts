@@ -6,6 +6,7 @@
  * seconds) and hands that code back in the URL fragment, which browsers do not
  * send to servers. These helpers build the start URL and read that fragment.
  */
+import { sanitizeRedirect } from './landing.ts'
 
 export interface GoogleCallbackResult {
   code: string | null
@@ -13,16 +14,8 @@ export interface GoogleCallbackResult {
   error: string | null
 }
 
-/** Only same-origin absolute paths are followed after sign-in. */
-export function sanitizeRedirect(value: string | null | undefined): string | null {
-  if (!value) return null
-  const trimmed = value.trim()
-  if (!trimmed.startsWith('/')) return null
-  // "//host" is protocol-relative and "/\\host" is treated as such by some
-  // browsers; both would leave the application.
-  if (trimmed.startsWith('//') || trimmed.startsWith('/\\')) return null
-  return trimmed
-}
+// Redirect sanitising lives with the other post-sign-in navigation rules.
+export { sanitizeRedirect }
 
 /** Builds the backend URL that starts the Google authorization-code flow. */
 export function buildGoogleStartUrl(apiBase: string, redirect?: string | null): string {

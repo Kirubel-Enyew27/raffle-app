@@ -9,6 +9,7 @@ import { Eye, EyeOff } from 'lucide-react'
 import { AuthCard } from '@/features/auth/AuthCard'
 import { GoogleSignInButton } from '@/features/auth/GoogleSignInButton'
 import { googleErrorKey } from '@/features/auth/google'
+import { clearPendingRedirect, readPendingRedirect, resolvePostAuthPath } from '@/features/auth/landing'
 import { authApi } from '@/features/auth/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -29,9 +30,7 @@ export function Component() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const redirectParam = searchParams.get('redirect')
-  const pendingRedirect =
-    redirectParam ||
-    (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pending_redirect') : null)
+  const pendingRedirect = readPendingRedirect(redirectParam)
 
   const { register, handleSubmit, formState: { errors } } = useForm<Fields>({
     resolver: zodResolver(schema),
@@ -66,14 +65,10 @@ export function Component() {
     mutationFn: ({ identifier, password }: Fields) => authApi.login(identifier, password),
     onSuccess: ({ token, user, refresh_token }) => {
       login(token, user, refresh_token)
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.removeItem('pending_redirect')
-      }
-      if (pendingRedirect && pendingRedirect.startsWith('/') && !pendingRedirect.startsWith('//')) {
-        navigate(pendingRedirect)
-      } else {
-        navigate(user.role === 'admin' ? '/admin/dashboard' : '/dashboard')
-      }
+      clearPendingRedirect()
+      // Players land on the games lobby, admins on their dashboard; an explicit
+      // internal ?redirect= still wins so deep links survive the sign-in.
+      navigate(resolvePostAuthPath({ redirect: pendingRedirect, role: user.role }), { replace: true })
     },
   })
 
