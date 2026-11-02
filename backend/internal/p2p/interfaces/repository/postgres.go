@@ -300,9 +300,14 @@ func (r *MatchRepo) ListUserMatches(ctx context.Context, userID string, limit, o
 	return list, count, rows.Err()
 }
 
-func (r *MatchRepo) FindExpiredTurns(ctx context.Context, now time.Time) ([]*domain.Match, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+matchColumns+` FROM p2p_matches
-		WHERE status = 'in_progress' AND turn_deadline IS NOT NULL AND turn_deadline < $1`, now)
+// matchIDs reads only the id column for a background-sweep candidate query.
+//
+// The sweeps never trust this snapshot: each candidate is re-read under
+// FOR UPDATE before anything is decided, so loading the rest of the row (in
+// particular board_state, a JSONB column stored out of line) only added I/O to
+// a query that runs every second on every instance.
+func (r *MatchRepo) matchIDs(ctx context.Context, query string, args ...interface{}) ([]*domain.Match, error) {
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -310,51 +315,28 @@ func (r *MatchRepo) FindExpiredTurns(ctx context.Context, now time.Time) ([]*dom
 
 	var list []*domain.Match
 	for rows.Next() {
-		m, err := scanMatch(rows)
-		if err != nil {
+		m := &domain.Match{}
+		if err := rows.Scan(&m.ID); err != nil {
 			return nil, err
 		}
 		list = append(list, m)
 	}
 	return list, rows.Err()
+}
+
+func (r *MatchRepo) FindExpiredTurns(ctx context.Context, now time.Time) ([]*domain.Match, error) {
+	return r.matchIDs(ctx, `SELECT id FROM p2p_matches
+		WHERE status = 'in_progress' AND turn_deadline IS NOT NULL AND turn_deadline < $1`, now)
 }
 
 func (r *MatchRepo) FindIdleWaitingRooms(ctx context.Context, olderThan time.Time) ([]*domain.Match, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+matchColumns+` FROM p2p_matches
+	return r.matchIDs(ctx, `SELECT id FROM p2p_matches
 		WHERE status = 'waiting' AND created_at < $1`, olderThan)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var list []*domain.Match
-	for rows.Next() {
-		m, err := scanMatch(rows)
-		if err != nil {
-			return nil, err
-		}
-		list = append(list, m)
-	}
-	return list, rows.Err()
 }
 
 func (r *MatchRepo) FindExpiredDisconnects(ctx context.Context, now time.Time) ([]*domain.Match, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+matchColumns+` FROM p2p_matches
+	return r.matchIDs(ctx, `SELECT id FROM p2p_matches
 		WHERE status = 'in_progress' AND disconnect_deadline IS NOT NULL AND disconnect_deadline < $1`, now)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var list []*domain.Match
-	for rows.Next() {
-		m, err := scanMatch(rows)
-		if err != nil {
-			return nil, err
-		}
-		list = append(list, m)
-	}
-	return list, rows.Err()
 }
 
 func (r *MatchRepo) UpdateStateTx(ctx context.Context, tx *sql.Tx, match *domain.Match) error {

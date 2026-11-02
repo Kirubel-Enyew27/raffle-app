@@ -532,7 +532,7 @@ export function Component() {
     },
     onError: (err: unknown) => {
       toast({
-        title: 'Could not resign',
+        title: 'Could not resign the match',
         description: apiErrorMessage(err),
         type: 'error',
       })
