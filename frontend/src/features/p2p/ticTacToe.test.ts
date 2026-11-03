@@ -40,9 +40,9 @@ test('seatForCell reads the board encoding and never treats an empty cell as a m
   assert.equal(seatForCell(undefined), null)
 })
 
-test('the two seats are visually distinct and labelled by shape', () => {
+test('the two seats are visually distinct and labelled by their mark', () => {
   assert.notEqual(MARKER_THEME[1].shape, MARKER_THEME[2].shape)
-  assert.notEqual(MARKER_THEME[1].colorClass, MARKER_THEME[2].colorClass)
-  assert.equal(markerLabel(1), 'Diamond')
-  assert.equal(markerLabel(2), 'Square')
+  assert.notEqual(MARKER_THEME[1].solidLabel, MARKER_THEME[2].solidLabel)
+  assert.equal(markerLabel(1), 'X')
+  assert.equal(markerLabel(2), 'O')
 })

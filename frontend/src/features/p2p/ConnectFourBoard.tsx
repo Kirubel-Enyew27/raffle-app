@@ -100,8 +100,8 @@ export function ConnectFourBoard({
         })}
       </div>
 
-      {/* Board: dark slots in a blue frame, tokens drawn on top of each slot */}
-      <div className="relative w-full max-w-md rounded-2xl border-4 border-[#0b2350] bg-gradient-to-b from-[#1e40af] to-[#152a63] p-2.5 shadow-2xl sm:rounded-3xl sm:p-4 dark:border-[#0a1733] dark:from-[#1b2f63] dark:to-[#0d1c3d]">
+      {/* Board: dark slots in the card's charcoal frame, tokens drawn on top of each slot */}
+      <div className="relative w-full max-w-md rounded-2xl border-4 border-[#3a3e46] bg-gradient-to-b from-[#2a2d35] to-[#111318] p-2.5 shadow-2xl sm:rounded-3xl sm:p-4">
         <div className="grid gap-1.5 sm:gap-2.5" style={gridStyle}>
           {Array.from({ length: rows }).map((_, row) =>
             Array.from({ length: cols }).map((_, column) => {
@@ -123,18 +123,18 @@ export function ConnectFourBoard({
                   disabled={!canClickColumn}
                   style={isWin && winIndex >= 0 ? { animationDelay: `${winIndex * 150}ms` } : undefined}
                   className={[
-                    'relative aspect-square rounded-full bg-[#0a1733]/85',
+                    'relative aspect-square rounded-full bg-[#0a0b0d]/90',
                     'shadow-[inset_0_3px_7px_rgba(0,0,0,0.75),inset_0_-1px_2px_rgba(255,255,255,0.08)]',
                     'transition-all duration-300',
                     canClickColumn ? 'cursor-pointer' : 'cursor-default',
                     hoveredCol === column && canClickColumn ? 'ring-1 ring-inset ring-white/20' : '',
                     isWin
-                      ? 'ring-4 ring-emerald-400 ring-offset-2 ring-offset-[#0b2350] shadow-[0_0_20px_rgba(52,211,153,0.75)] z-10 c4-win-seq'
+                      ? 'ring-4 ring-emerald-400 ring-offset-2 ring-offset-[#1a1c21] shadow-[0_0_20px_rgba(52,211,153,0.75)] z-10 c4-win-seq'
                       : '',
                     isDraw ? 'ring-1 ring-amber-400/40' : '',
                   ].join(' ')}
                   aria-label={`Row ${row + 1}, column ${column + 1}: ${
-                    seat ? (seat === 1 ? 'teal token' : 'amber token') : 'empty'
+                    seat ? (seat === 1 ? 'red token' : 'amber token') : 'empty'
                   }${isWin ? ', part of the winning 4-in-a-row connection' : ''}`}
                 >
                   {seat && (

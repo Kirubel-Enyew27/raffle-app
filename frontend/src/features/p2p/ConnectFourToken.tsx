@@ -1,11 +1,10 @@
+import { ConnectFourBall } from './GamePieces'
 import type { ConnectFourSeat } from './connectFour'
 
 /**
- * Drawn Connect Four tokens.
- *
- * Both seats share identical geometry — a bevelled disc plus one specular
- * highlight — and differ only by hue: teal for seat one, amber for seat two.
- * No rings, stripes or centre marks are drawn on the disc.
+ * Connect Four tokens, rendered from the shared `ConnectFourBall` artwork: the
+ * same glossy red and amber discs that appear on the game card. Seat one is
+ * KWIK red, seat two is amber; the balls carry no rings, stripes or markings.
  */
 export type TokenEmphasis = 'none' | 'last' | 'win'
 
@@ -19,24 +18,16 @@ interface ConnectFourTokenProps {
   ghost?: boolean
 }
 
-const SEAT_STYLES: Record<ConnectFourSeat, { body: string; label: string }> = {
-  1: {
-    body: 'border-teal-200/45 bg-[radial-gradient(circle_at_34%_27%,#8ff5e3_0%,#14b8a6_40%,#0f766e_76%,#0f4f4a_100%)] shadow-[0_3px_6px_rgba(0,0,0,0.45),inset_0_2px_3px_rgba(255,255,255,0.45),inset_0_-4px_8px_rgba(0,0,0,0.45)]',
-    label: 'teal token',
-  },
-  2: {
-    body: 'border-amber-200/55 bg-[radial-gradient(circle_at_34%_27%,#fff0b8_0%,#fbbf24_40%,#d97706_76%,#8a4a03_100%)] shadow-[0_3px_6px_rgba(0,0,0,0.4),inset_0_2px_3px_rgba(255,255,255,0.55),inset_0_-4px_8px_rgba(120,53,15,0.45)]',
-    label: 'amber token',
-  },
+const SEAT_LABEL: Record<ConnectFourSeat, string> = {
+  1: 'red token',
+  2: 'amber token',
 }
 
 export function ConnectFourToken({ seat, className, emphasis = 'none', ghost = false }: ConnectFourTokenProps) {
-  const style = SEAT_STYLES[seat]
-
   return (
     <span
       role="img"
-      aria-label={style.label}
+      aria-label={SEAT_LABEL[seat]}
       className={[
         'relative inline-block aspect-square rounded-full',
         emphasis === 'win' ? 'c4-token-win' : '',
@@ -46,13 +37,7 @@ export function ConnectFourToken({ seat, className, emphasis = 'none', ghost = f
         .filter(Boolean)
         .join(' ')}
     >
-      {/* Disc with bevel and shading. */}
-      <span aria-hidden="true" className={['absolute inset-0 rounded-full border', style.body].join(' ')} />
-      {/* Restrained specular highlight, not a neon glow. */}
-      <span
-        aria-hidden="true"
-        className="absolute left-[16%] top-[12%] h-[16%] w-[30%] -rotate-[18deg] rounded-full bg-white/35 blur-[0.5px]"
-      />
+      <ConnectFourBall seat={seat} className="absolute inset-0 h-full w-full" />
       {/* Last placed token: a thin rim so the newest move is traceable. */}
       {emphasis === 'last' && (
         <span aria-hidden="true" className="absolute inset-0 rounded-full ring-1 ring-inset ring-white/85" />

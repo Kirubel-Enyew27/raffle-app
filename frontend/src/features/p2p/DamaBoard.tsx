@@ -39,11 +39,12 @@ interface DamaVisualMove {
   promotion: boolean
 }
 
-const LIGHT_SQUARE = 'bg-[#e9d6b8]'
-const DARK_SQUARE = 'bg-gradient-to-br from-[#7a4a25] to-[#4b2a13]'
+// The card's board: charcoal squares inside a dark frame, tinted gold at the rim.
+const LIGHT_SQUARE = 'bg-[#363b46]'
+const DARK_SQUARE = 'bg-gradient-to-br from-[#191b21] to-[#101116]'
 
 function pieceLabel(side: DamaSide, king: boolean): string {
-  const color = side === 0 ? 'ivory' : 'obsidian'
+  const color = side === 0 ? 'ivory' : 'crimson'
   return king ? `${color} king` : `${color} checker`
 }
 
@@ -196,19 +197,19 @@ export function DamaBoard({
       {/* Piece Counts Bar */}
       <div className="flex w-full items-center justify-between px-2 text-xs font-bold text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-full bg-[#f4ebd9] border border-amber-900/30" />
+          <DamaPiece side={0} className="h-3.5 w-3.5 shrink-0" />
           <span>Ivory (P1): {lightCount}</span>
           {lightCount === 0 && gameOver && <span className="text-rose-500 text-[10px] uppercase">(Eliminated)</span>}
         </span>
         <span className="flex items-center gap-1.5">
-          <span>Obsidian (P2): {darkCount}</span>
+          <span>Crimson (P2): {darkCount}</span>
           {darkCount === 0 && gameOver && <span className="text-rose-500 text-[10px] uppercase">(Eliminated)</span>}
-          <span className="h-3 w-3 rounded-full bg-[#2a1d17] border border-amber-500/30" />
+          <DamaPiece side={1} className="h-3.5 w-3.5 shrink-0" />
         </span>
       </div>
 
       {/* 8x8 Board */}
-      <div className="relative w-full rounded-2xl border-4 border-[#4a2c17] bg-[#4a2c17] p-1.5 shadow-2xl shadow-black/40">
+      <div className="relative w-full rounded-2xl border-4 border-[#3a3226] bg-[#0f1013] p-1.5 shadow-2xl shadow-black/40">
         <div className="relative">
         <div className="grid grid-cols-8 overflow-hidden rounded-lg" role="grid" aria-label="Ethiopian Dama board">
           {displaySquares(cells, orientation).map(({ index, playable, value }) => {
@@ -248,7 +249,7 @@ export function DamaBoard({
                   DARK_SQUARE,
                   selectable ? 'cursor-pointer hover:brightness-110' : '',
                   canInteract
-                    ? 'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-1 focus-visible:ring-offset-[#4a2c17]'
+                    ? 'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-1 focus-visible:ring-offset-[#0f1013]'
                     : '',
                   isSelected ? 'z-10 ring-2 ring-inset ring-amber-300' : '',
                   isLastFrom && !isSelected ? 'ring-2 ring-inset ring-amber-200/50' : '',

@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/AuthContext'
 import { p2pApi } from '@/features/p2p/api'
+import { GameIcon } from '@/features/p2p/GameIcon'
 import type { LeaderboardPeriod, LeaderboardSortBy, LeaderboardPlayer } from '@/types/api'
 
 export function Component() {
@@ -195,9 +196,11 @@ export function Component() {
                 key={g.slug}
                 size="sm"
                 variant={selectedGame === g.slug ? 'default' : 'outline'}
-                className="h-7 text-xs px-2.5"
+                className="h-7 gap-1.5 text-xs px-2.5"
                 onClick={() => handleGameChange(g.slug)}
               >
+                {/* Same game artwork as the cards, so the filter is recognisable at a glance. */}
+                <GameIcon slug={g.slug} size="sm" />
                 {g.title}
               </Button>
             ))}

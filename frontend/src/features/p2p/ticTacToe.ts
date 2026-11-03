@@ -9,24 +9,24 @@
 export type TicTacToeSeat = 1 | 2
 
 export interface MarkerTheme {
-  /** Shape name, also used as the accessible label. */
-  readonly shape: 'diamond' | 'square'
-  /** Text colour driving the SVG's currentColor. Tuned for light and dark. */
-  readonly colorClass: string
+  /** Glyph name, also used as the accessible label. */
+  readonly shape: 'x' | 'o'
   /** Soft halo applied to a marker once it is placed on the board. */
   readonly glowClass: string
+  /** Short description of the mark's material, for accessible labels. */
+  readonly solidLabel: string
 }
 
 export const MARKER_THEME: Record<TicTacToeSeat, MarkerTheme> = {
   1: {
-    shape: 'diamond',
-    colorClass: 'text-sky-600 dark:text-sky-400',
-    glowClass: 'drop-shadow-[0_2px_7px_rgba(2,132,199,0.45)]',
+    shape: 'x',
+    glowClass: 'drop-shadow-[0_2px_8px_rgba(255,91,85,0.45)]',
+    solidLabel: 'crimson X',
   },
   2: {
-    shape: 'square',
-    colorClass: 'text-amber-600 dark:text-amber-400',
-    glowClass: 'drop-shadow-[0_2px_7px_rgba(180,83,9,0.45)]',
+    shape: 'o',
+    glowClass: 'drop-shadow-[0_2px_8px_rgba(120,110,90,0.45)]',
+    solidLabel: 'ivory O',
   },
 }
 
@@ -60,5 +60,5 @@ export function seatForPlayerIndex(index: number | null | undefined): TicTacToeS
 }
 
 export function markerLabel(seat: TicTacToeSeat): string {
-  return MARKER_THEME[seat].shape === 'diamond' ? 'Diamond' : 'Square'
+  return MARKER_THEME[seat].shape === 'x' ? 'X' : 'O'
 }

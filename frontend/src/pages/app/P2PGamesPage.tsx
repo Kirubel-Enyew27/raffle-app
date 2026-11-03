@@ -49,7 +49,7 @@ const GAME_FORMATS: Record<string, string> = {
   'ethiopian-dama': 'SINGLE GAME',
   'tic-tac-toe': 'BO3',
   'rock-paper-scissors': 'BO3',
-  'connect-four': 'BO3',
+  'connect-four': 'SINGLE GAME',
 }
 
 /** Per-game accent used for the card's ambient light. */
