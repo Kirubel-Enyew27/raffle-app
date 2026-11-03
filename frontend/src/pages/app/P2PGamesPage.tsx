@@ -19,6 +19,7 @@ import { useToast } from '@/contexts/ToastContext'
 import { p2pApi } from '@/features/p2p/api'
 import { useP2PStream } from '@/features/p2p/useP2PStream'
 import { GameIcon } from '@/features/p2p/GameIcon'
+import { GameArtwork } from '@/features/p2p/GameArtwork'
 import { ChallengeFriendModal } from '@/features/p2p/ChallengeFriendModal'
 import { AcceptInviteModal } from '@/features/p2p/AcceptInviteModal'
 import { extractStartInviteCode } from '@/lib/telegram'
@@ -49,6 +50,14 @@ const GAME_FORMATS: Record<string, string> = {
   'tic-tac-toe': 'BO3',
   'rock-paper-scissors': 'BO3',
   'connect-four': 'BO3',
+}
+
+/** Per-game accent used for the card's ambient light. */
+const GAME_ACCENTS: Record<string, string> = {
+  'ethiopian-dama': '#fbbf24',
+  'tic-tac-toe': '#ff5b55',
+  'rock-paper-scissors': '#a78bfa',
+  'connect-four': '#34d399',
 }
 
 const CARD = 'rounded-2xl border border-border/80 bg-card'
@@ -304,25 +313,38 @@ export function Component() {
           {games.map((g) => (
             <article
               key={g.slug}
-              className="group flex flex-col overflow-hidden rounded-2xl border border-[#23252b] bg-[#121317] transition-colors hover:border-[#ff5b55]/40 hover:bg-[#15161b]"
+              className="group relative flex flex-col overflow-hidden rounded-2xl border border-[#23252b] bg-[linear-gradient(180deg,#15161b_0%,#121317_55%,#0f1013_100%)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#ff5b55]/45 hover:shadow-[0_18px_44px_-24px_rgba(255,91,85,0.55)] active:translate-y-0 active:scale-[0.995]"
             >
-              {/* Board art */}
-              <div className="relative flex h-28 items-center justify-center overflow-hidden bg-[#0e0f12]">
+              {/* Board artwork — custom per-game illustration with ambient light. */}
+              <div className="relative h-32 overflow-hidden border-b border-[#1f2126] bg-[#0c0d10]">
                 <div
                   aria-hidden="true"
-                  className="absolute inset-0 bg-[radial-gradient(70%_70%_at_50%_120%,rgba(255,91,85,0.16),transparent_70%)]"
+                  className="absolute inset-0"
+                  style={{
+                    background: `radial-gradient(85% 95% at 50% 115%, ${GAME_ACCENTS[g.slug] ?? '#ff5b55'}26, transparent 72%)`,
+                  }}
                 />
-                <GameIcon slug={g.slug} size="xl" className="relative h-14 w-14" />
+                <div className="absolute inset-0 transition-transform duration-500 ease-out motion-safe:group-hover:scale-[1.04]">
+                  <GameArtwork slug={g.slug} />
+                </div>
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#121317] via-transparent to-transparent"
+                />
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/5 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+                />
                 <button
                   type="button"
                   onClick={() => handleCreateMatch(g.slug, false, true)}
                   disabled={createMutation.isPending}
                   aria-label={`Quick play ${g.title}`}
-                  className="absolute right-3 top-3 rounded-lg border border-[#2c2f36] bg-[#0c0d10]/80 p-1.5 text-[#ff5b55] transition-colors hover:border-[#ff5b55]/50 hover:text-[#ff8a80]"
+                  className="absolute right-3 top-3 rounded-lg border border-[#2c2f36] bg-[#0c0d10]/70 p-1.5 text-[#ff5b55] backdrop-blur transition-all hover:border-[#ff5b55]/50 hover:text-[#ff8a80] hover:shadow-[0_0_18px_-4px_rgba(255,91,85,0.7)]"
                 >
                   <ArrowUpRight className="h-4 w-4" />
                 </button>
-                <span className="absolute bottom-3 left-3 rounded-full border border-[#2c2f36] bg-[#0c0d10]/80 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-[#9ca1a8]">
+                <span className="absolute bottom-3 left-3 rounded-full border border-[#2c2f36] bg-[#0c0d10]/70 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-[#9ca1a8] backdrop-blur">
                   {GAME_FORMATS[g.slug] ?? '1V1'}
                 </span>
               </div>
@@ -369,6 +391,38 @@ export function Component() {
           ))}
         </div>
       </section>
+
+      {/* Crash arena is hidden from the lobby for now. The `/crash` route still
+          works for anyone with a direct link; restore this block to surface it.
+      <section className="relative overflow-hidden rounded-2xl border border-[#23252b] bg-[linear-gradient(115deg,#151317_0%,#121317_55%,#0f1013_100%)] p-4 sm:p-5">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-[#ff5b55]/12 blur-3xl"
+        />
+        <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="h-24 w-full shrink-0 overflow-hidden rounded-xl border border-[#2a1c1e] bg-[#0c0d10] sm:w-56">
+            <CrashArtwork />
+          </div>
+          <div className="min-w-0 flex-1">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#ff5b55]/25 bg-[#ff5b55]/10 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-[#ff8a80]">
+              <Zap className="h-3 w-3" />
+              Shared round
+            </span>
+            <h3 className="mt-2 text-lg font-bold text-white">Crash</h3>
+            <p className="mt-1 text-xs text-[#9ca1a8]">
+              Ride the multiplier. Cash out before the round crashes.
+            </p>
+          </div>
+          <Button
+            onClick={() => navigate('/crash')}
+            className="h-10 shrink-0 gap-1.5 px-5 text-sm"
+          >
+            Play Crash
+            <ArrowUpRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </section>
+      */}
 
       {/* Lobby / history */}
       <section className="space-y-4">
