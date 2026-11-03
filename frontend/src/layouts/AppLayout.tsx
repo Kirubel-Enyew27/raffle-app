@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Navigate, Outlet, Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { LogOut, Bell, Menu, X, User as UserIcon, Wallet, Sun, Moon, Monitor, Globe, ChevronDown } from 'lucide-react'
+import { LogOut, Bell, Menu, X, User as UserIcon, Wallet, Sun, Moon, Monitor, Globe, ChevronDown, Gamepad2, Trophy } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/contexts/AuthContext'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -408,6 +408,50 @@ function Navbar() {
   )
 }
 
+/**
+ * Mobile-first primary navigation. Telegram Mini App users get four
+ * thumb-reachable destinations pinned to the bottom of the screen; desktop
+ * keeps the header navigation only.
+ */
+function MobileTabBar() {
+  const { t } = useTranslation()
+  const tabs = [
+    { to: '/games', label: t('nav.play'), icon: Gamepad2 },
+    { to: '/leaderboard', label: t('nav.ranks'), icon: Trophy },
+    { to: '/wallet', label: t('nav.wallet'), icon: Wallet },
+    { to: '/profile', label: t('nav.profile'), icon: UserIcon },
+  ]
+
+  return (
+    <nav
+      aria-label="Primary"
+      className="dark fixed inset-x-0 bottom-0 z-40 border-t border-[#1f2126] bg-[#0a0a0b]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
+    >
+      <div className="mx-auto flex max-w-md items-stretch justify-between px-2">
+        {tabs.map(({ to, label, icon: Icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            className={({ isActive }) =>
+              [
+                'flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] font-semibold transition-colors',
+                isActive ? 'text-[#ff5b55]' : 'text-[#8b9098] hover:text-white',
+              ].join(' ')
+            }
+          >
+            {({ isActive }) => (
+              <>
+                <Icon className="h-5 w-5" strokeWidth={isActive ? 2.4 : 1.8} />
+                <span className="truncate">{label}</span>
+              </>
+            )}
+          </NavLink>
+        ))}
+      </div>
+    </nav>
+  )
+}
+
 export function AppLayout() {
   const { isAuthenticated, isLoading } = useAuth()
   const location = useLocation()
@@ -430,9 +474,10 @@ export function AppLayout() {
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar />
-      <main className="flex-1">
+      <main className="flex-1 pb-20 sm:pb-0">
         <Outlet />
       </main>
+      <MobileTabBar />
     </div>
   )
 }

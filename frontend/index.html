@@ -4,7 +4,19 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RaffleApp</title>
+    <title>KWIK</title>
+    <script>
+      // Apply the saved theme before first paint so the dark KWIK shell never
+      // flashes white. Defaults to dark, matching the app's ThemeProvider.
+      (function () {
+        try {
+          var t = localStorage.getItem('theme') || 'dark';
+          var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.classList.toggle('dark', dark);
+        } catch (e) {}
+      })();
+    </script>
+    <meta name="theme-color" content="#0a0a0b" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
   <body>

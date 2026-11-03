@@ -10,8 +10,10 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
+  // KWIK is a dark-first product: until someone picks a theme, use the brand
+  // dark surface. The toggle still lets them choose light or system later.
   const [theme, setThemeState] = useState<Theme>(
-    () => (localStorage.getItem('theme') as Theme) ?? 'system',
+    () => (localStorage.getItem('theme') as Theme) ?? 'dark',
   )
 
   useEffect(() => {
