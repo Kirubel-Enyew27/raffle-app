@@ -40,8 +40,17 @@ interface DamaVisualMove {
 }
 
 // The card's board: charcoal squares inside a dark frame, tinted gold at the rim.
-const LIGHT_SQUARE = 'bg-[#363b46]'
 const DARK_SQUARE = 'bg-gradient-to-br from-[#191b21] to-[#101116]'
+
+const LIGHT_SQUARE = 'bg-[#363b46]'
+
+// In light mode, invert the checkerboard aesthetic only: playable squares stay
+// the piece-bearing squares, but they take a darker visual shade so Dama pieces
+// sit on dark squares and empty light squares remain the lighter non-playable
+// checkerboard partner. Board coordinates, playability and game logic are
+// unchanged — this is purely a light-theme color swap.
+const LIGHT_SQUARE_PLAYABLE = 'bg-[#7a6f5c]'
+const LIGHT_SQUARE_NON_PLAYABLE = 'bg-[#ece9e0]'
 
 function pieceLabel(side: DamaSide, king: boolean): string {
   const color = side === 0 ? 'ivory' : 'crimson'
@@ -209,9 +218,20 @@ export function DamaBoard({
       </div>
 
       {/* 8x8 Board */}
-      <div className="relative w-full rounded-2xl border-4 border-[#3a3226] bg-[#0f1013] p-1.5 shadow-2xl shadow-black/40">
+      <div
+        className={[
+          'relative w-full rounded-2xl border-4 p-1.5 shadow-2xl transition-colors duration-200',
+          'bg-card',
+          'border-[#3a3226] dark:border-[#3a3226] dark:bg-[#0f1013]',
+          'dark:shadow-black/40',
+        ].join(' ')}
+      >
         <div className="relative">
-        <div className="grid grid-cols-8 overflow-hidden rounded-lg" role="grid" aria-label="Ethiopian Dama board">
+        <div
+          className="grid grid-cols-8 overflow-hidden rounded-lg"
+          role="grid"
+          aria-label="Ethiopian Dama board"
+        >
           {displaySquares(cells, orientation).map(({ index, playable, value }) => {
             const side = pieceSide(value)
             const king = pieceIsKing(value)
@@ -231,12 +251,22 @@ export function DamaBoard({
             )
 
             if (!playable) {
-              return <div key={`light-${index}`} aria-hidden="true" className={`aspect-square w-full ${LIGHT_SQUARE}`} />
+              return (
+                <div
+                  key={`non-playable-${index}`}
+                  aria-hidden="true"
+                  className={[
+                    'aspect-square w-full transition-colors duration-200',
+                    'dark:bg-[#363b46]',
+                    'bg-[#ece9e0]',
+                  ].join(' ')}
+                />
+              )
             }
 
             return (
               <button
-                key={`dark-${index}`}
+                key={`playable-${index}`}
                 type="button"
                 onClick={() => handleSquare(index)}
                 disabled={!canInteract}
@@ -246,20 +276,50 @@ export function DamaBoard({
                 aria-pressed={isSelected}
                 className={[
                   'group relative aspect-square w-full transition-colors duration-150',
-                  DARK_SQUARE,
-                  selectable ? 'cursor-pointer hover:brightness-110' : '',
+                  'dark:bg-gradient-to-br dark:from-[#191b21] dark:to-[#101116]',
+                  LIGHT_SQUARE_PLAYABLE,
+                  selectable ? 'cursor-pointer dark:hover:brightness-110 hover:brightness-105' : '',
                   canInteract
-                    ? 'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-1 focus-visible:ring-offset-[#0f1013]'
+                    ? [
+                        'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2',
+                        'focus-visible:ring-amber-300 dark:focus-visible:ring-amber-400',
+                        'focus-visible:ring-offset-1 dark:focus-visible:ring-offset-[#0f1013]',
+                      ].join(' ')
                     : '',
-                  isSelected ? 'z-10 ring-2 ring-inset ring-amber-300' : '',
-                  isLastFrom && !isSelected ? 'ring-2 ring-inset ring-amber-200/50' : '',
-                  isLastTo && !isSelected ? 'ring-2 ring-inset ring-emerald-300/80 shadow-md' : '',
+                  isSelected
+                    ? [
+                        'z-10 ring-2 ring-inset ring-amber-400',
+                        'dark:ring-amber-300',
+                      ].join(' ')
+                    : '',
+                  isLastFrom && !isSelected
+                    ? [
+                        'ring-2 ring-inset ring-amber-600/60',
+                        'dark:ring-amber-200/50',
+                      ].join(' ')
+                    : '',
+                  isLastTo && !isSelected
+                    ? [
+                        'ring-2 ring-inset ring-emerald-600/80 shadow-md',
+                        'dark:ring-emerald-300/80',
+                      ].join(' ')
+                    : '',
                   isTarget ? 'cursor-pointer' : '',
-                  isTrappedPiece ? 'ring-2 ring-inset ring-rose-500/80 bg-rose-950/40' : '',
-                  isVictoriousRemainingPiece ? 'ring-2 ring-inset ring-emerald-400/80 bg-emerald-950/20' : '',
+                  isTrappedPiece
+                    ? [
+                        'ring-2 ring-inset ring-rose-500/80 bg-rose-950/40',
+                        'dark:bg-rose-950/40',
+                      ].join(' ')
+                    : '',
+                  isVictoriousRemainingPiece
+                    ? [
+                        'ring-2 ring-inset ring-emerald-400/80 bg-emerald-950/20',
+                        'dark:bg-emerald-950/20',
+                      ].join(' ')
+                    : '',
                 ].join(' ')}
               >
-                <span className="pointer-events-none absolute bottom-0.5 left-1 text-[8px] font-semibold uppercase tracking-tight text-amber-100/50">
+                <span className="pointer-events-none absolute bottom-0.5 left-1 text-[8px] font-semibold uppercase tracking-tight">
                   {squareName(index)}
                 </span>
 
@@ -270,8 +330,15 @@ export function DamaBoard({
                     className={[
                       'pointer-events-none absolute rounded-full border-2 shadow-sm',
                       captureTarget
-                        ? 'inset-[34%] border-rose-100/85 bg-rose-500/35 motion-safe:animate-pulse'
-                        : 'inset-[37%] border-emerald-100/85 bg-emerald-400/30',
+                        ? [
+                            'inset-[34%] border-rose-100/85 bg-rose-500/35',
+                            'dark:border-rose-100/85 dark:bg-rose-500/35',
+                            'motion-safe:animate-pulse',
+                          ].join(' ')
+                        : [
+                            'inset-[37%] border-emerald-100/85 bg-emerald-400/30',
+                            'dark:border-emerald-100/85 dark:bg-emerald-400/30',
+                          ].join(' '),
                     ].join(' ')}
                   />
                 )}
@@ -299,7 +366,7 @@ export function DamaBoard({
                 {isVictoriousRemainingPiece && (
                   <span
                     aria-hidden="true"
-                    className="pointer-events-none absolute -top-1 -right-1 z-20 flex h-3.5 w-3.5 items-center justify-center text-emerald-400 animate-pulse"
+                    className="pointer-events-none absolute -top-1 -right-1 z-20 flex h-3.5 w-3.5 items-center justify-center text-emerald-500 animate-pulse"
                   >
                   </span>
                 )}
@@ -309,15 +376,21 @@ export function DamaBoard({
                     className={[
                       'pointer-events-none absolute inset-[11%] block rounded-full',
                       'transition-transform duration-150 motion-safe:group-hover:scale-105 motion-reduce:transition-none',
-                      isSelected ? 'scale-105 drop-shadow-[0_0_7px_rgba(252,211,77,0.65)]' : '',
-                      selectable && !isSelected ? 'ring-1 ring-amber-200/45' : '',
-                      isVictoriousRemainingPiece ? 'drop-shadow-[0_0_8px_rgba(52,211,153,0.8)] scale-105' : '',
+                      isSelected
+                        ? 'scale-105 drop-shadow-[0_0_9px_rgba(251,191,36,0.85)]'
+                        : '',
+                      selectable && !isSelected
+                        ? 'ring-1 ring-amber-500/50 dark:ring-amber-200/45'
+                        : '',
+                      isVictoriousRemainingPiece
+                        ? 'drop-shadow-[0_0_10px_rgba(52,211,153,0.9)] scale-105'
+                        : '',
                       isTrappedPiece ? 'opacity-85 scale-95' : '',
                     ].join(' ')}
                   >
                     <DamaPiece side={side ?? 0} king={king} arriving={isLastTo} className="h-full w-full" />
                     {king && isLastTo && lastMove?.promotion && (
-                      <span className="absolute -right-1 -top-1 rounded-full bg-amber-300 px-1 text-[8px] font-black text-black motion-safe:animate-bounce motion-reduce:animate-none">
+                      <span className="absolute -right-1 -top-1 rounded-full bg-amber-400 px-1 text-[8px] font-black text-[#17181c] dark:text-black motion-safe:animate-bounce motion-reduce:animate-none">
                         K
                       </span>
                     )}

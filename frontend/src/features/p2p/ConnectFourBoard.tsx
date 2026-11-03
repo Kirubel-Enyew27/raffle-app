@@ -100,8 +100,16 @@ export function ConnectFourBoard({
         })}
       </div>
 
-      {/* Board: dark slots in the card's charcoal frame, tokens drawn on top of each slot */}
-      <div className="relative w-full max-w-md rounded-2xl border-4 border-[#3a3e46] bg-gradient-to-b from-[#2a2d35] to-[#111318] p-2.5 shadow-2xl sm:rounded-3xl sm:p-4">
+      {/* Board frame: theme-aware card surface in both modes, with a
+          slightly deeper border in dark mode so the board still reads as a
+          contained arena rather than a flat card. */}
+      <div
+        className={[
+          'relative w-full max-w-md rounded-2xl border-4 p-2.5 shadow-2xl sm:rounded-3xl sm:p-4 transition-colors duration-200',
+          'bg-card',
+          'border-border dark:border-[#3a3e46]',
+        ].join(' ')}
+      >
         <div className="grid gap-1.5 sm:gap-2.5" style={gridStyle}>
           {Array.from({ length: rows }).map((_, row) =>
             Array.from({ length: cols }).map((_, column) => {
@@ -123,13 +131,19 @@ export function ConnectFourBoard({
                   disabled={!canClickColumn}
                   style={isWin && winIndex >= 0 ? { animationDelay: `${winIndex * 150}ms` } : undefined}
                   className={[
-                    'relative aspect-square rounded-full bg-[#0a0b0d]/90',
-                    'shadow-[inset_0_3px_7px_rgba(0,0,0,0.75),inset_0_-1px_2px_rgba(255,255,255,0.08)]',
-                    'transition-all duration-300',
+                    'relative aspect-square rounded-full transition-all duration-300',
+                    'bg-[#0b0d10] dark:bg-[#0a0b0d]/90',
+                    'shadow-[inset_0_3px_6px_rgba(0,0,0,0.55),inset_0_-1px_2px_rgba(255,255,255,0.06)] dark:shadow-[inset_0_3px_7px_rgba(0,0,0,0.75),inset_0_-1px_2px_rgba(255,255,255,0.08)]',
                     canClickColumn ? 'cursor-pointer' : 'cursor-default',
-                    hoveredCol === column && canClickColumn ? 'ring-1 ring-inset ring-white/20' : '',
+                    hoveredCol === column && canClickColumn
+                      ? 'ring-1 ring-inset ring-white/30 dark:ring-white/20'
+                      : '',
                     isWin
-                      ? 'ring-4 ring-emerald-400 ring-offset-2 ring-offset-[#1a1c21] shadow-[0_0_20px_rgba(52,211,153,0.75)] z-10 c4-win-seq'
+                      ? [
+                          'ring-4 ring-emerald-400 z-10 c4-win-seq',
+                          'ring-offset-2 ring-offset-card dark:ring-offset-[#1a1c21]',
+                          'shadow-[0_0_20px_rgba(52,211,153,0.75)]',
+                        ].join(' ')
                       : '',
                     isDraw ? 'ring-1 ring-amber-400/40' : '',
                   ].join(' ')}
@@ -142,7 +156,7 @@ export function ConnectFourBoard({
                       className={[
                         'pointer-events-none absolute inset-[5%] transition-opacity duration-300',
                         isLast && !isGameOver ? 'c4-token-drop' : '',
-                        winningLine && !isWin ? 'opacity-40' : 'opacity-100', // distinguish winning 4 from non-winning tokens
+                        winningLine && !isWin ? 'opacity-40' : 'opacity-100',
                       ].join(' ')}
                       style={
                         isLast && !isGameOver
