@@ -256,10 +256,10 @@ export function Component() {
       </section>
 
       {/* Join with Invite Code */}
-      <section className={cn(CARD, 'p-4 sm:p-5')}>
+      <section className={cn(CARD, 'p-4 sm:p-5 border-l-4 border-l-primary/40 shadow-sm')}>
         <form onSubmit={handleJoinByCode} className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <p className="flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-white">
-            <Gamepad2 className="h-4 w-4 text-[#ff5b55]" />
+          <p className="flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-foreground">
+            <Gamepad2 className="h-4 w-4 shrink-0 text-primary" />
             Have a Private Invite Code?
           </p>
           <div className="flex w-full flex-1 items-center gap-2">
