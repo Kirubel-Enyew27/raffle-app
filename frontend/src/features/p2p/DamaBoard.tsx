@@ -39,18 +39,12 @@ interface DamaVisualMove {
   promotion: boolean
 }
 
-// The card's board: charcoal squares inside a dark frame, tinted gold at the rim.
-const DARK_SQUARE = 'bg-gradient-to-br from-[#191b21] to-[#101116]'
-
-const LIGHT_SQUARE = 'bg-[#363b46]'
-
 // In light mode, invert the checkerboard aesthetic only: playable squares stay
 // the piece-bearing squares, but they take a darker visual shade so Dama pieces
 // sit on dark squares and empty light squares remain the lighter non-playable
 // checkerboard partner. Board coordinates, playability and game logic are
 // unchanged — this is purely a light-theme color swap.
 const LIGHT_SQUARE_PLAYABLE = 'bg-[#7a6f5c]'
-const LIGHT_SQUARE_NON_PLAYABLE = 'bg-[#ece9e0]'
 
 function pieceLabel(side: DamaSide, king: boolean): string {
   const color = side === 0 ? 'ivory' : 'crimson'
