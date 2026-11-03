@@ -6,6 +6,12 @@ import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { AuthCard } from '@/features/auth/AuthCard'
 import { authApi } from '@/features/auth/api'
+import {
+  authAlertClass,
+  authInputClass,
+  authLinkClass,
+  authPrimaryButtonClass,
+} from '@/features/auth/authStyles'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { FormField } from '@/components/forms/FormField'
 import { Input } from '@/components/ui/input'
@@ -38,7 +44,7 @@ export function Component() {
   if (isSuccess) {
     return (
       <AuthCard title={t('auth.passwordUpdated')} subtitle={t('auth.passwordUpdatedMessage')}>
-        <Button className="w-full" onClick={() => navigate('/login')}>
+        <Button className={authPrimaryButtonClass} onClick={() => navigate('/login')}>
           {t('auth.backToSignIn')}
         </Button>
       </AuthCard>
@@ -47,31 +53,31 @@ export function Component() {
 
   return (
     <AuthCard title={t('auth.resetPasswordTitle')} subtitle={t('auth.resetPasswordSubtitle')}>
-      <form onSubmit={handleSubmit(d => mutate(d))} className="space-y-4">
+      <form onSubmit={handleSubmit(d => mutate(d))} className="space-y-5">
         {error && (
-          <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <p role="alert" className={authAlertClass}>
             {error.message}
           </p>
         )}
 
         <FormField label={t('auth.currentPassword')} htmlFor="old_password" error={errors.old_password?.message}>
-          <Input id="old_password" type="password" autoComplete="current-password" {...register('old_password')} />
+          <Input id="old_password" type="password" autoComplete="current-password" className={authInputClass} {...register('old_password')} />
         </FormField>
 
         <FormField label={t('auth.newPassword')} htmlFor="new_password" error={errors.new_password?.message}>
-          <Input id="new_password" type="password" autoComplete="new-password" {...register('new_password')} />
+          <Input id="new_password" type="password" autoComplete="new-password" className={authInputClass} {...register('new_password')} />
         </FormField>
 
         <FormField label={t('auth.confirmNewPassword')} htmlFor="confirm" error={errors.confirm?.message}>
-          <Input id="confirm" type="password" autoComplete="new-password" {...register('confirm')} />
+          <Input id="confirm" type="password" autoComplete="new-password" className={authInputClass} {...register('confirm')} />
         </FormField>
 
-        <Button type="submit" className="w-full" disabled={isPending}>
+        <Button type="submit" className={authPrimaryButtonClass} disabled={isPending}>
           {isPending ? t('auth.updating') : t('auth.updatePassword')}
         </Button>
 
-        <p className="text-center text-sm text-muted-foreground">
-          <Link to="/login" className="text-foreground underline underline-offset-4">
+        <p className="text-center text-[14px] text-[#9ca1a8]">
+          <Link to="/login" className={authLinkClass}>
             {t('auth.backToSignIn')}
           </Link>
         </p>

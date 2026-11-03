@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AuthCard } from '@/features/auth/AuthCard'
+import { authInputClass, authLinkClass, authPrimaryButtonClass } from '@/features/auth/authStyles'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { FormField } from '@/components/forms/FormField'
 import { Input } from '@/components/ui/input'
@@ -27,28 +28,25 @@ export function Component() {
   // The backend has no unauthenticated reset endpoint; we simulate the
   // standard UX (show confirmation) and direct the user to reset-password
   // where they can provide their current password.
-  const onSubmit = (_: Fields) => setSubmitted(true)
+  const onSubmit = () => setSubmitted(true)
 
   if (submitted) {
     return (
       <AuthCard title={t('auth.checkEmail')} subtitle={t('auth.checkEmailMessage')}>
         <div className="space-y-4 text-center">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-[14px] text-[#9ca1a8]">
             {t('auth.didntReceiveEmail')}{' '}
-            <button
-              onClick={() => setSubmitted(false)}
-              className="text-foreground underline underline-offset-4"
-            >
+            <button onClick={() => setSubmitted(false)} className={authLinkClass}>
               {t('auth.tryAgain')}
             </button>
           </p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-[14px] text-[#9ca1a8]">
             {t('auth.knowPassword')}{' '}
-            <Link to="/login" className="text-foreground underline underline-offset-4">
+            <Link to="/login" className={authLinkClass}>
               {t('auth.signIn')}
             </Link>
           </p>
-          <div className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+          <div className="mt-4 rounded-lg border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-xs text-amber-300">
             {t('auth.resetNotConfigured')}
           </div>
         </div>
@@ -58,17 +56,17 @@ export function Component() {
 
   return (
     <AuthCard title={t('auth.forgotPasswordTitle')} subtitle={t('auth.forgotPasswordSubtitle')}>
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         <FormField label={t('auth.email')} htmlFor="email" error={errors.email?.message}>
-          <Input id="email" type="email" autoComplete="email" {...register('email')} />
+          <Input id="email" type="email" autoComplete="email" className={authInputClass} {...register('email')} />
         </FormField>
 
-        <Button type="submit" className="w-full">
+        <Button type="submit" className={authPrimaryButtonClass}>
           {t('auth.sendInstructions')}
         </Button>
 
-        <p className="text-center text-sm text-muted-foreground">
-          <Link to="/login" className="text-foreground underline underline-offset-4">
+        <p className="text-center text-[14px] text-[#9ca1a8]">
+          <Link to="/login" className={authLinkClass}>
             {t('auth.backToSignIn')}
           </Link>
         </p>

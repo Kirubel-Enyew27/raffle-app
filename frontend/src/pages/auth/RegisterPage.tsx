@@ -7,12 +7,17 @@ import { useTranslation } from 'react-i18next'
 import { AuthCard } from '@/features/auth/AuthCard'
 import { clearPendingRedirect, readPendingRedirect, resolvePostAuthPath } from '@/features/auth/landing'
 import { authApi } from '@/features/auth/api'
+import {
+  authAlertClass,
+  authInputClass,
+  authLinkClass,
+  authPrimaryButtonClass,
+} from '@/features/auth/authStyles'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { FormField } from '@/components/forms/FormField'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Smartphone } from 'lucide-react'
 
 const schema = z.object({
   fullName: z.string().min(2, 'Enter your full name'),
@@ -55,47 +60,43 @@ export function Component() {
   })
 
   return (
-    <AuthCard title={t('auth.signUp')} subtitle={t('auth.startEntering')}>
-      <form onSubmit={handleSubmit(d => mutate(d))} className="space-y-4">
+    <AuthCard>
+      <form onSubmit={handleSubmit(d => mutate(d))} className="space-y-5">
         {error && (
-          <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <p role="alert" className={authAlertClass}>
             {error.message}
           </p>
         )}
 
         <FormField label={t('auth.fullName')} htmlFor="fullName" error={errors.fullName?.message}>
-          <Input id="fullName" type="text" autoComplete="name" {...register('fullName')} />
-          <p className="mt-2 flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
-            <Smartphone className="h-3.5 w-3.5 shrink-0" />
-            {t('auth.telebirrNotice')}
-          </p>
+          <Input id="fullName" type="text" autoComplete="name" className={authInputClass} {...register('fullName')} />
         </FormField>
 
         <FormField label={t('auth.phone')} htmlFor="phone" error={errors.phone?.message}>
-          <Input id="phone" type="tel" autoComplete="tel" placeholder={t('auth.phonePlaceholder')} {...register('phone')} />
+          <Input id="phone" type="tel" autoComplete="tel" placeholder={t('auth.phonePlaceholder')} className={authInputClass} {...register('phone')} />
         </FormField>
 
         <FormField label={t('auth.email')} htmlFor="email" error={errors.email?.message}>
-          <Input id="email" type="email" autoComplete="email" placeholder={t('auth.optional')} {...register('email')} />
+          <Input id="email" type="email" autoComplete="email" placeholder={t('auth.optional')} className={authInputClass} {...register('email')} />
         </FormField>
 
         <FormField label={t('auth.password')} htmlFor="password" error={errors.password?.message}>
-          <Input id="password" type="password" autoComplete="new-password" {...register('password')} />
+          <Input id="password" type="password" autoComplete="new-password" className={authInputClass} {...register('password')} />
         </FormField>
 
         <FormField label={t('auth.confirmPassword')} htmlFor="confirm" error={errors.confirm?.message}>
-          <Input id="confirm" type="password" autoComplete="new-password" {...register('confirm')} />
+          <Input id="confirm" type="password" autoComplete="new-password" className={authInputClass} {...register('confirm')} />
         </FormField>
 
-        <Button type="submit" className="w-full" disabled={isPending}>
+        <Button type="submit" className={authPrimaryButtonClass} disabled={isPending}>
           {isPending ? t('auth.creatingAccount') : t('auth.signUp')}
         </Button>
 
-        <p className="text-center text-sm text-muted-foreground">
+        <p className="text-center text-[14px] text-[#9ca1a8]">
           {t('auth.alreadyHaveAccount')}{' '}
           <Link
             to={redirectParam ? `/login?redirect=${encodeURIComponent(redirectParam)}` : '/login'}
-            className="text-foreground underline underline-offset-4"
+            className={authLinkClass}
           >
             {t('auth.signIn')}
           </Link>

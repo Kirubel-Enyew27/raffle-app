@@ -1,32 +1,30 @@
 import type { ReactNode } from 'react'
-import { useTranslation } from 'react-i18next'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { LanguageSelector } from '@/components/ui/LanguageSelector'
+import { AuthShell } from '@/features/auth/AuthShell'
 
 interface AuthCardProps {
-  title: string
+  /** Optional: some screens start straight with their form. */
+  title?: string
   subtitle?: string
   children: ReactNode
 }
 
+/**
+ * Content block for the secondary auth screens (register, forgot password,
+ * reset password). It uses the same dark KWIK frame as the login page so the
+ * whole sign-in journey looks like one product.
+ */
 export function AuthCard({ title, subtitle, children }: AuthCardProps) {
-  const { t } = useTranslation()
-  
   return (
-    <div className="w-full max-w-sm px-4">
-      <div className="mb-6 text-center">
-        <span className="text-2xl font-bold tracking-tight">{t('app.title')}</span>
-      </div>
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-xl">{title}</CardTitle>
-          {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
-        </CardHeader>
-        <CardContent>{children}</CardContent>
-      </Card>
-      <div className="mt-4 flex justify-center">
-        <LanguageSelector />
-      </div>
-    </div>
+    <AuthShell>
+      {title && (
+        <h1 className="text-balance text-[30px] font-extrabold leading-[1.18] tracking-[-0.02em] text-white">
+          {title}
+        </h1>
+      )}
+      {subtitle && (
+        <p className={`${title ? 'mt-4' : ''} text-[15px] leading-relaxed text-[#9ca1a8]`}>{subtitle}</p>
+      )}
+      <div className={title || subtitle ? 'mt-8' : undefined}>{children}</div>
+    </AuthShell>
   )
 }

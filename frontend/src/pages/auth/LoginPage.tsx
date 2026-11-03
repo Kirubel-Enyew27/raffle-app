@@ -5,15 +5,21 @@ import { z } from 'zod'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Eye, EyeOff } from 'lucide-react'
-import { AuthCard } from '@/features/auth/AuthCard'
+import { ArrowRight, Eye, EyeOff, Loader2, Lock, Mail } from 'lucide-react'
+import { AuthShell } from '@/features/auth/AuthShell'
 import { GoogleSignInButton } from '@/features/auth/GoogleSignInButton'
 import { googleErrorKey } from '@/features/auth/google'
 import { clearPendingRedirect, readPendingRedirect, resolvePostAuthPath } from '@/features/auth/landing'
 import { authApi } from '@/features/auth/api'
+import {
+  authAccentLinkClass,
+  authAlertClass,
+  authInputClass,
+  authLinkClass,
+  authPrimaryButtonClass,
+} from '@/features/auth/authStyles'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { FormField } from '@/components/forms/FormField'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
@@ -73,84 +79,128 @@ export function Component() {
   })
 
   return (
-    <AuthCard title={t('auth.signIn')} subtitle={t('auth.welcomeBack')}>
-      <form onSubmit={handleSubmit(d => mutate(d))} className="space-y-4">
+    <AuthShell>
+      <form onSubmit={handleSubmit(d => mutate(d))} noValidate className="space-y-5">
         {googleError && (
-          <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <p role="alert" className={authAlertClass}>
             {t(googleErrorKey(googleError))}
           </p>
         )}
 
         {error && (
-          <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <p role="alert" className={authAlertClass}>
             {error.message}
           </p>
         )}
 
-        <FormField label={t('auth.emailOrPhone')} htmlFor="identifier" error={errors.identifier?.message}>
-          <Input id="identifier" type="text" autoComplete="username" placeholder={t('auth.emailPlaceholder')} {...register('identifier')} />
-        </FormField>
-
-        <FormField label={t('auth.password')} htmlFor="password" error={errors.password?.message}>
+        <div className="space-y-2">
+          <label htmlFor="identifier" className="block text-[13px] font-semibold text-white">
+            {t('auth.emailAddress')}
+          </label>
           <div className="relative">
+            <Mail
+              aria-hidden="true"
+              strokeWidth={1.75}
+              className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#8b9098]"
+            />
+            <Input
+              id="identifier"
+              type="text"
+              autoComplete="username"
+              placeholder={t('auth.loginEmailPlaceholder')}
+              aria-invalid={errors.identifier ? true : undefined}
+              className={`${authInputClass} pl-12`}
+              {...register('identifier')}
+            />
+          </div>
+          {errors.identifier?.message && (
+            <p className="text-xs text-destructive">{errors.identifier.message}</p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="password" className="block text-[13px] font-semibold text-white">
+            {t('auth.password')}
+          </label>
+          <div className="relative">
+            <Lock
+              aria-hidden="true"
+              strokeWidth={1.75}
+              className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#8b9098]"
+            />
             <Input
               id="password"
               type={showPassword ? 'text' : 'password'}
               autoComplete="current-password"
-              className="pr-10"
+              aria-invalid={errors.password ? true : undefined}
+              className={`${authInputClass} pl-12 pr-12`}
               {...register('password')}
             />
             <button
               type="button"
               onClick={() => setShowPassword(prev => !prev)}
               aria-label={showPassword ? 'Hide password' : 'Show password'}
-              className="absolute inset-y-0 right-0 flex items-center justify-center w-10 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-r-md"
+              className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-[#8b9098] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#3d4149]"
             >
               {showPassword ? (
-                <EyeOff className="h-4 w-4" />
+                <Eye className="h-[18px] w-[18px]" strokeWidth={1.75} />
               ) : (
-                <Eye className="h-4 w-4" />
+                <EyeOff className="h-[18px] w-[18px]" strokeWidth={1.75} />
               )}
             </button>
           </div>
-        </FormField>
+          {errors.password?.message && (
+            <p className="text-xs text-destructive">{errors.password.message}</p>
+          )}
+        </div>
 
         <div className="flex justify-end">
-          <Link to="/forgot-password" className="text-xs text-muted-foreground hover:text-foreground">
+          <Link to="/forgot-password" className={`text-[13px] ${authAccentLinkClass}`}>
             {t('auth.forgotPassword')}
           </Link>
         </div>
 
-        <Button type="submit" className="w-full" disabled={isPending}>
-          {isPending ? t('auth.signingIn') : t('auth.signIn')}
+        <Button
+          type="submit"
+          disabled={isPending}
+          aria-busy={isPending}
+          className={authPrimaryButtonClass}
+        >
+          {isPending ? (
+            <Loader2 className="h-[18px] w-[18px] animate-spin" />
+          ) : (
+            <ArrowRight className="h-[18px] w-[18px]" strokeWidth={2.5} />
+          )}
+          {isPending ? t('auth.signingIn') : t('auth.enterArena')}
         </Button>
+      </form>
 
+      <div className="mt-8">
         {googleEnabled && (
           <>
-            <div className="relative py-1">
-              <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                <span className="w-full border-t border-border" />
-              </div>
-              <div className="relative flex justify-center">
-                <span className="bg-card px-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  {t('auth.or')}
-                </span>
-              </div>
+            <div className="flex items-center gap-4">
+              <span aria-hidden="true" className="h-px flex-1 bg-[#26282e]" />
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7c8189]">
+                {t('auth.orContinueWith')}
+              </span>
+              <span aria-hidden="true" className="h-px flex-1 bg-[#26282e]" />
             </div>
-            <GoogleSignInButton redirect={pendingRedirect} />
+            <div className="mt-6">
+              <GoogleSignInButton redirect={pendingRedirect} />
+            </div>
           </>
         )}
 
-        <p className="text-center text-sm text-muted-foreground">
-          {t('auth.noAccount')}{' '}
+        <p className="mt-8 text-center text-[14px] text-[#9ca1a8]">
+          {t('auth.newCompetitor')}{' '}
           <Link
             to={redirectParam ? `/register?redirect=${encodeURIComponent(redirectParam)}` : '/register'}
-            className="text-foreground underline underline-offset-4"
+            className={authLinkClass}
           >
-            {t('auth.register')}
+            {t('auth.createAccount')}
           </Link>
         </p>
-      </form>
-    </AuthCard>
+      </div>
+    </AuthShell>
   )
 }
