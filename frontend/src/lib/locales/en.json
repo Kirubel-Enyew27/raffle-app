@@ -219,7 +219,7 @@
     "phoneNumber": "Phone Number",
     "telebirrPhoneNumber": "Telebirr Phone Number",
     "telebirrPhoneHelper": "The money will be sent to this Telebirr number",
-    "withdrawalReviewNotice": "Withdrawals are reviewed by admins and processed within 24 hours.",
+    "withdrawalReviewNotice": "Withdrawals are reviewed by admins and processed within 3 hours.",
     "submit": "Submit",
     "cancel": "Cancel",
     "submitting": "Submitting…",

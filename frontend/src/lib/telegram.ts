@@ -154,17 +154,37 @@ export function buildInviteMessage(gameTitle: string, inviteCode: string, invite
 }
 
 /**
- * Open Telegram share dialogue.
+ * Open the Telegram share dialogue in a new tab.
+ *
+ * The dialogue must never replace the current view: after sending the invite
+ * the sender has to get back to the challenge modal they started from. So a new
+ * browser tab is always preferred, and the Telegram in-app browser is used only
+ * when the popup is blocked.
  */
 export function shareViaTelegram(inviteUrl: string, message: string): void {
+  if (typeof window === 'undefined') return
+
   const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(message)}`
 
-  if (window.Telegram?.WebApp?.openTelegramLink) {
-    window.Telegram.WebApp.openTelegramLink(shareUrl)
+  const tab = window.open(shareUrl, '_blank')
+  if (tab) {
+    try {
+      // Detach the opener so the share page cannot navigate the app away.
+      tab.opener = null
+    } catch {
+      // Cross-origin handle; nothing else to detach.
+    }
     return
   }
 
-  window.open(shareUrl, '_blank', 'noopener,noreferrer')
+  // Popup blocked: open the dialogue externally instead of navigating the
+  // Mini App away from the challenge modal with openTelegramLink.
+  if (window.Telegram?.WebApp?.openLink) {
+    window.Telegram.WebApp.openLink(shareUrl)
+    return
+  }
+
+  window.Telegram?.WebApp?.openTelegramLink?.(shareUrl)
 }
 
 /**

@@ -5,6 +5,7 @@ import {
   buildInviteUrl,
   buildWebInviteUrl,
   buildInviteMessage,
+  shareViaTelegram,
 } from './telegram.ts'
 
 test('buildWebInviteUrl builds standard url with code', () => {
@@ -22,6 +23,48 @@ test('buildInviteMessage formats title, link, and code', () => {
   assert.ok(msg.includes('Tic-Tac-Toe Blitz'))
   assert.ok(msg.includes('ABC123'))
   assert.ok(msg.includes('https://example.com/join'))
+})
+
+test('shareViaTelegram opens the share dialogue in a new tab', () => {
+  const originalWindow = (globalThis as unknown as { window?: unknown }).window
+  const calls: Array<{ url: string; target?: string }> = []
+  const openedHandle = { opener: {} as unknown }
+  ;(globalThis as unknown as { window?: unknown }).window = {
+    open: (url: string, target?: string) => {
+      calls.push({ url, target })
+      return openedHandle
+    },
+  }
+
+  shareViaTelegram('https://example.com/games?join=ABC123', 'play with me')
+
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].target, '_blank')
+  assert.ok(calls[0].url.startsWith('https://t.me/share/url?'))
+  assert.ok(calls[0].url.includes(encodeURIComponent('https://example.com/games?join=ABC123')))
+  ;(globalThis as unknown as { window?: unknown }).window = originalWindow
+})
+
+test('shareViaTelegram does not navigate the Telegram Mini App away', () => {
+  const originalWindow = (globalThis as unknown as { window?: unknown }).window
+  const openLinkCalls: string[] = []
+  const openTelegramLinkCalls: string[] = []
+  ;(globalThis as unknown as { window?: unknown }).window = {
+    // Simulate a blocked popup.
+    open: () => null,
+    Telegram: {
+      WebApp: {
+        openLink: (url: string) => openLinkCalls.push(url),
+        openTelegramLink: (url: string) => openTelegramLinkCalls.push(url),
+      },
+    },
+  }
+
+  shareViaTelegram('https://example.com/games?join=ABC123', 'play with me')
+
+  assert.equal(openTelegramLinkCalls.length, 0)
+  assert.equal(openLinkCalls.length, 1)
+  ;(globalThis as unknown as { window?: unknown }).window = originalWindow
 })
 
 test('extractStartInviteCode handles empty / undefined environment safely', () => {
