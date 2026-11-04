@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "KWIK",
+  "short_name": "KWIK",
+  "description": "Fast multiplayer games, raffles, and leaderboards. Play. Compete. Win.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0b",
+  "theme_color": "#0a0a0b",
+  "icons": [
+    {
+      "src": "/brand/kwik-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand/kwik-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

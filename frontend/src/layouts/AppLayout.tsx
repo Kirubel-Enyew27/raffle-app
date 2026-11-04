@@ -277,7 +277,10 @@ function Navbar() {
         {/* ── Left: logo + desktop nav ── */}
         <div className="flex items-center gap-6">
           <Link to="/dashboard" className="shrink-0" aria-label="KWIK">
-            <KwikWordmark className="h-7 w-auto invert dark:invert-0" />
+            <KwikWordmark
+              variant="compact"
+              className="rounded-md border border-border/60"
+            />
           </Link>
 
           {/* Hamburger – mobile only */}

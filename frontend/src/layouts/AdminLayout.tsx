@@ -26,7 +26,10 @@ function Sidebar() {
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-card text-card-foreground">
       <div className="flex h-14 items-center gap-2 border-b border-border px-4">
-        <KwikWordmark className="h-6 w-auto invert dark:invert-0" />
+        <KwikWordmark
+          variant="compact"
+          className="h-9 w-[108px] rounded-md border border-border/60"
+        />
         <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-primary">
           Admin
         </span>
