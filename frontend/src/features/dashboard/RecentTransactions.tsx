@@ -40,7 +40,7 @@ export function RecentTransactions() {
           <div key={tx.id} className="flex items-center gap-3">
             <div className={cn(
               'flex h-8 w-8 items-center justify-center rounded-full',
-              tx.type === 'deposit' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600',
+              tx.type === 'deposit' ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive',
             )}>
               {tx.type === 'deposit'
                 ? <ArrowDownLeft className="h-4 w-4" />
@@ -56,7 +56,7 @@ export function RecentTransactions() {
             </div>
             <span className={cn(
               'text-sm font-semibold',
-              tx.type === 'deposit' ? 'text-green-600' : 'text-red-600',
+              tx.type === 'deposit' ? 'text-success' : 'text-destructive',
             )}>
               {tx.type === 'deposit' ? '+' : '-'}{formatCurrency(tx.amount)}
             </span>

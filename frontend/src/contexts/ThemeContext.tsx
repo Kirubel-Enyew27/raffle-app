@@ -24,6 +24,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         theme === 'dark' ||
         (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
       root.classList.toggle('dark', isDark)
+
+      // Keep mobile/TMA browser chrome in step with the page surface.
+      const themeColor = document.querySelector('meta[name="theme-color"]')
+      if (themeColor) themeColor.setAttribute('content', isDark ? '#0a0a0b' : '#f7f8fa')
     }
 
     applyTheme()

@@ -94,14 +94,14 @@ export function Component() {
         )}
 
         <div className="space-y-2">
-          <label htmlFor="identifier" className="block text-[13px] font-semibold text-white">
+          <label htmlFor="identifier" className="block text-[13px] font-semibold text-foreground">
             {t('auth.emailAddress')}
           </label>
           <div className="relative">
             <Mail
               aria-hidden="true"
               strokeWidth={1.75}
-              className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#8b9098]"
+              className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground"
             />
             <Input
               id="identifier"
@@ -119,14 +119,14 @@ export function Component() {
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="password" className="block text-[13px] font-semibold text-white">
+          <label htmlFor="password" className="block text-[13px] font-semibold text-foreground">
             {t('auth.password')}
           </label>
           <div className="relative">
             <Lock
               aria-hidden="true"
               strokeWidth={1.75}
-              className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#8b9098]"
+              className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground"
             />
             <Input
               id="password"
@@ -140,7 +140,7 @@ export function Component() {
               type="button"
               onClick={() => setShowPassword(prev => !prev)}
               aria-label={showPassword ? 'Hide password' : 'Show password'}
-              className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-[#8b9098] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#3d4149]"
+              className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40"
             >
               {showPassword ? (
                 <Eye className="h-[18px] w-[18px]" strokeWidth={1.75} />
@@ -179,11 +179,11 @@ export function Component() {
         {googleEnabled && (
           <>
             <div className="flex items-center gap-4">
-              <span aria-hidden="true" className="h-px flex-1 bg-[#26282e]" />
-              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7c8189]">
+              <span aria-hidden="true" className="h-px flex-1 bg-border" />
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 {t('auth.orContinueWith')}
               </span>
-              <span aria-hidden="true" className="h-px flex-1 bg-[#26282e]" />
+              <span aria-hidden="true" className="h-px flex-1 bg-border" />
             </div>
             <div className="mt-6">
               <GoogleSignInButton redirect={pendingRedirect} />
@@ -191,7 +191,7 @@ export function Component() {
           </>
         )}
 
-        <p className="mt-8 text-center text-[14px] text-[#9ca1a8]">
+        <p className="mt-8 text-center text-[14px] text-muted-foreground">
           {t('auth.newCompetitor')}{' '}
           <Link
             to={redirectParam ? `/register?redirect=${encodeURIComponent(redirectParam)}` : '/register'}

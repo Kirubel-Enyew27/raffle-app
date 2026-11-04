@@ -215,7 +215,7 @@ export function Component() {
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:space-y-8 sm:px-6 sm:py-8">
       {/* Hero */}
-      <section className="relative overflow-hidden rounded-3xl border border-[#2a1416] bg-[#101012] p-6 sm:p-10">
+      <section className="relative overflow-hidden rounded-3xl border border-primary/20 bg-card p-6 shadow-sm sm:p-10 dark:border-[#2a1416] dark:bg-[#101012]">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute -right-24 -top-28 h-80 w-80 rounded-full bg-[#ff5b55]/20 blur-3xl"
@@ -226,11 +226,11 @@ export function Component() {
             P2P Competitive Arenas
           </span> */}
 
-          <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl md:text-5xl">
+          <h1 className="text-3xl font-black tracking-tight text-foreground sm:text-4xl md:text-5xl">
             Play Live Against Other Players
           </h1>
 
-          <p className="max-w-xl text-sm leading-relaxed text-[#9ca1a8] sm:text-base">
+          <p className="max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
             Fast, server-authoritative duels. Jump into public matchmaking or send a private
             challenge code to a friend.
           </p>
@@ -246,7 +246,7 @@ export function Component() {
             <Button
               variant="outline"
               onClick={() => setCreateModalOpen(true)}
-              className="h-11 gap-2 border-[#2c2f36] bg-[#17181d] px-5 text-sm font-semibold text-white hover:border-[#3a3e46] hover:bg-[#1e2027] hover:text-white"
+              className="h-11 gap-2 border-input bg-background px-5 text-sm font-semibold text-foreground hover:bg-accent hover:text-accent-foreground"
             >
               <PlusCircle className="h-4 w-4" />
               Host Custom Match
@@ -284,7 +284,7 @@ export function Component() {
       {/* Games catalog */}
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight text-white">
+          <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight text-foreground">
             <Gamepad2 className="h-5 w-5 text-[#ff5b55]" />
             Available Games
           </h2>
@@ -301,7 +301,7 @@ export function Component() {
               variant="outline"
               size="sm"
               onClick={() => setCreateModalOpen(true)}
-              className="h-8 gap-1.5 border-[#2c2f36] bg-[#17181d] text-xs text-white hover:bg-[#1e2027] hover:text-white"
+              className="h-8 gap-1.5 border-input bg-background text-xs text-foreground hover:bg-accent hover:text-accent-foreground"
             >
               <PlusCircle className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Host Custom Match</span>
@@ -313,10 +313,10 @@ export function Component() {
           {games.map((g) => (
             <article
               key={g.slug}
-              className="group relative flex flex-col overflow-hidden rounded-2xl border border-[#23252b] bg-[linear-gradient(180deg,#15161b_0%,#121317_55%,#0f1013_100%)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#ff5b55]/45 hover:shadow-[0_18px_44px_-24px_rgba(255,91,85,0.55)] active:translate-y-0 active:scale-[0.995]"
+              className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-[0_18px_44px_-24px_rgba(255,91,85,0.55)] active:translate-y-0 active:scale-[0.995]"
             >
               {/* Board artwork — custom per-game illustration with ambient light. */}
-              <div className="relative h-32 overflow-hidden border-b border-[#1f2126] bg-[#0c0d10]">
+              <div className="relative h-32 overflow-hidden border-b border-border bg-surface-2 dark:bg-[#0c0d10]">
                 <div
                   aria-hidden="true"
                   className="absolute inset-0"
@@ -329,7 +329,7 @@ export function Component() {
                 </div>
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#121317] via-transparent to-transparent"
+                  className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent dark:from-[#121317]"
                 />
                 <div
                   aria-hidden="true"
@@ -340,24 +340,24 @@ export function Component() {
                   onClick={() => handleCreateMatch(g.slug, false, true)}
                   disabled={createMutation.isPending}
                   aria-label={`Quick play ${g.title}`}
-                  className="absolute right-3 top-3 rounded-lg border border-[#2c2f36] bg-[#0c0d10]/70 p-1.5 text-[#ff5b55] backdrop-blur transition-all hover:border-[#ff5b55]/50 hover:text-[#ff8a80] hover:shadow-[0_0_18px_-4px_rgba(255,91,85,0.7)]"
+                  className="absolute right-3 top-3 rounded-lg border border-border bg-background/80 p-1.5 text-primary backdrop-blur transition-all hover:border-primary/50 hover:text-primary hover:shadow-[0_0_18px_-4px_rgba(255,91,85,0.5)] dark:border-[#2c2f36] dark:bg-[#0c0d10]/70 dark:text-[#ff5b55] dark:hover:text-[#ff8a80]"
                 >
                   <ArrowUpRight className="h-4 w-4" />
                 </button>
-                <span className="absolute bottom-3 left-3 rounded-full border border-[#2c2f36] bg-[#0c0d10]/70 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-[#9ca1a8] backdrop-blur">
+                <span className="absolute bottom-3 left-3 rounded-full border border-border bg-background/80 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground backdrop-blur dark:border-[#2c2f36] dark:bg-[#0c0d10]/70 dark:text-[#9ca1a8]">
                   {GAME_FORMATS[g.slug] ?? '1V1'}
                 </span>
               </div>
 
               <div className="flex flex-1 flex-col gap-3 p-4">
                 <div>
-                  <h3 className="text-[15px] font-bold leading-tight text-white">{g.title}</h3>
-                  <p className="mt-1 line-clamp-1 text-xs text-[#9ca1a8]">
+                  <h3 className="text-[15px] font-bold leading-tight text-foreground">{g.title}</h3>
+                  <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
                     {GAME_TAGLINES[g.slug] ?? g.description}
                   </p>
                 </div>
 
-                <div className="flex items-center gap-3 text-[11px] text-[#7c8189]">
+                <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <Clock className="h-3 w-3" />
                     {g.default_turn_seconds}s turn
@@ -380,7 +380,7 @@ export function Component() {
                   <Button
                     variant="outline"
                     onClick={() => openChallenge(g.slug)}
-                    className="h-9 gap-1.5 border-[#2c2f36] bg-[#17181d] px-2 text-[11px] text-white hover:bg-[#1e2027] hover:text-white"
+                    className="h-9 gap-1.5 border-input bg-background px-2 text-[11px] text-foreground hover:bg-accent hover:text-accent-foreground"
                   >
                     <Users className="h-3.5 w-3.5" />
                     Challenge
@@ -427,7 +427,7 @@ export function Component() {
       {/* Lobby / history */}
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex w-full gap-1 rounded-xl border border-[#23252b] bg-[#121317] p-1 sm:w-auto">
+          <div className="flex w-full gap-1 rounded-xl border border-border bg-muted/50 p-1 sm:w-auto">
             {([
               { key: 'lobby', label: `Live Lobby (${lobbyMatches.length})` },
               { key: 'history', label: 'My Match History' },
@@ -439,8 +439,8 @@ export function Component() {
                 className={cn(
                   'flex-1 whitespace-nowrap rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors sm:flex-none',
                   activeTab === key
-                    ? 'bg-[#ff5b55] text-white shadow-sm shadow-[#ff5b55]/25'
-                    : 'text-[#9ca1a8] hover:text-white'
+                    ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/25'
+                    : 'text-muted-foreground hover:text-foreground'
                 )}
               >
                 {label}
@@ -453,7 +453,7 @@ export function Component() {
               variant="ghost"
               size="sm"
               onClick={() => navigate('/leaderboard')}
-              className="h-8 gap-1.5 text-xs text-[#9ca1a8] hover:bg-white/5 hover:text-white"
+              className="h-8 gap-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
             >
               <Trophy className="h-3.5 w-3.5 text-[#fbbf24]" />
               Leaderboard
@@ -463,7 +463,7 @@ export function Component() {
                 variant="ghost"
                 size="sm"
                 onClick={() => refetchLobby()}
-                className="h-8 gap-1.5 text-xs text-[#9ca1a8] hover:bg-white/5 hover:text-white"
+                className="h-8 gap-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
                 Refresh
@@ -479,10 +479,10 @@ export function Component() {
                 Loading open matches…
               </div>
             ) : lobbyMatches.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-[#2c2f36] bg-[#101113] p-8 text-center">
-                <Users className="mx-auto mb-2 h-8 w-8 text-[#5b6068]" />
-                <p className="font-semibold text-white">No open matches right now</p>
-                <p className="mt-1 text-xs text-[#9ca1a8]">
+              <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center">
+                <Users className="mx-auto mb-2 h-8 w-8 text-muted-foreground/50" />
+                <p className="font-semibold text-foreground">No open matches right now</p>
+                <p className="mt-1 text-xs text-muted-foreground">
                   Be the first to create an open room or start a quick match!
                 </p>
               </div>
@@ -500,16 +500,16 @@ export function Component() {
                       <div className="min-w-0 space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <GameIcon slug={m.game_slug} />
-                          <span className="text-sm font-bold capitalize text-white">
+                          <span className="text-sm font-bold capitalize text-foreground">
                             {m.game_slug.replace(/-/g, ' ')}
                           </span>
-                          <span className="rounded-full border border-[#2c2f36] px-2 py-0.5 text-[10px] font-semibold text-[#9ca1a8]">
+                          <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
                             {m.max_rounds > 1 ? `Best of ${m.max_rounds}` : 'Single Round'}
                           </span>
                         </div>
-                        <p className="truncate text-xs text-[#9ca1a8]">
+                        <p className="truncate text-xs text-muted-foreground">
                           Host:{' '}
-                          <span className="font-medium text-white">
+                          <span className="font-medium text-foreground">
                             {hostPlayer?.display_name || 'Player 1'}
                           </span>
                         </p>
@@ -549,10 +549,10 @@ export function Component() {
                 Loading match history…
               </div>
             ) : myMatches.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-[#2c2f36] bg-[#101113] p-8 text-center">
-                <Trophy className="mx-auto mb-2 h-8 w-8 text-[#5b6068]" />
-                <p className="font-semibold text-white">No completed matches yet</p>
-                <p className="mt-1 text-xs text-[#9ca1a8]">
+              <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center">
+                <Trophy className="mx-auto mb-2 h-8 w-8 text-muted-foreground/50" />
+                <p className="font-semibold text-foreground">No completed matches yet</p>
+                <p className="mt-1 text-xs text-muted-foreground">
                   Play your first match to start tracking wins and statistics!
                 </p>
               </div>
@@ -569,10 +569,10 @@ export function Component() {
                         ? 'Forfeited'
                         : 'Defeat'
                   const outcomeClass = isTie
-                    ? 'border-[#3a3e46] bg-[#1a1c21] text-[#c7cbd1]'
+                    ? 'border-border bg-muted text-foreground'
                     : isWinner
-                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                      : 'border-red-500/30 bg-red-500/10 text-red-400'
+                      ? 'border-success/30 bg-success/10 text-success'
+                      : 'border-destructive/30 bg-destructive/10 text-destructive'
 
                   return (
                     <div
@@ -583,7 +583,7 @@ export function Component() {
                         <GameIcon slug={m.game_slug} size="lg" />
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-bold capitalize text-white">
+                            <span className="text-sm font-bold capitalize text-foreground">
                               {m.game_slug.replace(/-/g, ' ')}
                             </span>
                             <span
@@ -595,7 +595,7 @@ export function Component() {
                               {outcome}
                             </span>
                           </div>
-                          <p className="mt-0.5 truncate text-xs text-[#9ca1a8]">
+                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
                             Final Score: {m.scores?.['0'] ?? 0} - {m.scores?.['1'] ?? 0} •{' '}
                             {new Date(m.created_at).toLocaleDateString()}
                           </p>
@@ -606,7 +606,7 @@ export function Component() {
                         variant="ghost"
                         size="sm"
                         onClick={() => navigate(`/games/match/${m.id}`)}
-                        className="h-8 shrink-0 text-xs text-[#c7cbd1] hover:bg-white/5 hover:text-white"
+                        className="h-8 shrink-0 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                       >
                         Inspect
                       </Button>
@@ -622,15 +622,15 @@ export function Component() {
       {/* Host Custom Match Modal */}
       {createModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-[#26282e] bg-[#121317] p-5 shadow-2xl">
-            <div className="flex items-center gap-2 text-lg font-bold text-white">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-2xl">
+            <div className="flex items-center gap-2 text-lg font-bold text-foreground">
               <PlusCircle className="h-5 w-5 text-[#ff5b55]" />
               Host Custom P2P Match
             </div>
 
             <div className="mt-4 space-y-4">
               <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7c8189]">
+                <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Select Game
                 </label>
                 <div className="grid grid-cols-3 gap-2">
@@ -642,8 +642,8 @@ export function Component() {
                       className={cn(
                         'flex flex-col items-center gap-1 rounded-xl border p-2.5 text-center text-xs font-bold transition-all',
                         selectedGameSlug === g.slug
-                          ? 'border-[#ff5b55]/60 bg-[#ff5b55]/10 text-[#ff8a80]'
-                          : 'border-[#2c2f36] text-[#9ca1a8] hover:bg-white/5 hover:text-white'
+                          ? 'border-primary/60 bg-primary/10 text-primary'
+                          : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
                       )}
                     >
                       <GameIcon slug={g.slug} />
@@ -654,7 +654,7 @@ export function Component() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7c8189]">
+                <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Match Privacy
                 </label>
                 <div className="grid grid-cols-2 gap-2">
@@ -664,8 +664,8 @@ export function Component() {
                     className={cn(
                       'rounded-xl border p-2.5 text-center text-xs font-bold transition-all',
                       matchType === 'public_queue'
-                        ? 'border-[#ff5b55]/60 bg-[#ff5b55]/10 text-[#ff8a80]'
-                        : 'border-[#2c2f36] text-[#9ca1a8] hover:bg-white/5 hover:text-white'
+                        ? 'border-primary/60 bg-primary/10 text-primary'
+                        : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
                     )}
                   >
                     Public Queue (Anyone)
@@ -676,8 +676,8 @@ export function Component() {
                     className={cn(
                       'rounded-xl border p-2.5 text-center text-xs font-bold transition-all',
                       matchType === 'private_room'
-                        ? 'border-[#ff5b55]/60 bg-[#ff5b55]/10 text-[#ff8a80]'
-                        : 'border-[#2c2f36] text-[#9ca1a8] hover:bg-white/5 hover:text-white'
+                        ? 'border-primary/60 bg-primary/10 text-primary'
+                        : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
                     )}
                   >
                     Private Code (Friends)

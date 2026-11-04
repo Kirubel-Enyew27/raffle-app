@@ -362,7 +362,7 @@ export function ChallengeFriendModal({
                 </div>
                 <div className="p-3 rounded-xl border border-border/60 bg-card/60 space-y-1">
                   <span className="text-muted-foreground font-medium">Room Privacy</span>
-                  <p className="font-bold text-emerald-600 dark:text-emerald-400">Private Friend Match</p>
+                  <p className="font-bold text-success">Private Friend Match</p>
                 </div>
                 <div className="p-3 rounded-xl border border-border/60 bg-card/60 space-y-1">
                   <span className="text-muted-foreground font-medium">Match Stake</span>
@@ -444,7 +444,7 @@ export function ChallengeFriendModal({
                   >
                     {copiedCode ? (
                       <>
-                        <Check className="h-4 w-4 text-emerald-500" />
+                        <Check className="h-4 w-4 text-success" />
                         <span>Copied</span>
                       </>
                     ) : (
@@ -475,7 +475,7 @@ export function ChallengeFriendModal({
                   >
                     {copiedLink ? (
                       <>
-                        <Check className="h-3.5 w-3.5 text-emerald-500" />
+                        <Check className="h-3.5 w-3.5 text-success" />
                         <span>Link Copied</span>
                       </>
                     ) : (

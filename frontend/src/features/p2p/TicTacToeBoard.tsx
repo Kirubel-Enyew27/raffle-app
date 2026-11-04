@@ -80,7 +80,7 @@ export function TicTacToeBoard({
           winningLine
             ? 'bg-emerald-500/[0.06] border-emerald-500/40 ring-2 ring-emerald-500/20'
             : isDraw
-              ? 'bg-amber-500/[0.05] border-amber-500/30'
+              ? 'bg-warning/[0.05] border-warning/30'
               : isMyTurn && !isGameOver
                 ? 'bg-primary/[0.04] border-primary/40 ring-1 ring-primary/20'
                 : 'bg-muted/30 border-border/80',
@@ -115,7 +115,7 @@ export function TicTacToeBoard({
                   : isWin
                     ? 'ttt-win-cell bg-emerald-500/20 border-emerald-400 ring-2 ring-emerald-400/50 scale-[1.04] z-10 ttt-win-cell-seq shadow-lg shadow-emerald-500/20'
                     : isDraw
-                      ? 'bg-amber-500/10 border-amber-500/30 text-amber-500'
+                      ? 'bg-warning/10 border-warning/30 text-warning'
                       : isLast
                         ? 'bg-muted/70 border-primary/50 shadow-md'
                         : winningLine
@@ -171,11 +171,11 @@ export function TicTacToeBoard({
 
       {/* Footer indication */}
       {isDraw ? (
-        <div className="mt-3 flex items-center gap-2 text-xs font-bold text-amber-600 dark:text-amber-400">
+        <div className="mt-3 flex items-center gap-2 text-xs font-bold text-warning">
           <span>Grid is Full — No winning line (Stalemate)</span>
         </div>
       ) : winningLine ? (
-        <div className="mt-3 flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-400 animate-pulse">
+        <div className="mt-3 flex items-center gap-2 text-xs font-bold text-success animate-pulse">
           <span>Decisive 3 in a Row Connected!</span>
         </div>
       ) : mySeat ? (

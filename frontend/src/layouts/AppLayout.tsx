@@ -34,7 +34,7 @@ function ThemeToggle() {
     <div
       role="group"
       aria-label={t('theme.title')}
-      className="flex items-center rounded-md border border-white/10 bg-white/5 p-0.5 gap-0.5"
+      className="flex items-center rounded-md border border-border bg-muted/60 p-0.5 gap-0.5"
     >
       {options.map(({ value, icon, label }) => (
         <button
@@ -47,8 +47,8 @@ function ThemeToggle() {
           className={[
             'flex h-6 w-6 items-center justify-center rounded transition-all',
             theme === value
-              ? 'bg-white/10 text-white shadow-sm'
-              : 'text-[#8b9098] hover:text-white',
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground',
           ].join(' ')}
         >
           {icon}
@@ -94,21 +94,21 @@ function UserMenu() {
         onClick={() => setOpen(v => !v)}
         aria-haspopup="true"
         aria-expanded={open}
-        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-[#c7cbd1] transition-colors hover:bg-white/5 hover:text-white"
+        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
       >
-        <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#2a2c33] bg-[#15161a]">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted">
           {user?.avatar_url
             ? <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />
-            : <UserIcon className="h-3 w-3 text-[#9ca1a8]" />}
+            : <UserIcon className="h-3 w-3 text-muted-foreground" />}
         </div>
         <span className="hidden max-w-[120px] truncate sm:block">{user?.full_name || user?.email}</span>
         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 w-60 rounded-lg border border-[#26282e] bg-[#111216] shadow-lg z-50">
+        <div className="absolute right-0 top-full mt-1.5 z-50 w-60 rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
           {/* User info header */}
-          <div className="px-3 py-2.5 border-b border-[#26282e]">
+          <div className="px-3 py-2.5 border-b border-border">
             <p className="text-sm font-medium truncate">{user?.full_name || user?.email}</p>
             {user?.full_name && user?.email && (
               <p className="text-xs text-muted-foreground truncate">{user.email}</p>
@@ -116,16 +116,16 @@ function UserMenu() {
           </div>
 
           {/* Theme */}
-          <div className="px-3 py-2.5 border-b border-[#26282e] space-y-1.5">
-            <p className="text-xs font-medium uppercase tracking-wide text-[#7c8189]">{t('theme.title')}</p>
+          <div className="px-3 py-2.5 border-b border-border space-y-1.5">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('theme.title')}</p>
             <ThemeToggle />
           </div>
 
           {/* Language */}
-          <div className="px-3 py-2.5 border-b border-[#26282e] space-y-1.5">
-            <p className="text-xs font-medium uppercase tracking-wide text-[#7c8189]">{t('nav.language')}</p>
+          <div className="px-3 py-2.5 border-b border-border space-y-1.5">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('nav.language')}</p>
             <div className="flex items-center gap-2">
-              <Globe className="h-3.5 w-3.5 shrink-0 text-[#7c8189]" />
+              <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               <Select
                 value={i18n.language.split('-')[0]}
                 onChange={handleLangChange}
@@ -143,7 +143,7 @@ function UserMenu() {
             <button
               type="button"
               onClick={handleLogout}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-[#c7cbd1] transition-colors hover:bg-white/5 hover:text-white"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <LogOut className="h-3.5 w-3.5" />
               {t('nav.signOut')}
@@ -211,10 +211,10 @@ function NavGroup({ label, items }: { label: string; items: { to: string; label:
         aria-expanded={open}
         className={[
           'flex items-center gap-1.5 transition-colors',
-          inSection ? 'text-white font-bold' : 'text-[#9ca1a8] hover:text-white',
+          inSection ? 'text-foreground font-bold' : 'text-muted-foreground hover:text-foreground',
         ].join(' ')}
       >
-        {inSection && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[#ff5b55]" />}
+        {inSection && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-primary" />}
         {label}
         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -223,7 +223,7 @@ function NavGroup({ label, items }: { label: string; items: { to: string; label:
         <div
           role="menu"
           aria-label={label}
-          className="absolute left-0 top-full z-50 w-44 rounded-lg border border-[#26282e] bg-[#111216] py-1 shadow-lg"
+          className="absolute left-0 top-full z-50 w-44 rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-lg"
         >
           {items.map(item => (
             <NavLink
@@ -234,8 +234,8 @@ function NavGroup({ label, items }: { label: string; items: { to: string; label:
               className={({ isActive }) => [
                 'block px-3 py-1.5 text-sm transition-colors',
                 isActive
-                  ? 'bg-[#ff5b55]/10 font-semibold text-white'
-                  : 'text-[#9ca1a8] hover:bg-white/5 hover:text-white',
+                  ? 'bg-primary/10 font-semibold text-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
               ].join(' ')}
             >
               {item.label}
@@ -271,19 +271,19 @@ function Navbar() {
   ]
 
   return (
-    <header className="dark sticky top-0 z-40 border-b border-[#1f2126] bg-[#0a0a0b]/95 text-white backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-border bg-background/95 text-foreground backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
 
         {/* ── Left: logo + desktop nav ── */}
         <div className="flex items-center gap-6">
           <Link to="/dashboard" className="shrink-0" aria-label="KWIK">
-            <KwikWordmark className="h-7 w-auto" />
+            <KwikWordmark className="h-7 w-auto invert dark:invert-0" />
           </Link>
 
           {/* Hamburger – mobile only */}
           <button
             onClick={() => setMenuOpen(v => !v)}
-            className="sm:hidden -ml-2 rounded-md p-2 text-[#c7cbd1] transition-colors hover:bg-white/5 hover:text-white"
+            className="sm:hidden -ml-2 rounded-md p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             aria-label={menuOpen ? t('nav.closeMenu') : t('nav.openMenu')}
             aria-expanded={menuOpen}
           >
@@ -300,8 +300,8 @@ function Navbar() {
                 to={link.to}
                 className={({ isActive }) =>
                   isActive
-                    ? 'font-bold text-white transition-colors'
-                    : 'text-[#9ca1a8] transition-colors hover:text-white'
+                    ? 'font-bold text-foreground transition-colors'
+                    : 'text-muted-foreground transition-colors hover:text-foreground'
                 }
               >
                 {link.label}
@@ -314,8 +314,8 @@ function Navbar() {
         <div className="flex items-center gap-1">
           {/* Wallet balance badge */}
           {wallet && (
-            <div className="mr-1 hidden items-center gap-1.5 rounded-lg border border-[#26282e] bg-[#15161a] px-2.5 py-1 text-xs font-semibold text-white sm:flex">
-              <Wallet className="h-3.5 w-3.5 text-[#ff5b55]" />
+            <div className="mr-1 hidden items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-2.5 py-1 text-xs font-semibold text-foreground sm:flex">
+              <Wallet className="h-3.5 w-3.5 text-primary" />
               <span>{wallet.balance.toLocaleString()} {wallet.currency || t('common.currency')}</span>
             </div>
           )}
@@ -326,12 +326,12 @@ function Navbar() {
               variant="ghost"
               size="icon"
               aria-label={t('nav.notifications')}
-              className="text-[#c7cbd1] hover:bg-white/5 hover:text-white"
+              className="text-muted-foreground hover:bg-accent hover:text-foreground"
             >
               <Bell className="h-4 w-4" />
             </Button>
             {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#ff5b55] text-[9px] font-bold text-white ring-2 ring-[#0a0a0b] animate-pulse pointer-events-none">
+              <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground ring-2 ring-background animate-pulse pointer-events-none">
                 {unreadCount}
               </span>
             )}
@@ -344,10 +344,10 @@ function Navbar() {
 
       {/* ── Mobile drawer ── */}
       {menuOpen && (
-        <div className="border-t border-[#1f2126] sm:hidden">
+        <div className="border-t border-border sm:hidden">
           {wallet && (
-            <div className="mx-4 mt-3 flex items-center gap-1.5 rounded-lg border border-[#26282e] bg-[#15161a] px-3 py-2 text-sm font-semibold">
-              <Wallet className="h-4 w-4 text-[#ff5b55]" />
+            <div className="mx-4 mt-3 flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm font-semibold">
+              <Wallet className="h-4 w-4 text-primary" />
               <span>{wallet.balance.toLocaleString()} {wallet.currency || t('common.currency')}</span>
             </div>
           )}
@@ -360,13 +360,13 @@ function Navbar() {
                   onClick={() => setMenuOpen(false)}
                   className={({ isActive }) =>
                     isActive
-                      ? 'block rounded-md px-3 py-2 text-sm bg-[#ff5b55]/10 text-white font-bold'
-                      : 'block rounded-md px-3 py-2 text-sm text-[#9ca1a8] hover:bg-white/5 hover:text-white'
+                      ? 'block rounded-md px-3 py-2 text-sm bg-primary/10 text-foreground font-bold'
+                      : 'block rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground'
                   }
                 >
                   {section.label}
                 </NavLink>
-                <div className="ml-3 space-y-1 border-l border-[#26282e] pl-2">
+                <div className="ml-3 space-y-1 border-l border-border pl-2">
                   {section.items
                     .filter(item => item.to !== section.to)
                     .map(item => (
@@ -376,8 +376,8 @@ function Navbar() {
                         onClick={() => setMenuOpen(false)}
                         className={({ isActive }) =>
                           isActive
-                            ? 'block rounded-md px-3 py-1.5 text-sm bg-[#ff5b55]/10 text-white font-semibold'
-                            : 'block rounded-md px-3 py-1.5 text-sm text-[#9ca1a8] hover:bg-white/5 hover:text-white'
+                            ? 'block rounded-md px-3 py-1.5 text-sm bg-primary/10 text-foreground font-semibold'
+                            : 'block rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground'
                         }
                       >
                         {item.label}
@@ -425,7 +425,7 @@ function MobileTabBar() {
   return (
     <nav
       aria-label="Primary"
-      className="dark fixed inset-x-0 bottom-0 z-40 border-t border-[#1f2126] bg-[#0a0a0b]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
     >
       <div className="mx-auto flex max-w-md items-stretch justify-between px-2">
         {tabs.map(({ to, label, icon: Icon }) => (
@@ -435,7 +435,7 @@ function MobileTabBar() {
             className={({ isActive }) =>
               [
                 'flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] font-semibold transition-colors',
-                isActive ? 'text-[#ff5b55]' : 'text-[#8b9098] hover:text-white',
+                isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
               ].join(' ')
             }
           >

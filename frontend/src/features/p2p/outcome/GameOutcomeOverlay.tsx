@@ -39,7 +39,7 @@ export function GameOutcomeOverlay({
       >
         <div className="flex items-center gap-2 font-bold text-xs">
           <span>{isWin ? '🏆' : isLoss ? '💀' : '🤝'}</span>
-          <span className={isWin ? 'text-emerald-500' : isLoss ? 'text-rose-500' : 'text-amber-500'}>
+          <span className={isWin ? 'text-success' : isLoss ? 'text-destructive' : 'text-warning'}>
             {outcome.title}
           </span>
           <span className="text-muted-foreground hidden sm:inline">· {outcome.subtitle}</span>
@@ -109,10 +109,10 @@ export function GameOutcomeOverlay({
             'pointer-events-auto w-full max-w-xs rounded-2xl border bg-card/90 p-5 shadow-2xl backdrop-blur-md',
             'animate-in zoom-in-95 duration-200',
             isWin
-              ? 'border-emerald-500/40 shadow-emerald-500/10'
+              ? 'border-success/40 shadow-success/10'
               : isLoss
-                ? 'border-rose-500/40 shadow-rose-500/10'
-                : 'border-amber-500/40 shadow-amber-500/10',
+                ? 'border-destructive/40 shadow-destructive/10'
+                : 'border-warning/40 shadow-warning/10',
           ].join(' ')}
         >
           <div className="flex flex-col items-center text-center space-y-3">
@@ -121,10 +121,10 @@ export function GameOutcomeOverlay({
               className={[
                 'relative flex h-14 w-14 items-center justify-center rounded-2xl shadow-lg border-2',
                 isWin
-                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-500 shadow-emerald-500/20'
+                  ? 'border-success/40 bg-success/15 text-success shadow-success/20'
                   : isLoss
-                    ? 'bg-rose-500/15 border-rose-500/40 text-rose-500 shadow-rose-500/20'
-                    : 'bg-amber-500/15 border-amber-500/40 text-amber-500 shadow-amber-500/20',
+                    ? 'border-destructive/40 bg-destructive/15 text-destructive shadow-destructive/20'
+                    : 'bg-warning/15 border-warning/40 text-warning shadow-warning/20',
               ].join(' ')}
             >
               {isWin ? (
@@ -135,7 +135,7 @@ export function GameOutcomeOverlay({
                 <Handshake className="h-7 w-7" />
               )}
               {isWin && (
-                <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow">
+                <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-success text-white shadow">
                 </span>
               )}
             </div>
@@ -147,10 +147,10 @@ export function GameOutcomeOverlay({
                 className={[
                   'text-[11px] font-extrabold uppercase tracking-widest px-2.5 py-0.5',
                   isWin
-                    ? 'border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10'
+                    ? 'border-success/40 text-success bg-success/10'
                     : isLoss
-                      ? 'border-rose-500/40 text-rose-600 dark:text-rose-400 bg-rose-500/10'
-                      : 'border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10',
+                      ? 'border-destructive/40 text-destructive bg-destructive/10'
+                      : 'border-warning/40 text-warning bg-warning/10',
                 ].join(' ')}
               >
                 {isWin ? 'Match Won' : isLoss ? 'Match Lost' : 'Match Tied'}
@@ -169,7 +169,7 @@ export function GameOutcomeOverlay({
 
             {/* Opponent Rematch Notice */}
             {opponentRequestedRematch && (
-              <div className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-2 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 animate-pulse">
+              <div className="w-full rounded-xl border border-success/30 bg-success/10 p-2 text-[11px] font-semibold text-success animate-pulse">
                 Your opponent wants a rematch! Accept to play immediately.
               </div>
             )}

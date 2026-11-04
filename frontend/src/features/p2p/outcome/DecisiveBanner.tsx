@@ -21,10 +21,10 @@ export function DecisiveBanner({ outcome, phase, onSkip }: DecisiveBannerProps) 
       className={[
         'w-full max-w-md mx-auto mb-3 flex items-center justify-between rounded-xl border px-3.5 py-2 shadow-lg backdrop-blur-sm transition-all duration-300',
         isWin
-          ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-900 dark:text-emerald-100 ring-1 ring-emerald-500/30'
+          ? 'border-emerald-500/50 bg-emerald-500/15 text-success ring-1 ring-emerald-500/30'
           : isLoss
-            ? 'border-rose-500/50 bg-rose-500/15 text-rose-900 dark:text-rose-100 ring-1 ring-rose-500/30'
-            : 'border-amber-500/50 bg-amber-500/15 text-amber-900 dark:text-amber-100 ring-1 ring-amber-500/30',
+            ? 'border-destructive/50 bg-destructive/15 text-destructive ring-1 ring-destructive/30'
+            : 'border-warning/50 bg-warning/15 text-warning ring-1 ring-warning/30',
       ].join(' ')}
     >
       <div className="flex items-center gap-2 text-xs font-bold">

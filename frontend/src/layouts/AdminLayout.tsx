@@ -24,10 +24,10 @@ function Sidebar() {
   ]
 
   return (
-    <aside className="dark flex w-56 shrink-0 flex-col border-r border-[#1f2126] bg-[#0a0a0b] text-white">
-      <div className="flex h-14 items-center gap-2 border-b border-[#1f2126] px-4">
-        <KwikWordmark className="h-6 w-auto" />
-        <span className="rounded bg-[#ff5b55]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#ff6d64]">
+    <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-card text-card-foreground">
+      <div className="flex h-14 items-center gap-2 border-b border-border px-4">
+        <KwikWordmark className="h-6 w-auto invert dark:invert-0" />
+        <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-primary">
           Admin
         </span>
       </div>
@@ -41,8 +41,8 @@ function Sidebar() {
               cn(
                 'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
                 isActive
-                  ? 'bg-[#ff5b55]/12 font-semibold text-white'
-                  : 'text-[#9ca1a8] hover:bg-white/5 hover:text-white',
+                  ? 'bg-primary/10 font-semibold text-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
               )
             }
           >
@@ -52,7 +52,7 @@ function Sidebar() {
         ))}
       </nav>
 
-      <div className="space-y-2 border-t border-[#1f2126] p-2">
+      <div className="space-y-2 border-t border-border p-2">
         <div className="px-3 py-2">
           <ThemeSelector />
         </div>
@@ -61,15 +61,15 @@ function Sidebar() {
         </div>
 
         <div className="flex items-center gap-3 px-3 py-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#2a2c33] bg-[#15161a]">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted">
             {user?.avatar_url
               ? <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />
-              : <UserIcon className="h-4 w-4 text-[#9ca1a8]" />}
+              : <UserIcon className="h-4 w-4 text-muted-foreground" />}
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{user?.full_name || user?.email || 'User'}</p>
             {user?.email && user?.full_name && (
-              <p className="truncate text-xs text-[#8b9098]">{user.email}</p>
+              <p className="truncate text-xs text-muted-foreground">{user.email}</p>
             )}
           </div>
         </div>
@@ -79,7 +79,7 @@ function Sidebar() {
             logout()
             navigate('/login')
           }}
-          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-[#9ca1a8] transition-colors hover:bg-white/5 hover:text-white"
+          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <LogOut className="h-4 w-4" />
           {t('nav.signOut')}

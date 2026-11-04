@@ -83,7 +83,7 @@ export function RevenueReport({ range, onRange, period, onPeriod }: Props) {
                     <td className="py-2 pr-4 tabular-nums">{usd(r.deposit_volume)}</td>
                     <td className="py-2 pr-4 tabular-nums">{usd(r.withdraw_volume)}</td>
                     <td className="py-2 pr-4 tabular-nums">{usd(r.prize_paid)}</td>
-                    <td className={`py-2 tabular-nums font-medium ${r.profit >= 0 ? 'text-green-600' : 'text-destructive'}`}>{usd(r.profit)}</td>
+                    <td className={`py-2 tabular-nums font-medium ${r.profit >= 0 ? 'text-success' : 'text-destructive'}`}>{usd(r.profit)}</td>
                   </tr>
                 ))}
               </tbody>

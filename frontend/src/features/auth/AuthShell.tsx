@@ -8,9 +8,9 @@ interface AuthShellProps {
 }
 
 /**
- * The branded frame every authentication screen sits in: near-black page, the
- * KWIK wordmark with the red tagline, and the language switcher pinned below the
- * form. This page is intentionally dark regardless of the app theme.
+ * The branded frame every authentication screen sits in: the theme background,
+ * the KWIK wordmark with the red tagline, and the language switcher pinned
+ * below the form. The wordmark inverts on light surfaces.
  *
  * The wordmark is the shared `KwikWordmark` component so every branded surface
  * uses the same asset.
@@ -19,11 +19,11 @@ export function AuthShell({ children }: AuthShellProps) {
   const { t } = useTranslation()
 
   return (
-    <div className="dark flex min-h-screen w-full justify-center bg-[#0a0a0b] px-6 py-10 text-white sm:px-8">
+    <div className="flex min-h-screen w-full justify-center bg-background px-6 py-10 text-foreground sm:px-8">
       <div className="flex w-full max-w-[440px] flex-col">
         <header>
-          <KwikWordmark className="h-11 w-auto" />
-          <p className="mt-4 text-[11px] font-bold uppercase leading-none tracking-[0.2em] text-[#f2473f]">
+          <KwikWordmark className="h-11 w-auto invert dark:invert-0" />
+          <p className="mt-4 text-[11px] font-bold uppercase leading-none tracking-[0.2em] text-primary">
             {t('auth.tagline')}
           </p>
         </header>

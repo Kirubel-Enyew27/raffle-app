@@ -55,7 +55,7 @@ export function PreviousWinnings() {
         {winners.map(w => (
           <div key={w.id} className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-green-600">
+              <p className="text-sm font-semibold text-success">
                 {formatCurrency(w.prize_amount)}
               </p>
               <p className="text-xs text-muted-foreground">
@@ -64,7 +64,7 @@ export function PreviousWinnings() {
             </div>
             <span className={cn(
               'shrink-0 rounded-full px-2 py-0.5 text-xs font-medium',
-              w.prize_paid ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700',
+              w.prize_paid ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning',
             )}>
               {w.prize_paid ? t('wallet.completed') : t('wallet.pending')}
             </span>

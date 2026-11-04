@@ -34,19 +34,19 @@ export function Component() {
     return (
       <AuthCard title={t('auth.checkEmail')} subtitle={t('auth.checkEmailMessage')}>
         <div className="space-y-4 text-center">
-          <p className="text-[14px] text-[#9ca1a8]">
+          <p className="text-[14px] text-muted-foreground">
             {t('auth.didntReceiveEmail')}{' '}
             <button onClick={() => setSubmitted(false)} className={authLinkClass}>
               {t('auth.tryAgain')}
             </button>
           </p>
-          <p className="text-[14px] text-[#9ca1a8]">
+          <p className="text-[14px] text-muted-foreground">
             {t('auth.knowPassword')}{' '}
             <Link to="/login" className={authLinkClass}>
               {t('auth.signIn')}
             </Link>
           </p>
-          <div className="mt-4 rounded-lg border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-xs text-amber-300">
+          <div className="mt-4 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-xs text-warning">
             {t('auth.resetNotConfigured')}
           </div>
         </div>
@@ -65,7 +65,7 @@ export function Component() {
           {t('auth.sendInstructions')}
         </Button>
 
-        <p className="text-center text-[14px] text-[#9ca1a8]">
+        <p className="text-center text-[14px] text-muted-foreground">
           <Link to="/login" className={authLinkClass}>
             {t('auth.backToSignIn')}
           </Link>

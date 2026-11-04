@@ -33,7 +33,7 @@ export function GoogleSignInButton({ redirect }: GoogleSignInButtonProps) {
       onClick={handleClick}
       disabled={redirecting}
       aria-busy={redirecting}
-      className="inline-flex h-[52px] w-full items-center justify-center gap-3 rounded-xl border border-[#26282e] bg-[#101113] px-4 text-[15px] font-semibold text-white transition-colors hover:bg-[#17181c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3d4149] disabled:pointer-events-none disabled:opacity-70"
+      className="inline-flex h-[52px] w-full items-center justify-center gap-3 rounded-xl border border-input bg-surface px-4 text-[15px] font-semibold text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:pointer-events-none disabled:opacity-70"
     >
       {redirecting ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <GoogleIcon />}
       <span>{redirecting ? t('auth.googleRedirecting') : t('auth.continueWithGoogle')}</span>

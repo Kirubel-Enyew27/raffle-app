@@ -55,7 +55,7 @@ function RaffleCard({ raffle, t }: { raffle: Raffle; t: (key: string) => string 
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
               <div
                 className={cn('h-full rounded-full transition-all',
-                  pct >= 90 ? 'bg-red-500' : pct >= 60 ? 'bg-yellow-500' : 'bg-green-500')}
+                  pct >= 90 ? 'bg-destructive' : pct >= 60 ? 'bg-warning' : 'bg-success')}
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -67,7 +67,7 @@ function RaffleCard({ raffle, t }: { raffle: Raffle; t: (key: string) => string 
               <p className="text-xs text-muted-foreground">{t('raffles.ticketPrice')}</p>
             </div>
             <div className="text-right">
-              <p className="font-semibold text-green-600">
+              <p className="font-semibold text-success">
                 {formatCurrency(raffle.prize_pool)}
               </p>
               <p className="text-xs text-muted-foreground">{t('raffles.prizePool')}</p>

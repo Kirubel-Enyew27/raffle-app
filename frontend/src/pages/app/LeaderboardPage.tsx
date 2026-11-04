@@ -90,7 +90,7 @@ export function Component() {
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-500/10 via-primary/10 to-purple-500/10 p-6 md:p-8 border border-border">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
+            <div className="inline-flex items-center gap-2 rounded-full bg-warning/10 px-3 py-1 text-xs font-semibold text-warning">
               <Trophy className="h-3.5 w-3.5" />
               <span>{t('leaderboard.topPodium', 'Hall of Champions')}</span>
             </div>
@@ -436,13 +436,13 @@ export function Component() {
 
                       {/* Record (W / L / D) */}
                       <td className="py-3.5 px-4 text-center text-xs font-semibold">
-                        <span className="text-emerald-500">{p.wins}W</span>
+                        <span className="text-success">{p.wins}W</span>
                         <span className="text-muted-foreground mx-1">•</span>
-                        <span className="text-rose-500">{p.losses}L</span>
+                        <span className="text-destructive">{p.losses}L</span>
                         {p.draws > 0 && (
                           <>
                             <span className="text-muted-foreground mx-1">•</span>
-                            <span className="text-amber-500">{p.draws}D</span>
+                            <span className="text-warning">{p.draws}D</span>
                           </>
                         )}
                       </td>
@@ -453,7 +453,7 @@ export function Component() {
                           <span className="font-bold text-xs">{p.win_rate}%</span>
                           <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
                             <div
-                              className="h-full bg-emerald-500 rounded-full"
+                              className="h-full bg-success rounded-full"
                               style={{ width: `${Math.min(100, p.win_rate)}%` }}
                             />
                           </div>
@@ -465,7 +465,7 @@ export function Component() {
                         {p.current_win_streak > 0 ? (
                           <Badge
                             variant="outline"
-                            className="text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1"
+                            className="text-xs bg-warning/10 text-warning border-warning/30 gap-1"
                           >
                             <Flame className="h-3 w-3 fill-amber-500" />
                             {p.current_win_streak}
@@ -599,7 +599,7 @@ function PodiumCard({
         <div className="grid grid-cols-3 gap-2 w-full pt-2 border-t border-border/40 text-xs">
           <div>
             <p className="text-[10px] text-muted-foreground uppercase font-semibold">Wins</p>
-            <p className="font-extrabold text-emerald-500">{player.wins}</p>
+            <p className="font-extrabold text-success">{player.wins}</p>
           </div>
           <div>
             <p className="text-[10px] text-muted-foreground uppercase font-semibold">Rate</p>
@@ -607,7 +607,7 @@ function PodiumCard({
           </div>
           <div>
             <p className="text-[10px] text-muted-foreground uppercase font-semibold">Streak</p>
-            <p className="font-extrabold text-amber-500 flex items-center justify-center gap-0.5">
+            <p className="font-extrabold text-warning flex items-center justify-center gap-0.5">
               <Flame className="h-3 w-3 fill-amber-500" />
               {player.current_win_streak}
             </p>

@@ -34,20 +34,20 @@ function PurchaseSuccess({ tickets, totalSpent, onDismiss }: {
   onDismiss: () => void
 }) {
   return (
-    <div className="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-900 dark:bg-green-950">
-      <div className="mb-3 flex items-center gap-2 text-green-700 dark:text-green-400">
+    <div className="rounded-lg border border-success/30 bg-success/10 p-4">
+      <div className="mb-3 flex items-center gap-2 text-success">
         <Ticket className="h-5 w-5" />
         <p className="font-semibold">Tickets purchased!</p>
       </div>
       <div className="mb-3 flex flex-wrap gap-2">
         {tickets.map(t => (
           <span key={t.ticket_number}
-            className="rounded-md border border-green-300 bg-white px-2 py-1 text-sm font-mono font-medium dark:bg-green-900">
+            className="rounded-md border border-success/30 bg-surface px-2 py-1 text-sm font-mono font-medium">
             #{t.ticket_number}
           </span>
         ))}
       </div>
-      <p className="mb-3 text-sm text-green-700 dark:text-green-400">
+      <p className="mb-3 text-sm text-success">
         Total charged: <strong>{formatCurrency(totalSpent)}</strong>
       </p>
       <Button variant="outline" size="sm" onClick={onDismiss}>Buy more</Button>
@@ -159,7 +159,7 @@ export function Component() {
           <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
             <div
               className={cn('h-full rounded-full transition-all',
-                pct >= 90 ? 'bg-red-500' : pct >= 60 ? 'bg-yellow-500' : 'bg-green-500')}
+                pct >= 90 ? 'bg-destructive' : pct >= 60 ? 'bg-warning' : 'bg-success')}
               style={{ width: `${pct}%` }}
             />
           </div>

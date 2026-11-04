@@ -96,7 +96,7 @@ export function Component() {
                   <div className="flex items-center justify-end gap-1">
                     <Button variant="ghost" size="icon" title={t('admin.verificationTooltip')} onClick={() => setModal({ type: 'verify', winner: w })}><ShieldCheck className="h-4 w-4" /></Button>
                     {!w.prize_paid && (
-                      <Button variant="ghost" size="icon" title={t('admin.markPaidTooltip')} className="text-green-600 hover:text-green-700" onClick={() => setModal({ type: 'pay', winner: w })}><DollarSign className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" title={t('admin.markPaidTooltip')} className="text-success hover:text-success/80" onClick={() => setModal({ type: 'pay', winner: w })}><DollarSign className="h-4 w-4" /></Button>
                     )}
                   </div>
                 </td>

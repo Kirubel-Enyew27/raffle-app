@@ -78,7 +78,7 @@ function WinnerDetailModal({ winner, onClose }: { winner: WinnerDetail; onClose:
   ]
 
   return (
-    <Modal title={t('winners.winnerDetails')} icon={<Trophy className="h-5 w-5 text-yellow-500" />} onClose={onClose}>
+    <Modal title={t('winners.winnerDetails')} icon={<Trophy className="h-5 w-5 text-warning" />} onClose={onClose}>
       {/* Tabs */}
       <div className="mb-4 flex gap-1 rounded-lg bg-muted p-1">
         {tabs.map(tb => (
@@ -96,7 +96,7 @@ function WinnerDetailModal({ winner, onClose }: { winner: WinnerDetail; onClose:
         <div>
           <DetailRow label={t('winners.raffle_label')} value={winner.raffle_title} />
           <DetailRow label={t('winners.winner_label')} value={winner.user_email} />
-          <DetailRow label={t('winners.prizeAmount')} value={<span className="font-semibold text-green-600">{formatCurrency(winner.prize_amount)}</span>} />
+          <DetailRow label={t('winners.prizeAmount')} value={<span className="font-semibold text-success">{formatCurrency(winner.prize_amount)}</span>} />
           <DetailRow label={t('winners.status_label')} value={
             <Badge variant={winner.prize_paid ? 'success' : 'warning'}>
               {winner.prize_paid ? t('winners.paid') : t('winners.unpaid')}
@@ -139,9 +139,9 @@ function WinnerDetailModal({ winner, onClose }: { winner: WinnerDetail; onClose:
             <div className="space-y-3 py-4">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-5 w-full" />)}</div>
           ) : verification ? (
             <div>
-              <div className="mb-4 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 dark:border-green-800 dark:bg-green-950">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <p className="text-sm font-medium text-green-700 dark:text-green-300">{t('winners.drawVerificationAvailable')}</p>
+              <div className="mb-4 flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-4 py-3">
+                <CheckCircle className="h-5 w-5 text-success" />
+                <p className="text-sm font-medium text-success">{t('winners.drawVerificationAvailable')}</p>
               </div>
 
               {([
@@ -158,7 +158,7 @@ function WinnerDetailModal({ winner, onClose }: { winner: WinnerDetail; onClose:
                     <button onClick={() => copy(value, key)} title={t('winners.copyToClipboard')}
                       className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100">
                       {copied === key
-                        ? <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                        ? <CheckCircle className="h-3.5 w-3.5 text-success" />
                         : <Copy className="h-3.5 w-3.5 text-muted-foreground" />}
                     </button>
                   </div>
@@ -209,8 +209,8 @@ export function Component() {
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-yellow-100 dark:bg-yellow-900/30">
-          <Trophy className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-warning/10">
+          <Trophy className="h-5 w-5 text-warning" />
         </div>
         <div>
           <h1 className="text-2xl font-bold">{t('winners.myWinnings')}</h1>
@@ -265,7 +265,7 @@ export function Component() {
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(w.prize_amount)}</p>
+                    <p className="text-lg font-bold text-success">{formatCurrency(w.prize_amount)}</p>
                     <p className="text-xs text-muted-foreground">{t('winners.prizeLabel')}</p>
                   </div>
                 </div>

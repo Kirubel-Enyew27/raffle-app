@@ -8,10 +8,10 @@ import { cn, formatCurrency } from '@/lib/utils'
 import { dashboardApi } from './api'
 
 const statusColor: Record<string, string> = {
-  active: 'bg-green-100 text-green-700',
-  scheduled: 'bg-blue-100 text-blue-700',
+  active: 'bg-success/10 text-success',
+  scheduled: 'bg-info/10 text-info',
   completed: 'bg-muted text-muted-foreground',
-  cancelled: 'bg-red-100 text-red-700',
+  cancelled: 'bg-destructive/10 text-destructive',
 }
 
 export function ActiveRaffles() {

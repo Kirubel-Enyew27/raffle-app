@@ -194,12 +194,12 @@ export function Component() {
             </FormField>
 
             {successMsg && (
-              <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-400">
+              <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
                 <CheckCircle2 className="h-4 w-4 shrink-0" />{successMsg}
               </div>
             )}
             {updateMutation.isError && (
-              <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
+              <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 {updateMutation.error?.message || t('profile.updateError')}
               </div>
@@ -251,7 +251,7 @@ export function Component() {
             </FormField>
 
             {passwordMutation.isError && (
-              <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
+              <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 {passwordMutation.error?.message || t('profile.passwordError')}
               </div>
@@ -288,8 +288,8 @@ export function Component() {
               className={cn(
                 'flex items-center gap-2 rounded-md border px-3 py-2 text-sm',
                 googleLinkSucceeded
-                  ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-400'
-                  : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400',
+                  ? 'border-success/30 bg-success/10 text-success'
+                  : 'border-destructive/30 bg-destructive/10 text-destructive',
               )}
             >
               {googleLinkSucceeded ? (
@@ -317,7 +317,7 @@ export function Component() {
                 </div>
               </div>
               {googleLinked ? (
-                <span className="self-start rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 sm:self-auto">
+                <span className="self-start rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success sm:self-auto">
                   {t('profile.connected')}
                 </span>
               ) : (

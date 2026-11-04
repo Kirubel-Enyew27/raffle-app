@@ -20,7 +20,7 @@ function KpiCard({ label, value, icon: Icon, sub, loading, green }: KpiProps) {
       </CardHeader>
       <CardContent>
         {loading ? <Skeleton className="h-8 w-28" /> : (
-          <p className={`text-2xl font-bold ${green ? 'text-green-600' : ''}`}>{value}</p>
+          <p className={`text-2xl font-bold ${green ? 'text-success' : ''}`}>{value}</p>
         )}
         {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
       </CardContent>

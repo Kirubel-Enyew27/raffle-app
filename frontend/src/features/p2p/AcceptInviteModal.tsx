@@ -305,7 +305,7 @@ export function AcceptInviteModal({
               )}
 
               {isFull && (
-                <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs space-y-1">
+                <div className="p-3 rounded-xl border border-warning/30 bg-warning/10 text-warning text-xs space-y-1">
                   <p className="font-semibold">Room is already full</p>
                   <p className="text-muted-foreground text-[11px]">
                     Another player already joined this 1v1 duel.
@@ -321,7 +321,7 @@ export function AcceptInviteModal({
                   </p>
                   <div className="flex gap-2 pt-1">
                     <Button size="sm" variant="outline" onClick={handleCopyLink} className="h-8 text-xs gap-1.5">
-                      {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedLink ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
                       <span>{copiedLink ? 'Copied' : 'Copy Share Link'}</span>
                     </Button>
                     <Button
@@ -342,7 +342,7 @@ export function AcceptInviteModal({
               {isJoinable && displaySecondsLeft > 0 && (
                 <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
                   <span>Invitation active</span>
-                  <span className="font-mono font-semibold text-amber-500">
+                  <span className="font-mono font-semibold text-warning">
                     Expires in {formatCountdown(displaySecondsLeft)}
                   </span>
                 </div>

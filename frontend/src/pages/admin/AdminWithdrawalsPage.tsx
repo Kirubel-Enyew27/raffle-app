@@ -39,8 +39,8 @@ export function Component() {
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/30">
-          <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-warning/10">
+          <Clock className="h-5 w-5 text-warning" />
         </div>
         <div>
           <h1 className="text-2xl font-bold">{t('admin.pendingWithdrawals')}</h1>
@@ -49,7 +49,7 @@ export function Component() {
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {t('admin.withdrawalFailedToLoad')}
         </div>
       )}
@@ -57,7 +57,7 @@ export function Component() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
-            <Clock className="h-4 w-4 text-amber-500" />
+            <Clock className="h-4 w-4 text-warning" />
             {t('admin.requests', { count: withdrawals?.length ?? 0 })}
           </CardTitle>
         </CardHeader>
@@ -83,8 +83,8 @@ export function Component() {
               {withdrawals.map((tx: WalletTransaction) => (
                 <div key={tx.id} className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-start gap-3 sm:items-center">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
-                      <User className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-warning/10">
+                      <User className="h-5 w-5 text-warning" />
                     </div>
                     <div>
                       <p className="flex items-center gap-2 text-sm font-medium">
@@ -101,7 +101,7 @@ export function Component() {
                   </div>
                   <div className="flex items-center gap-2">
                     {actionMsg?.id === tx.id && actionMsg.success && (
-                      <span className="mr-2 text-xs text-green-600">
+                      <span className="mr-2 text-xs text-success">
                         {actionMsg.type === 'approve' ? t('admin.approved') : t('admin.rejected')}
                       </span>
                     )}

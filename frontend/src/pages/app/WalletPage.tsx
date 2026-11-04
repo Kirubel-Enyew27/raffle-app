@@ -152,7 +152,7 @@ function DepositCard() {
       <CardHeader className="pb-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="flex items-center gap-2 whitespace-nowrap text-base">
-            <ArrowDownLeft className="h-5 w-5 text-emerald-400" />
+            <ArrowDownLeft className="h-5 w-5 text-success" />
             {t('wallet.depositTitle')}
           </CardTitle>
           <div className="flex shrink-0 gap-1 self-start rounded-lg bg-muted p-1 sm:self-auto">
@@ -166,7 +166,7 @@ function DepositCard() {
                   : 'text-muted-foreground hover:text-foreground'
               )}
             >
-              <Smartphone className="h-3.5 w-3.5 text-green-600" />
+              <Smartphone className="h-3.5 w-3.5 text-success" />
               {t('wallet.telebirr')}
             </button>
             <button
@@ -187,12 +187,12 @@ function DepositCard() {
       </CardHeader>
       <CardContent className="space-y-4">
         {depositResult ? (
-          <div className="space-y-4 rounded-xl border border-green-200 bg-green-50/70 p-5 text-center dark:border-green-900/50 dark:bg-green-950/40">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400">
+          <div className="space-y-4 rounded-xl border border-success/30 bg-success/10 p-5 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success/10 text-success">
               <CheckCircle2 className="h-7 w-7" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-green-800 dark:text-green-300">
+              <h3 className="text-lg font-bold text-success">
                 {t('wallet.depositSuccess', { amount: formatCurrency(depositResult.receipt.amount) })}
               </h3>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -244,7 +244,7 @@ function DepositCard() {
                     className="gap-1.5 self-start sm:self-auto"
                   >
                     {copied ? (
-                      <><Check className="h-3.5 w-3.5 text-green-600" /> {t('wallet.copied')}</>
+                      <><Check className="h-3.5 w-3.5 text-success" /> {t('wallet.copied')}</>
                     ) : (
                       <><Copy className="h-3.5 w-3.5" /> {t('wallet.copyNumber')}</>
                     )}
@@ -266,7 +266,7 @@ function DepositCard() {
                     className="gap-1.5 self-start sm:self-auto"
                   >
                     {copied ? (
-                      <><Check className="h-3.5 w-3.5 text-green-600" /> {t('wallet.copied')}</>
+                      <><Check className="h-3.5 w-3.5 text-success" /> {t('wallet.copied')}</>
                     ) : (
                       <><Copy className="h-3.5 w-3.5" /> {t('wallet.copyAccount')}</>
                     )}
@@ -277,7 +277,7 @@ function DepositCard() {
 
             {/* Error Message */}
             {errorMessage && (
-              <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-400">
+              <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span>{errorMessage}</span>
               </div>
@@ -286,7 +286,7 @@ function DepositCard() {
             {/* Verification & Upload section */}
             <div className="space-y-4">
               {/* Screenshot instructions */}
-              <div className="rounded-lg border border-blue-200 bg-blue-50/70 p-3.5 text-xs text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-300">
+              <div className="rounded-lg border border-info/30 bg-info/10 p-3.5 text-xs text-info">
                 <p className="flex items-center gap-1.5 font-semibold">
                   <Camera className="h-3.5 w-3.5 shrink-0" />
                   {t('wallet.uploadHowTo')}
@@ -338,7 +338,7 @@ function DepositCard() {
                           <span>{t('wallet.extracting')}</span>
                         </div>
                       ) : extractSuccess ? (
-                        <div className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 mt-0.5">
+                        <div className="flex items-center gap-1 mt-0.5 text-xs text-success">
                           <span>{t('wallet.extractedSuccess')}: <strong className="font-mono">{extractSuccess}</strong></span>
                         </div>
                       ) : (
@@ -382,7 +382,7 @@ function DepositCard() {
                     className="font-mono text-sm"
                   />
                   {extractSuccess && transactionId === extractSuccess && (
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-600">
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-success">
                       <Check className="h-4 w-4" />
                     </span>
                   )}
@@ -457,7 +457,7 @@ function WithdrawCard() {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-base">
-            <ArrowUpRight className="h-4 w-4 text-red-500" />
+            <ArrowUpRight className="h-4 w-4 text-destructive" />
             {t('wallet.withdraw')}
           </CardTitle>
           {!showForm && (
@@ -473,13 +473,13 @@ function WithdrawCard() {
         ) : (
           <div className="space-y-4">
             {withdrawMutation.isSuccess && (
-              <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
+              <div className="flex items-center gap-2 rounded-md border border-info/30 bg-info/10 px-3 py-2 text-sm text-info">
                 <Clock className="h-4 w-4 shrink-0" />
                 {t('wallet.withdrawSubmitted')}
               </div>
             )}
             {withdrawMutation.isError && (
-              <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
+              <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {withdrawMutation.error?.message || t('wallet.withdrawError')}
               </div>
             )}
@@ -507,7 +507,7 @@ function WithdrawCard() {
                     className="mt-1" value={phone} onChange={e => setPhone(e.target.value)} />
                   <p className="mt-1 text-xs text-muted-foreground">{t('wallet.telebirrPhoneHelper')}</p>
                 </div>
-                <div className="rounded-lg border bg-amber-50 p-3 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-400">
+                <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
                   <p className="flex items-center gap-1.5 font-medium">
                     <Clock className="h-3.5 w-3.5" />
                     {t('wallet.withdrawalReviewNotice')}
@@ -601,8 +601,8 @@ function TransactionHistory() {
                   <td className="py-3 pr-4">
                     <span className="flex items-center gap-1.5">
                       {tx.type === 'deposit'
-                        ? <ArrowDownLeft className="h-3.5 w-3.5 text-green-600" />
-                        : <ArrowUpRight className="h-3.5 w-3.5 text-red-500" />}
+                        ? <ArrowDownLeft className="h-3.5 w-3.5 text-success" />
+                        : <ArrowUpRight className="h-3.5 w-3.5 text-destructive" />}
                       <Badge variant={
                         tx.status === 'pending' ? 'warning'
                           : tx.status === 'rejected' ? 'destructive'
@@ -613,7 +613,7 @@ function TransactionHistory() {
                     </span>
                   </td>
                   <td className={cn('py-3 pr-4 font-semibold tabular-nums',
-                    tx.type === 'deposit' ? 'text-green-600' : 'text-red-500')}>
+                    tx.type === 'deposit' ? 'text-success' : 'text-destructive')}>
                     {tx.type === 'deposit' ? '+' : '-'}{formatCurrency(tx.amount)}
                   </td>
                   <td className="py-3 pr-4 tabular-nums text-muted-foreground">{formatCurrency(tx.balance_after)}</td>

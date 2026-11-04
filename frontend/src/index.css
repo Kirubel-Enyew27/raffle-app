@@ -18,6 +18,9 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -36,6 +39,7 @@
 }
 
 :root {
+  color-scheme: light;
   --radius: 0.75rem;
   --background: #f7f8fa;
   --foreground: #17181c;
@@ -43,7 +47,9 @@
   --card-foreground: #17181c;
   --popover: #ffffff;
   --popover-foreground: #17181c;
-  --primary: #f0443c;
+  /* Slightly deeper red in light mode so white button text and red labels
+     clear AA on white surfaces while keeping the KWIK brand hue. */
+  --primary: #dc312a;
   --primary-foreground: #ffffff;
   --secondary: #eef0f3;
   --secondary-foreground: #17181c;
@@ -51,16 +57,31 @@
   --muted-foreground: #646a73;
   --accent: #e9ebef;
   --accent-foreground: #17181c;
-  --destructive: #e5484d;
+  --destructive: #b42318;
+  --success: #047857;
+  --warning: #b45309;
+  --info: #1d4ed8;
   --border: #e1e4e9;
   --input: #d7dbe1;
-  --ring: #f0443c;
+  --ring: #dc312a;
   --surface: #ffffff;
   --surface-2: #f2f4f6;
   --hairline: #e1e4e9;
+
+  /* Warm, theme-aware materials for the illustrated boards. The artwork
+     composition stays identical in both themes; only its surfaces do. */
+  --art-board: #f6f1e7;
+  --art-board-alt: #ded4c2;
+  --art-frame: #c9bda6;
+  --art-frame-2: #ece6da;
+  --art-hole: #e4ded2;
+  --art-hole-stroke: #cfc6b6;
+  --art-line: rgba(23, 24, 28, 0.13);
+  --art-medallion: #f2ede3;
 }
 
 .dark {
+  color-scheme: dark;
   --background: #0a0a0b;
   --foreground: #f4f5f7;
   --card: #141519;
@@ -76,12 +97,24 @@
   --accent: #1f2127;
   --accent-foreground: #ffffff;
   --destructive: #e5484d;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --info: #60a5fa;
   --border: #26282e;
   --input: #2a2d34;
   --ring: #ff5b55;
   --surface: #141519;
   --surface-2: #1a1c21;
   --hairline: #26282e;
+
+  --art-board: #17191d;
+  --art-board-alt: #232630;
+  --art-frame: #2a2d35;
+  --art-frame-2: #111318;
+  --art-hole: #0a0b0d;
+  --art-hole-stroke: #2c3037;
+  --art-line: rgba(255, 255, 255, 0.09);
+  --art-medallion: #121318;
 }
 
 * { border-color: var(--color-border); }

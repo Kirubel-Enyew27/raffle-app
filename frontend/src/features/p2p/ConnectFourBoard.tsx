@@ -106,8 +106,8 @@ export function ConnectFourBoard({
       <div
         className={[
           'relative w-full max-w-md rounded-2xl border-4 p-2.5 shadow-2xl sm:rounded-3xl sm:p-4 transition-colors duration-200',
-          'bg-card',
-          'border-border dark:border-[#3a3e46]',
+          'bg-[var(--art-frame-2)]',
+          'border-[var(--art-frame)] dark:border-[#3a3e46]',
         ].join(' ')}
       >
         <div className="grid gap-1.5 sm:gap-2.5" style={gridStyle}>
@@ -132,11 +132,11 @@ export function ConnectFourBoard({
                   style={isWin && winIndex >= 0 ? { animationDelay: `${winIndex * 150}ms` } : undefined}
                   className={[
                     'relative aspect-square rounded-full transition-all duration-300',
-                    'bg-[#0b0d10] dark:bg-[#0a0b0d]/90',
-                    'shadow-[inset_0_3px_6px_rgba(0,0,0,0.55),inset_0_-1px_2px_rgba(255,255,255,0.06)] dark:shadow-[inset_0_3px_7px_rgba(0,0,0,0.75),inset_0_-1px_2px_rgba(255,255,255,0.08)]',
+                    'bg-[var(--art-hole)]',
+                    'shadow-[inset_0_2px_4px_rgba(0,0,0,0.16),inset_0_-1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_3px_7px_rgba(0,0,0,0.75),inset_0_-1px_2px_rgba(255,255,255,0.08)]',
                     canClickColumn ? 'cursor-pointer' : 'cursor-default',
                     hoveredCol === column && canClickColumn
-                      ? 'ring-1 ring-inset ring-white/30 dark:ring-white/20'
+                      ? 'ring-1 ring-inset ring-foreground/25 dark:ring-white/20'
                       : '',
                     isWin
                       ? [
@@ -192,15 +192,15 @@ export function ConnectFourBoard({
         </span>
 
         {winningLine ? (
-          <span className="font-extrabold text-emerald-600 dark:text-emerald-400 animate-pulse text-xs">
+          <span className="font-extrabold text-success animate-pulse text-xs">
             4-in-a-Row Connected!
           </span>
         ) : isDraw ? (
-          <span className="font-extrabold text-amber-600 dark:text-amber-400 text-xs">
+          <span className="font-extrabold text-warning text-xs">
             Full Grid — Draw!
           </span>
         ) : (
-          <span className={isMyTurn ? 'text-emerald-600 dark:text-emerald-400' : ''}>
+          <span className={isMyTurn ? 'text-success' : ''}>
             {isMyTurn ? 'Your turn' : 'Opponent’s turn'}
           </span>
         )}

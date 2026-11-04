@@ -162,7 +162,7 @@ export function Component() {
       </div>
 
       {/* Fee model explanation */}
-      <div className="flex items-start gap-2 rounded-lg border border-blue-500/30 bg-blue-500/5 px-4 py-3 text-xs text-blue-700 dark:text-blue-300">
+      <div className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/5 px-4 py-3 text-xs text-info">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <div className="space-y-1">
           <p>

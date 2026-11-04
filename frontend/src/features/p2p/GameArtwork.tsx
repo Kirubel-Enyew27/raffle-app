@@ -32,9 +32,9 @@ function DamaArtwork() {
     <svg viewBox="0 0 240 128" className={FRAME} role="presentation" aria-hidden="true">
       <defs>
         <pattern id={`${id}-board`} width="24" height="24" patternUnits="userSpaceOnUse">
-          <rect width="24" height="24" fill="#17191d" />
-          <rect width="12" height="12" fill="#232630" />
-          <rect x="12" y="12" width="12" height="12" fill="#232630" />
+          <rect width="24" height="24" fill="var(--art-board)" />
+          <rect width="12" height="12" fill="var(--art-board-alt)" />
+          <rect x="12" y="12" width="12" height="12" fill="var(--art-board-alt)" />
         </pattern>
         <linearGradient id={`${id}-rim`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.55" />
@@ -45,7 +45,7 @@ function DamaArtwork() {
       <Backdrop glow="#fbbf24" strength={0.34} />
 
       <g transform="rotate(-7 120 68)">
-        <rect x="66" y="16" width="108" height="108" rx="12" fill="#0f1013" stroke="#3a3226" strokeWidth="1.5" />
+        <rect x="66" y="16" width="108" height="108" rx="12" fill="var(--art-frame-2)" stroke="var(--art-frame)" strokeWidth="1.5" />
         <rect x="72" y="22" width="96" height="96" rx="7" fill={`url(#${id}-board)`} />
         <rect x="72" y="22" width="96" height="18" rx="7" fill={`url(#${id}-rim)`} />
         <rect x="66" y="16" width="108" height="108" rx="12" fill="none" stroke="#fbbf24" strokeOpacity="0.18" />
@@ -70,7 +70,7 @@ function TicTacToeArtwork() {
 
       <Backdrop glow="#ff5b55" strength={0.4} />
 
-      <g stroke="#ffffff" strokeOpacity="0.09" strokeWidth="2.5" strokeLinecap="round">
+      <g stroke="var(--art-line)" strokeWidth="2.5" strokeLinecap="round">
         <line x1="114" y1="22" x2="114" y2="106" />
         <line x1="152" y1="22" x2="152" y2="106" />
         <line x1="76" y1="50" x2="190" y2="50" />
@@ -90,8 +90,8 @@ function TicTacToeArtwork() {
 function RockPaperScissorsArtwork() {
   const medallion = (cx: number, ring: string) => (
     <>
-      <circle cx={cx} cy="70" r="29" fill="#121318" stroke={ring} strokeWidth="1.2" />
-      <circle cx={cx} cy="70" r="29" fill="#000" opacity="0.18" />
+      <circle cx={cx} cy="70" r="29" fill="var(--art-medallion)" stroke={ring} strokeWidth="1.2" />
+      <circle cx={cx} cy="70" r="29" fill="#000" opacity="0.08" />
     </>
   )
 
@@ -138,15 +138,15 @@ function ConnectFourArtwork() {
     <svg viewBox="0 0 240 128" className={FRAME} role="presentation" aria-hidden="true">
       <defs>
         <linearGradient id={`${id}-frame`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#2a2d35" />
-          <stop offset="100%" stopColor="#111318" />
+          <stop offset="0%" stopColor="var(--art-frame)" />
+          <stop offset="100%" stopColor="var(--art-frame-2)" />
         </linearGradient>
       </defs>
 
       <Backdrop glow="#34d399" strength={0.22} />
 
-      <rect x="48" y="24" width="144" height="82" rx="14" fill="#000" opacity="0.5" />
-      <rect x="48" y="22" width="144" height="82" rx="14" fill={`url(#${id}-frame)`} stroke="#3a3e46" strokeWidth="1.2" />
+      <rect x="48" y="24" width="144" height="82" rx="14" fill="#000" opacity="0.16" />
+      <rect x="48" y="22" width="144" height="82" rx="14" fill={`url(#${id}-frame)`} stroke="var(--art-hole-stroke)" strokeWidth="1.2" />
       <rect x="51" y="25" width="138" height="12" rx="6" fill="#fff" opacity="0.04" />
 
       {rows.map((y) =>
@@ -154,7 +154,7 @@ function ConnectFourArtwork() {
           const disc = filled[`${x},${y}`]
           return (
             <g key={`${x}-${y}`}>
-              <circle cx={x} cy={y} r="8.2" fill="#0a0b0d" stroke="#2c3037" strokeWidth="1" />
+              <circle cx={x} cy={y} r="8.2" fill="var(--art-hole)" stroke="var(--art-hole-stroke)" strokeWidth="1" />
               {disc && (
                 <>
                   <circle cx={x} cy={y} r="10" fill={disc === 1 ? '#ff5b55' : '#fbbf24'} opacity="0.18" />
@@ -237,7 +237,7 @@ export function GameArtwork({ slug, className = FRAME }: { slug: string; classNa
       return (
         <svg viewBox="0 0 240 128" className={className} role="presentation" aria-hidden="true">
           <Backdrop />
-          <circle cx="120" cy="64" r="24" fill="#1a1c21" stroke="#3a3e46" strokeWidth="1.5" />
+          <circle cx="120" cy="64" r="24" fill="var(--art-medallion)" stroke="var(--art-frame)" strokeWidth="1.5" />
           <path d="M112 56h16v6h-16zM112 66h16v6h-16z" fill="#ff5b55" opacity="0.7" />
         </svg>
       )

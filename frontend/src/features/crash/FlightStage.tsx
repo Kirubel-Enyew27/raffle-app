@@ -43,7 +43,7 @@ export function FlightStage({
   const planeBottom = 10 + p * 68
   const rotation = -18 - p * 34
 
-  const accent = crashed ? 'text-destructive' : running ? 'text-green-500' : 'text-muted-foreground'
+  const accent = crashed ? 'text-destructive' : running ? 'text-success' : 'text-muted-foreground'
   const shownMultiplier = crashed && crashMultiplier ? crashMultiplier : multiplier
 
   return (
@@ -57,7 +57,7 @@ export function FlightStage({
         className="absolute inset-0 opacity-[0.35]"
         style={{
           backgroundImage:
-            'linear-gradient(to right, hsl(var(--border)) 1px, transparent 1px), linear-gradient(to bottom, hsl(var(--border)) 1px, transparent 1px)',
+            'linear-gradient(to right, var(--border) 1px, transparent 1px), linear-gradient(to bottom, var(--border) 1px, transparent 1px)',
           backgroundSize: '48px 48px',
         }}
         aria-hidden
@@ -102,7 +102,7 @@ export function FlightStage({
           aria-hidden
         >
           <Plane
-            className={`h-8 w-8 ${crashed ? 'text-destructive' : 'text-green-500 drop-shadow'}`}
+            className={`h-8 w-8 ${crashed ? 'text-destructive' : 'text-success drop-shadow'}`}
             strokeWidth={2.5}
           />
         </div>

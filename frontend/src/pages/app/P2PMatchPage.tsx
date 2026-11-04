@@ -727,7 +727,7 @@ export function Component() {
                 className="hover:text-primary transition-colors"
                 title="Copy code"
               >
-                {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                {copied ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3" />}
               </button>
             </Badge>
           )}
@@ -745,7 +745,7 @@ export function Component() {
                 {connection.label}
               </span>
             ) : connection.state === 'reconnecting' || connection.state === 'connecting' ? (
-              <span className="flex items-center gap-1 text-amber-500">
+              <span className="flex items-center gap-1 text-warning">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 {connection.label}
               </span>
@@ -755,7 +755,7 @@ export function Component() {
                 {connection.label}
               </span>
             ) : (
-              <span className="flex items-center gap-1 text-emerald-500">
+              <span className="flex items-center gap-1 text-success">
                 <Wifi className="w-3 h-3" />
                 {connection.label}
               </span>
@@ -768,7 +768,7 @@ export function Component() {
       {connection.state === 'reconnecting' && (
         <div
           role="status"
-          className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-700 dark:text-amber-300"
+          className="flex items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs font-semibold text-warning"
         >
           <div className="flex items-center gap-2">
             <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
@@ -777,7 +777,7 @@ export function Component() {
           <Button
             variant="outline"
             size="sm"
-            className="h-7 text-xs shrink-0 border-amber-500/40 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
+            className="h-7 text-xs shrink-0 border-warning/40 text-warning hover:bg-warning/10"
             onClick={() => {
               retryStream()
               refetch()
@@ -821,10 +821,10 @@ export function Component() {
         <div
           role="alert"
           aria-live="polite"
-          className="flex items-center justify-between gap-3 rounded-lg border border-orange-500/40 bg-orange-500/10 px-3 py-2.5 text-xs font-semibold text-orange-700 dark:text-orange-300"
+          className="flex items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs font-semibold text-warning"
         >
           <div className="flex items-center gap-2">
-            <WifiOff className="h-4 w-4 shrink-0 text-orange-500" />
+            <WifiOff className="h-4 w-4 shrink-0 text-warning" />
             <span>
               Your opponent disconnected.{' '}
               {disconnectSecondsLeft > 0
@@ -833,7 +833,7 @@ export function Component() {
             </span>
           </div>
           {disconnectSecondsLeft > 0 && (
-            <span className="shrink-0 tabular-nums font-black text-orange-600 dark:text-orange-300 text-sm">
+            <span className="shrink-0 tabular-nums font-black text-warning text-sm">
               {disconnectSecondsLeft}s
             </span>
           )}
@@ -845,7 +845,7 @@ export function Component() {
         <div
           role="status"
           aria-live="polite"
-          className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs font-semibold text-amber-700 dark:text-amber-300"
+          className="flex items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs font-semibold text-warning"
         >
           <div className="flex items-center gap-2">
             <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
@@ -857,7 +857,7 @@ export function Component() {
             </span>
           </div>
           {disconnectSecondsLeft > 0 && (
-            <span className="shrink-0 tabular-nums font-black text-amber-600 dark:text-amber-300 text-sm">
+            <span className="shrink-0 tabular-nums font-black text-warning text-sm">
               {disconnectSecondsLeft}s
             </span>
           )}
@@ -871,7 +871,7 @@ export function Component() {
             {/* Player 0 (Left) */}
             <div className="flex flex-col items-center sm:items-start text-center sm:text-left space-y-1">
               <div className="relative">
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-sky-500/10 border-2 border-sky-500/40 flex items-center justify-center overflow-hidden font-black text-xl text-sky-500">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-info/10 border-2 border-info/40 flex items-center justify-center overflow-hidden font-black text-xl text-info">
                   {p0?.avatar_url ? (
                     <img src={p0.avatar_url} alt="" className="h-full w-full object-cover" />
                   ) : isTicTacToe && p0 ? (
@@ -909,7 +909,7 @@ export function Component() {
                 <div className="space-y-1">
                   {isRoundBreak ? (
                     <>
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border border-success/30 bg-success/15 text-success">
                         <Trophy className="w-3.5 h-3.5" />
                         <span>ROUND WON</span>
                       </div>
@@ -923,8 +923,8 @@ export function Component() {
                         className={[
                           'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all',
                           isMyTurn
-                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 animate-pulse'
-                            : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30',
+                            ? 'border border-success/30 bg-success/15 text-success animate-pulse'
+                            : 'border border-warning/30 bg-warning/15 text-warning',
                         ].join(' ')}
                       >
                         {mySeat && <TicTacToeMarker seat={mySeat} variant="plain" className="h-3.5 w-3.5" />}
@@ -947,11 +947,11 @@ export function Component() {
                     className={[
                       'text-xs font-black px-3 py-1 uppercase tracking-wide',
                       outcome?.type === 'win'
-                        ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30'
+                        ? 'border border-success/40 bg-success/15 text-success shadow-sm shadow-success/10'
                         : outcome?.type === 'loss'
-                          ? 'bg-rose-500 text-white shadow-sm shadow-rose-500/30'
+                          ? 'border border-destructive/40 bg-destructive/15 text-destructive shadow-sm shadow-destructive/10'
                           : outcome?.type === 'draw'
-                            ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/40'
+                            ? 'border border-warning/40 bg-warning/15 text-warning'
                             : '',
                     ].join(' ')}
                   >
@@ -969,7 +969,7 @@ export function Component() {
             {/* Player 1 (Right) */}
             <div className="flex flex-col items-center sm:items-end text-center sm:text-right space-y-1">
               <div className="relative">
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 flex items-center justify-center overflow-hidden font-black text-xl text-amber-500">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-warning/10 border-2 border-warning/40 flex items-center justify-center overflow-hidden font-black text-xl text-warning">
                   {p1?.avatar_url ? (
                     <img src={p1.avatar_url} alt="" className="h-full w-full object-cover" />
                   ) : isTicTacToe && p1 ? (
@@ -1032,8 +1032,8 @@ export function Component() {
                   <Users className="w-8 h-8" />
                 </div>
                 <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border-2 border-background" />
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                  <span className="relative inline-flex rounded-full h-4 w-4 bg-success border-2 border-background" />
                 </span>
               </div>
 
@@ -1047,7 +1047,7 @@ export function Component() {
               {/* Expiration Timer Badge */}
               <div className="flex items-center justify-center">
                 <Badge variant="outline" className="font-mono text-xs px-3 py-1 gap-1.5 border-border">
-                  <Clock className="w-3.5 h-3.5 text-amber-500" />
+                  <Clock className="w-3.5 h-3.5 text-warning" />
                   <span>
                     {waitingSecondsLeft > 0
                       ? `Expires in ${Math.floor(waitingSecondsLeft / 60)}:${waitingSecondsLeft % 60 < 10 ? '0' : ''}${waitingSecondsLeft % 60}`
@@ -1074,7 +1074,7 @@ export function Component() {
                     >
                       {copied ? (
                         <>
-                          <Check className="w-3.5 h-3.5 text-emerald-500" />
+                          <Check className="w-3.5 h-3.5 text-success" />
                           <span>Copied</span>
                         </>
                       ) : (
@@ -1107,7 +1107,7 @@ export function Component() {
                     >
                       {copiedLink ? (
                         <>
-                          <Check className="w-3.5 h-3.5 text-emerald-500" />
+                          <Check className="w-3.5 h-3.5 text-success" />
                           <span>Link Copied</span>
                         </>
                       ) : (
@@ -1150,7 +1150,7 @@ export function Component() {
           {/* State 2: READY UP */}
           {match.status === 'ready' && (
             <div className="text-center max-w-sm space-y-4 py-8 animate-in fade-in">
-              <div className="w-16 h-16 rounded-full bg-emerald-500/10 border-2 border-emerald-500/40 flex items-center justify-center mx-auto text-emerald-500">
+              <div className="w-16 h-16 rounded-full bg-success/10 border-2 border-success/40 flex items-center justify-center mx-auto text-success">
                 <Swords className="w-8 h-8" />
               </div>
               <div>
@@ -1161,7 +1161,7 @@ export function Component() {
               </div>
 
               {iAmReady ? (
-                <div className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-4 py-2 rounded-full border border-emerald-500/20">
+                <div className="inline-flex items-center gap-2 text-sm font-semibold text-success bg-success/10 px-4 py-2 rounded-full border border-success/20">
                   <span>
                     {opponentReady
                       ? 'Both players are ready — starting the match…'

@@ -284,7 +284,7 @@ function UpcomingDraws() {
                 </p>
               </div>
               <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums',
-                days === 0 ? 'bg-red-100 text-red-700' : days <= 3 ? 'bg-yellow-100 text-yellow-700' : 'bg-muted text-muted-foreground')}>
+                days === 0 ? 'bg-destructive/10 text-destructive' : days <= 3 ? 'bg-warning/10 text-warning' : 'bg-muted text-muted-foreground')}>
                 {days > 0 ? `${days}d` : `${hours}h`}
               </span>
             </div>

@@ -31,9 +31,9 @@ interface RockPaperScissorsBoardProps {
 }
 
 const VERDICT_TONE: Record<RpsVerdict, { box: string; text: string }> = {
-  win: { box: 'border-emerald-500/40 bg-emerald-500/15 ring-2 ring-emerald-500/20', text: 'text-emerald-600 dark:text-emerald-400' },
-  lose: { box: 'border-rose-500/40 bg-rose-500/15 ring-2 ring-rose-500/20', text: 'text-rose-600 dark:text-rose-400' },
-  draw: { box: 'border-amber-500/40 bg-amber-500/15 ring-2 ring-amber-500/20', text: 'text-amber-600 dark:text-amber-400' },
+  win: { box: 'border-emerald-500/40 bg-emerald-500/15 ring-2 ring-emerald-500/20', text: 'text-success' },
+  lose: { box: 'border-destructive/40 bg-destructive/15 ring-2 ring-destructive/20', text: 'text-destructive' },
+  draw: { box: 'border-warning/40 bg-warning/15 ring-2 ring-warning/20', text: 'text-warning' },
 }
 
 function rpsExplanation(c1: RpsChoice, c2: RpsChoice): string {
@@ -116,7 +116,7 @@ function RevealTile({
       <div className="relative">
         <RpsChoiceIcon choice={choice} className={['h-9 w-9 sm:h-10 sm:w-10', meta.accentClass].join(' ')} />
         {isWinningSide && (
-          <span className="absolute -top-1 -right-1 text-emerald-500 animate-pulse">
+          <span className="absolute -top-1 -right-1 text-success animate-pulse">
             <Trophy className="h-4 w-4" />
           </span>
         )}
@@ -239,8 +239,8 @@ export function RockPaperScissorsBoard({
             className={[
               'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
               opponentPicked
-                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                : 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+                ? 'bg-success/15 text-success'
+                : 'bg-warning/15 text-warning',
             ].join(' ')}
           >
             {opponentPicked ? 'Choice Locked In' : 'Choosing move…'}
@@ -304,7 +304,7 @@ export function RockPaperScissorsBoard({
         </div>
       ) : hasSubmitted && myChoice ? (
         <div className="flex flex-col items-center gap-1 text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+          <div className="inline-flex items-center gap-2 rounded-full border border-success/20 bg-success/10 px-4 py-2 text-sm font-semibold text-success">
             <RpsChoiceIcon choice={myChoice} className={['h-4 w-4', RPS_CHOICE_MAP[myChoice].accentClass].join(' ')} />
             <span>Locked in: {choiceLabel(myChoice)}</span>
           </div>

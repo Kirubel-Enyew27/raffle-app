@@ -44,7 +44,7 @@ interface DamaVisualMove {
 // sit on dark squares and empty light squares remain the lighter non-playable
 // checkerboard partner. Board coordinates, playability and game logic are
 // unchanged — this is purely a light-theme color swap.
-const LIGHT_SQUARE_PLAYABLE = 'bg-[#7a6f5c]'
+const LIGHT_SQUARE_PLAYABLE = 'bg-[var(--art-board-alt)]'
 
 function pieceLabel(side: DamaSide, king: boolean): string {
   const color = side === 0 ? 'ivory' : 'crimson'
@@ -192,7 +192,7 @@ export function DamaBoard({
       </div>
 
       {chainFrom !== null && (
-        <div className="w-full rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-center text-[11px] font-semibold text-rose-600 dark:text-rose-300">
+        <div className="w-full rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-center text-[11px] font-semibold text-destructive">
           Captures are mandatory: continue from {squareName(chainFrom)}
         </div>
       )}
@@ -202,11 +202,11 @@ export function DamaBoard({
         <span className="flex items-center gap-1.5">
           <DamaPiece side={0} className="h-3.5 w-3.5 shrink-0" />
           <span>Ivory (P1): {lightCount}</span>
-          {lightCount === 0 && gameOver && <span className="text-rose-500 text-[10px] uppercase">(Eliminated)</span>}
+          {lightCount === 0 && gameOver && <span className="text-destructive text-[10px] uppercase">(Eliminated)</span>}
         </span>
         <span className="flex items-center gap-1.5">
           <span>Crimson (P2): {darkCount}</span>
-          {darkCount === 0 && gameOver && <span className="text-rose-500 text-[10px] uppercase">(Eliminated)</span>}
+          {darkCount === 0 && gameOver && <span className="text-destructive text-[10px] uppercase">(Eliminated)</span>}
           <DamaPiece side={1} className="h-3.5 w-3.5 shrink-0" />
         </span>
       </div>
@@ -215,8 +215,8 @@ export function DamaBoard({
       <div
         className={[
           'relative w-full rounded-2xl border-4 p-1.5 shadow-2xl transition-colors duration-200',
-          'bg-card',
-          'border-[#3a3226] dark:border-[#3a3226] dark:bg-[#0f1013]',
+          'bg-[var(--art-board)]',
+          'border-[var(--art-frame)] dark:border-[#3a3226] dark:bg-[#0f1013]',
           'dark:shadow-black/40',
         ].join(' ')}
       >
@@ -251,8 +251,8 @@ export function DamaBoard({
                   aria-hidden="true"
                   className={[
                     'aspect-square w-full transition-colors duration-200',
+                    'bg-[var(--art-board)]',
                     'dark:bg-[#363b46]',
-                    'bg-[#ece9e0]',
                   ].join(' ')}
                 />
               )
@@ -276,20 +276,20 @@ export function DamaBoard({
                   canInteract
                     ? [
                         'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2',
-                        'focus-visible:ring-amber-300 dark:focus-visible:ring-amber-400',
+                        'focus-visible:ring-warning/60',
                         'focus-visible:ring-offset-1 dark:focus-visible:ring-offset-[#0f1013]',
                       ].join(' ')
                     : '',
                   isSelected
                     ? [
-                        'z-10 ring-2 ring-inset ring-amber-400',
-                        'dark:ring-amber-300',
+                        'z-10 ring-2 ring-inset ring-warning',
+                        'dark:ring-warning',
                       ].join(' ')
                     : '',
                   isLastFrom && !isSelected
                     ? [
-                        'ring-2 ring-inset ring-amber-600/60',
-                        'dark:ring-amber-200/50',
+                        'ring-2 ring-inset ring-warning/60',
+                        'dark:ring-warning/50',
                       ].join(' ')
                     : '',
                   isLastTo && !isSelected
@@ -301,13 +301,13 @@ export function DamaBoard({
                   isTarget ? 'cursor-pointer' : '',
                   isTrappedPiece
                     ? [
-                        'ring-2 ring-inset ring-rose-500/80 bg-rose-950/40',
+                        'ring-2 ring-inset ring-rose-500/80 bg-rose-500/15',
                         'dark:bg-rose-950/40',
                       ].join(' ')
                     : '',
                   isVictoriousRemainingPiece
                     ? [
-                        'ring-2 ring-inset ring-emerald-400/80 bg-emerald-950/20',
+                        'ring-2 ring-inset ring-emerald-400/80 bg-emerald-500/15',
                         'dark:bg-emerald-950/20',
                       ].join(' ')
                     : '',
@@ -374,7 +374,7 @@ export function DamaBoard({
                         ? 'scale-105 drop-shadow-[0_0_9px_rgba(251,191,36,0.85)]'
                         : '',
                       selectable && !isSelected
-                        ? 'ring-1 ring-amber-500/50 dark:ring-amber-200/45'
+                        ? 'ring-1 ring-warning/50 dark:ring-warning/45'
                         : '',
                       isVictoriousRemainingPiece
                         ? 'drop-shadow-[0_0_10px_rgba(52,211,153,0.9)] scale-105'
@@ -453,9 +453,9 @@ export function DamaMoveHistory({ history }: { history?: DamaHistoryEntry[] }) {
             <DamaPiece side={entry.player === 0 ? 0 : 1} className="h-3.5 w-3.5 shrink-0" />
             <span className="font-mono">{moveNotation(entry)}</span>
             {entry.captures && entry.captures.length > 0 && (
-              <span className="ml-auto text-[10px] font-semibold text-rose-500">×{entry.captures.length}</span>
+              <span className="ml-auto text-[10px] font-semibold text-destructive">×{entry.captures.length}</span>
             )}
-            {entry.promotion && <span className="ml-auto text-[10px] font-bold text-amber-500">King</span>}
+            {entry.promotion && <span className="ml-auto text-[10px] font-bold text-warning">King</span>}
           </li>
         ))}
       </ol>

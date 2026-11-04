@@ -92,7 +92,7 @@ export function Component() {
           {isPending ? t('auth.creatingAccount') : t('auth.signUp')}
         </Button>
 
-        <p className="text-center text-[14px] text-[#9ca1a8]">
+        <p className="text-center text-[14px] text-muted-foreground">
           {t('auth.alreadyHaveAccount')}{' '}
           <Link
             to={redirectParam ? `/login?redirect=${encodeURIComponent(redirectParam)}` : '/login'}

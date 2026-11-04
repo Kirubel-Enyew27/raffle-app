@@ -30,17 +30,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }
 
   const icons = {
-    success: <CheckCircle className="h-5 w-5 text-emerald-500 animate-bounce" />,
-    info: <Info className="h-5 w-5 text-blue-500 animate-pulse" />,
-    warning: <AlertTriangle className="h-5 w-5 text-amber-500" />,
-    error: <XCircle className="h-5 w-5 text-rose-500 animate-shake" />,
+    success: <CheckCircle className="h-5 w-5 text-success animate-bounce" />,
+    info: <Info className="h-5 w-5 text-info animate-pulse" />,
+    warning: <AlertTriangle className="h-5 w-5 text-warning" />,
+    error: <XCircle className="h-5 w-5 text-destructive animate-shake" />,
   }
 
   const bgColors = {
-    success: 'border-emerald-500/20 bg-card/95 text-foreground hover:bg-emerald-500/5 dark:bg-card/95',
-    info: 'border-blue-500/20 bg-card/95 text-foreground hover:bg-blue-500/5 dark:bg-card/95',
-    warning: 'border-amber-500/20 bg-card/95 text-foreground hover:bg-amber-500/5 dark:bg-card/95',
-    error: 'border-rose-500/20 bg-card/95 text-foreground hover:bg-rose-500/5 dark:bg-card/95',
+    success: 'border-success/20 bg-card/95 text-foreground hover:bg-success/5',
+    info: 'border-info/20 bg-card/95 text-foreground hover:bg-info/5',
+    warning: 'border-warning/20 bg-card/95 text-foreground hover:bg-warning/5',
+    error: 'border-destructive/20 bg-card/95 text-foreground hover:bg-destructive/5',
   }
 
   return (

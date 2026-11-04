@@ -288,10 +288,10 @@ const formatMoney = (value: number, currency: string) =>
 
 const crashChipClass = (value: number) =>
   value >= 10
-    ? 'bg-amber-500/15 text-amber-600 border-amber-500/30'
+    ? 'bg-warning/15 text-warning border-warning/30'
     : value >= 2
-      ? 'bg-green-500/15 text-green-600 border-green-500/30'
-      : 'bg-rose-500/15 text-rose-600 border-rose-500/30'
+      ? 'bg-success/15 text-success border-success/30'
+      : 'bg-destructive/15 text-destructive border-destructive/30'
 
 // ---------------------------------------------------------------------------
 // Page
@@ -527,7 +527,7 @@ export function Component() {
     if (myBet?.status === 'cashed_out') {
       return (
         <Button size="lg" variant="secondary" className="w-full" disabled>
-          <BadgeCheck className="h-4 w-4 text-green-500" />
+          <BadgeCheck className="h-4 w-4 text-success" />
           {t('crash.cashedOutAt', { multiplier: myBet.cashout_multiplier?.toFixed(2) })}
         </Button>
       )
@@ -582,7 +582,7 @@ export function Component() {
             )}
           </Badge>
           {p2pMode && (
-            <Badge variant="outline" className="gap-1 border-green-500/40 text-green-600">
+            <Badge variant="outline" className="gap-1 border-green-500/40 text-success">
               <CircleDollarSign className="h-3 w-3" />
               {t('crash.prizePool')}: {formatMoney(prizePool, currency)}
             </Badge>
@@ -594,7 +594,7 @@ export function Component() {
             </Badge>
           ) : (
             <Badge variant="success" className="gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-600" />
+              <span className="h-1.5 w-1.5 rounded-full bg-success" />
               {t('crash.live')}
             </Badge>
           )}
@@ -603,7 +603,7 @@ export function Component() {
 
       {/* P2P fee disclosure banner — shown before the user joins */}
       {p2pMode && !myBet && (
-        <div className="flex items-start gap-2 rounded-lg border border-blue-500/30 bg-blue-500/5 px-4 py-3 text-xs text-blue-700 dark:text-blue-300">
+        <div className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/5 px-4 py-3 text-xs text-info">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
             <strong>Peer-to-peer game.</strong> Your stake joins a shared prize pool.
@@ -684,7 +684,7 @@ export function Component() {
                   })}
                 </span>
                 {p2pMode && prizePool > 0 && (
-                  <span className="text-xs font-semibold text-green-600">
+                  <span className="text-xs font-semibold text-success">
                     Pool: {formatMoney(prizePool, currency)}
                   </span>
                 )}
@@ -722,7 +722,7 @@ export function Component() {
                             </td>
                             <td className="px-3 py-2 text-right font-mono tabular-nums">
                               {bet.status === 'cashed_out' ? (
-                                <span className="text-green-600">
+                                <span className="text-success">
                                   {bet.cashout_multiplier?.toFixed(2)}x
                                 </span>
                               ) : bet.status === 'lost' ? (
@@ -734,13 +734,13 @@ export function Component() {
                             <td className="px-6 py-2 text-right font-mono tabular-nums">
                               {bet.status === 'cashed_out' ? (
                                 bet.net_payout != null && bet.net_payout > 0 ? (
-                                  <span className="font-semibold text-green-600">
+                                  <span className="font-semibold text-success">
                                     +{bet.net_payout.toFixed(2)}
                                   </span>
                                 ) : p2pMode ? (
                                   <span className="text-muted-foreground text-[10px]">settling…</span>
                                 ) : (
-                                  <span className="font-semibold text-green-600">
+                                  <span className="font-semibold text-success">
                                     +{bet.payout.toFixed(2)}
                                   </span>
                                 )
@@ -841,7 +841,7 @@ export function Component() {
                     <>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Prize pool</span>
-                        <span className="font-mono font-semibold text-green-600">
+                        <span className="font-mono font-semibold text-success">
                           {formatMoney(prizePool, currency)}
                         </span>
                       </div>
@@ -853,7 +853,7 @@ export function Component() {
                   ) : (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t('crash.potential')}</span>
-                      <span className="font-mono font-semibold text-green-600">
+                      <span className="font-mono font-semibold text-success">
                         {formatMoney(myBet.stake * Math.max(display, 1), currency)}
                       </span>
                     </div>
@@ -863,8 +863,8 @@ export function Component() {
 
               {/* Show P2P settlement breakdown once the round is settled */}
               {myBet?.status === 'cashed_out' && myBet.net_payout != null && myBet.net_payout > 0 && p2pMode && (
-                <div className="rounded-lg border border-green-500/40 bg-green-500/5 px-3 py-2 text-xs">
-                  <p className="mb-1 font-semibold text-green-700 dark:text-green-400">Settlement</p>
+                <div className="rounded-lg border border-success/40 bg-success/5 px-3 py-2 text-xs">
+                  <p className="mb-1 font-semibold text-success">Settlement</p>
                   <div className="space-y-0.5">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Gross return</span>
@@ -876,7 +876,7 @@ export function Component() {
                         <span className="font-mono">−{formatMoney(myBet.service_fee ?? 0, currency)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between font-semibold text-green-700 dark:text-green-400">
+                    <div className="flex justify-between font-semibold text-success">
                       <span>Net payout</span>
                       <span className="font-mono">+{formatMoney(myBet.net_payout, currency)}</span>
                     </div>
@@ -948,7 +948,7 @@ export function Component() {
                     <li key={bet.id} className="flex items-center justify-between gap-2 px-6 py-2">
                       <span className="font-mono">{formatMoney(bet.stake, currency)}</span>
                       {bet.status === 'cashed_out' ? (
-                        <span className="text-green-600">
+                        <span className="text-success">
                           {bet.cashout_multiplier?.toFixed(2)}x · +{bet.payout.toFixed(2)}
                         </span>
                       ) : bet.status === 'lost' ? (
@@ -976,8 +976,8 @@ function VerificationResult({ proof, currency }: { proof: CrashVerification; cur
       <div className="flex items-center gap-1.5 font-semibold">
         {proof.verified ? (
           <>
-            <BadgeCheck className="h-3.5 w-3.5 text-green-600" />
-            <span className="text-green-600">{t('crash.proofValid')}</span>
+            <BadgeCheck className="h-3.5 w-3.5 text-success" />
+            <span className="text-success">{t('crash.proofValid')}</span>
           </>
         ) : (
           <>

@@ -76,7 +76,7 @@ export function Component() {
           {isPending ? t('auth.updating') : t('auth.updatePassword')}
         </Button>
 
-        <p className="text-center text-[14px] text-[#9ca1a8]">
+        <p className="text-center text-[14px] text-muted-foreground">
           <Link to="/login" className={authLinkClass}>
             {t('auth.backToSignIn')}
           </Link>

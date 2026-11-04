@@ -34,8 +34,8 @@ export const RPS_CHOICE_MAP: Record<RpsChoice, RpsChoiceMeta> = {
     label: 'Paper',
     beats: 'rock',
     beatsLabel: 'Rock',
-    accentClass: 'text-amber-700 dark:text-amber-200',
-    tileClass: 'bg-[#e6dcc4]/10 border-[#e6dcc4]/25',
+    accentClass: 'text-warning',
+    tileClass: 'border-[#b1a487]/50 bg-[#e6dcc4]/25 dark:border-[#e6dcc4]/25 dark:bg-[#e6dcc4]/10',
   },
   scissors: {
     id: 'scissors',

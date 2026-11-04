@@ -100,7 +100,7 @@ export function Component() {
                     onClick={() => markReadMutation.mutate(item.ID)}
                     title={t('notifications.markAllRead')}
                   >
-                    <Check className="mr-1 h-3.5 w-3.5 text-emerald-500" />
+                    <Check className="mr-1 h-3.5 w-3.5 text-success" />
                     {t('notifications.all')}
                   </Button>
                 )}
