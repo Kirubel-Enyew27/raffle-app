@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/raffle-app/backend/pkg/money"
@@ -26,8 +27,12 @@ var (
 	ErrUnsupportedGame     = errors.New("this game is not supported by the match engine")
 	ErrInsufficientStake   = errors.New("insufficient wallet balance for match stake")
 	ErrInvalidStake        = errors.New("stake amount is outside allowed limits")
-	ErrPaidMatchesDisabled = errors.New("paid matches are temporarily disabled pending regulatory compliance; free play is available")
+	ErrPaidMatchesDisabled = errors.New("compete to earn is currently unavailable; compete for fun is always available")
 	ErrMatchAlreadyEnded   = errors.New("match has already ended")
+	ErrInvalidMode         = errors.New("invalid competition mode: choose free play or compete to earn")
+	ErrPaidNotAuthorized   = errors.New("compete to earn is currently unavailable")
+	ErrInvalidSetting      = errors.New("invalid or unsupported P2P setting")
+	ErrSettlementFinalized = errors.New("match has already been settled")
 )
 
 const (
@@ -41,6 +46,21 @@ const (
 
 	TypePublicQueue = "public_queue"
 	TypePrivateRoom = "private_room"
+
+	// CompetitionMode is a match-level property. Rules engines never change
+	// based on it: free and staked play share the same authoritative game code.
+	ModeFun  = "fun"
+	ModeEarn = "earn"
+
+	// Settings keys read by the staked-play configuration and admin screens.
+	SettingPaidEnabled      = "paid_matches_enabled"
+	SettingDefaultFeeBP     = "default_service_fee_bp"
+	SettingMinStakeCents    = "min_stake_cents"
+	SettingMaxStakeCents    = "max_stake_cents"
+	SettingStakeIncrement   = "stake_increment_cents"
+	SettingReconnectSeconds = "reconnect_grace_seconds"
+	SettingIdleTimeout      = "idle_room_timeout_seconds"
+	SettingTurnSeconds      = "turn_timer_default_seconds"
 
 	PlayerStatusReserved     = "reserved"
 	PlayerStatusReady        = "ready"
@@ -70,6 +90,7 @@ type Match struct {
 	GameSlug          string                 `json:"game_slug"`
 	Status            string                 `json:"status"`
 	MatchType         string                 `json:"match_type"`
+	CompetitionMode   string                 `json:"competition_mode"`
 	InviteCode        string                 `json:"invite_code,omitempty"`
 	StakeCents        money.Cents            `json:"stake_cents"`
 	StakeAmount       float64                `json:"stake_amount"`
@@ -149,6 +170,70 @@ type SettlementResult struct {
 	FeeCents       money.Cents `json:"fee_cents"`
 	NetPayoutCents money.Cents `json:"net_payout_cents"`
 	IsTie          bool        `json:"is_tie"`
+}
+
+// NormalizeCompetitionMode resolves the requested mode, defaulting to free play
+// and inferring the mode from the stake for older clients that only send a stake.
+func NormalizeCompetitionMode(mode string, stakeCents money.Cents) (string, error) {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	switch mode {
+	case "":
+		if stakeCents > 0 {
+			return ModeEarn, nil
+		}
+		return ModeFun, nil
+	case ModeFun:
+		if stakeCents != 0 {
+			return "", ErrInvalidMode
+		}
+		return ModeFun, nil
+	case ModeEarn:
+		if stakeCents <= 0 {
+			return "", ErrInvalidStake
+		}
+		return ModeEarn, nil
+	default:
+		return "", ErrInvalidMode
+	}
+}
+
+// ValidateStake enforces the configured limits and increment for a paid stake.
+// Returns nil when the stake is playable.
+func ValidateStake(stakeCents, minCents, maxCents, incrementCents money.Cents) error {
+	if stakeCents <= 0 {
+		return ErrInvalidStake
+	}
+	if stakeCents < minCents || stakeCents > maxCents {
+		return ErrInvalidStake
+	}
+	if incrementCents > 0 && stakeCents%incrementCents != 0 {
+		return ErrInvalidStake
+	}
+	return nil
+}
+
+// LedgerEntry is an immutable wallet ledger row attached to a match. Admin
+// views use it to audit reservations, refunds, payouts and platform fees.
+type LedgerEntry struct {
+	ID          string                 `json:"id"`
+	UserID      string                 `json:"user_id"`
+	Type        string                 `json:"type"`
+	Status      string                 `json:"status"`
+	Amount      money.Cents            `json:"amount_cents"`
+	Reference   string                 `json:"reference"`
+	Description string                 `json:"description,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	CreatedAt   time.Time              `json:"created_at"`
+}
+
+// MatchAdminFilter scopes the paid-match oversight list.
+type MatchAdminFilter struct {
+	// Status optionally limits the match status. "needs_attention" selects
+	// terminal paid matches whose ledger never completed or refunded.
+	Status string
+	Game   string
+	Limit  int
+	Offset int
 }
 
 // CalculateSettlement computes exact fee and net payout using integer minor units.

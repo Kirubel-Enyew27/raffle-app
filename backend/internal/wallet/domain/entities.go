@@ -3,12 +3,16 @@ package domain
 import "time"
 
 type Wallet struct {
-	ID        string    `json:"id"`
-	UserID    string    `json:"user_id"`
-	Balance   float64   `json:"balance"`
-	Currency  string    `json:"currency"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID      string  `json:"id"`
+	UserID  string  `json:"user_id"`
+	Balance float64 `json:"balance"`
+	// ReservedBalance is held for active P2P stakes (and pending withdrawals).
+	// AvailableBalance is what the player may still spend or stake.
+	ReservedBalance  float64   `json:"reserved_balance"`
+	AvailableBalance float64   `json:"available_balance"`
+	Currency         string    `json:"currency"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 type WalletTransaction struct {
@@ -22,7 +26,7 @@ type WalletTransaction struct {
 	BalanceAfter  float64                `json:"balance_after"`
 	Reference     string                 `json:"reference"`
 	Description   string                 `json:"description"`
-	Metadata      map[string]interface{}   `json:"metadata,omitempty"`
+	Metadata      map[string]interface{} `json:"metadata,omitempty"`
 	CreatedAt     time.Time              `json:"created_at"`
 	UpdatedAt     time.Time              `json:"updated_at"`
 }

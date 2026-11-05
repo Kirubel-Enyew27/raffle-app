@@ -127,7 +127,9 @@ func (s *WalletService) Withdraw(ctx context.Context, userID string, amount floa
 	if err != nil {
 		return nil, err
 	}
-	if wallet.Balance < amount {
+	// Only unreserved funds may be withdrawn; stakes held for an active P2P
+	// match stay locked until that match settles.
+	if wallet.Balance-wallet.ReservedBalance < amount {
 		return nil, errors.ErrInsufficientFunds
 	}
 
@@ -182,7 +184,7 @@ func (s *WalletService) ApproveWithdrawal(ctx context.Context, txID, adminUserID
 	if err != nil {
 		return nil, err
 	}
-	if wallet.Balance < tx.Amount {
+	if wallet.Balance-wallet.ReservedBalance < tx.Amount {
 		return nil, errors.ErrInsufficientFunds
 	}
 
@@ -620,8 +622,8 @@ func (s *WalletService) VerifyAndDepositReceipt(ctx context.Context, userID, met
 			"receiver_name":  receiptInfo.ReceiverName,
 			"transfer_date":  receiptInfo.TransferDate,
 		},
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
 	if err := s.repo.CreateTransaction(ctx, tx); err != nil {
@@ -664,4 +666,3 @@ func generateID() string {
 	_, _ = rand.Read(buf)
 	return fmt.Sprintf("%x", buf)
 }
-

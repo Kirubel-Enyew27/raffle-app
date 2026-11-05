@@ -551,9 +551,9 @@ func (r *WalletRepo) EnsureWalletTx(ctx context.Context, tx *sql.Tx, userID stri
 		return nil, err
 	}
 
-	row := tx.QueryRowContext(ctx, `SELECT id, user_id, balance, currency FROM wallets WHERE user_id = $1 FOR UPDATE`, userID)
+	row := tx.QueryRowContext(ctx, `SELECT id, user_id, balance, reserved_balance, currency FROM wallets WHERE user_id = $1 FOR UPDATE`, userID)
 	w := &domain.Wallet{}
-	if err := row.Scan(&w.ID, &w.UserID, &w.Balance, &w.Currency); err != nil {
+	if err := row.Scan(&w.ID, &w.UserID, &w.Balance, &w.ReservedBalance, &w.Currency); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, apperrors.ErrNotFound
 		}

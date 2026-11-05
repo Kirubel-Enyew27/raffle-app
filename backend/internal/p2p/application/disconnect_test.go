@@ -598,7 +598,7 @@ func TestTurnTimeout_IncompleteEscrowStillEndsMatch(t *testing.T) {
 	// A funded match whose reservations then went missing (partial join,
 	// manual data repair, …): settlement would fail for ever.
 	if _, err := db.Exec(
-		`UPDATE p2p_matches SET stake_cents = 5000, prize_pool_cents = 10000 WHERE id = $1`, matchID,
+		`UPDATE p2p_matches SET stake_cents = 5000, prize_pool_cents = 10000, competition_mode = 'earn' WHERE id = $1`, matchID,
 	); err != nil {
 		t.Fatalf("fund the match: %v", err)
 	}

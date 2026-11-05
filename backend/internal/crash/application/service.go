@@ -189,10 +189,11 @@ func (s *CrashService) placeBet(ctx context.Context, userID string, amountCents 
 		return nil, apperrors.WithField("WALLET_ERROR", "failed to load wallet", 500, err)
 	}
 
-	balance := money.FromFloat(wallet.Balance)
-	if balance < amountCents {
+	// Stake reservations from active P2P matches must not be spendable here.
+	if money.FromFloat(wallet.Balance-wallet.ReservedBalance) < amountCents {
 		return nil, apperrors.ErrInsufficientFunds
 	}
+	balance := money.FromFloat(wallet.Balance)
 	newBalance := balance - amountCents
 
 	bet := &domain.Bet{

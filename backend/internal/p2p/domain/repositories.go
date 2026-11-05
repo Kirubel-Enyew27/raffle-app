@@ -21,7 +21,12 @@ type MatchRepository interface {
 	FindByIDForUpdate(ctx context.Context, tx *sql.Tx, id string) (*Match, error)
 	FindByInviteCode(ctx context.Context, code string) (*Match, error)
 	FindByInviteCodeForUpdate(ctx context.Context, tx *sql.Tx, code string) (*Match, error)
-	ListWaiting(ctx context.Context, gameSlug string, limit int) ([]*Match, error)
+	// ListWaiting returns joinable public rooms. mode is "fun" or "earn"; an
+	// empty mode keeps the legacy behaviour of listing both (admin/debug only).
+	ListWaiting(ctx context.Context, gameSlug, mode string, limit int) ([]*Match, error)
+	// ListAdminMatches lists paid matches for financial oversight. It is the
+	// only match list that deliberately includes non-waiting terminal rows.
+	ListAdminMatches(ctx context.Context, filter MatchAdminFilter) ([]*Match, int, error)
 	ListUserMatches(ctx context.Context, userID string, limit, offset int) ([]*Match, int, error)
 	FindExpiredTurns(ctx context.Context, now time.Time) ([]*Match, error)
 	FindIdleWaitingRooms(ctx context.Context, olderThan time.Time) ([]*Match, error)
@@ -68,4 +73,8 @@ type EscrowRepository interface {
 	// reservation recorded, so callers use this to detect a match that can
 	// never be settled instead of retrying the failing settlement for ever.
 	PlayersWithoutReservedStake(ctx context.Context, tx *sql.Tx, matchID string, userIDs []string) ([]string, error)
+	// AvailableBalance reports balance minus funds reserved for active stakes.
+	AvailableBalance(ctx context.Context, userID string) (money.Cents, error)
+	// ListMatchLedger returns every immutable wallet row tied to a match.
+	ListMatchLedger(ctx context.Context, matchID string) ([]*LedgerEntry, error)
 }

@@ -39,8 +39,10 @@ type RaffleRepository interface {
 }
 
 type Wallet struct {
-	ID      string
-	Balance float64
+	ID               string
+	Balance          float64
+	ReservedBalance  float64
+	AvailableBalance float64
 }
 
 type WalletRepository interface {

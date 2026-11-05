@@ -66,6 +66,7 @@ export const router = createBrowserRouter([
           { path: '/admin/reports', lazy: () => import('@/pages/admin/AdminReportsPage') },
           { path: '/admin/audit', lazy: () => import('@/pages/admin/AdminAuditPage') },
           { path: '/admin/crash-settings', lazy: () => import('@/pages/admin/AdminCrashSettingsPage') },
+          { path: '/admin/p2p-settings', lazy: () => import('@/pages/admin/AdminP2PSettingsPage') },
         ],
       },
       // Lives outside AuthLayout: the callback signs the user in itself and

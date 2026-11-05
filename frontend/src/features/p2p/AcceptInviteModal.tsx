@@ -22,6 +22,7 @@ import { p2pApi } from '@/features/p2p/api'
 import { GameIcon } from '@/features/p2p/GameIcon'
 import { parseInviteError } from '@/features/p2p/inviteError'
 import { buildWebInviteUrl, copyToClipboard } from '@/lib/telegram'
+import { formatCurrency } from '@/lib/utils'
 import type { InviteSummary, P2PMatch } from '@/types/api'
 
 interface AcceptInviteModalProps {
@@ -282,6 +283,42 @@ export function AcceptInviteModal({
                     <span>{invite.default_turn_seconds}s turn clock</span>
                   </div>
                 </div>
+
+                {invite.competition_mode === 'earn' ? (
+                  <div className="space-y-1.5 rounded-xl border border-[#fbbf24]/30 bg-[#fbbf24]/5 p-3 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-[#b8860b] dark:text-[#fbbf24]">
+                        Compete to Earn
+                      </span>
+                      <span className="rounded-full border border-[#fbbf24]/40 px-2 py-0.5 text-[10px] font-bold text-[#b8860b] dark:text-[#fbbf24]">
+                        {formatCurrency(invite.stake_amount)} stake each
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span>Prize pool</span>
+                      <span className="font-semibold text-foreground">
+                        {formatCurrency(invite.prize_pool)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span>Platform fee ({invite.service_fee_percent.toFixed(2)}%)</span>
+                      <span className="font-semibold text-foreground">
+                        {formatCurrency(invite.prize_pool - invite.potential_payout)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-[#fbbf24]/20 pt-1.5">
+                      <span className="text-muted-foreground">Winner payout</span>
+                      <span className="font-bold text-success">
+                        {formatCurrency(invite.potential_payout)}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-xs">
+                    <span className="font-semibold text-foreground">Free Play</span>
+                    <span className="text-muted-foreground">No stake or wallet balance needed</span>
+                  </div>
+                )}
               </div>
 
               {/* Status Message based on conditions */}
@@ -338,6 +375,14 @@ export function AcceptInviteModal({
                 </div>
               )}
 
+              {invite.competition_mode === 'earn' && isJoinable && (
+                <p className="px-1 text-[11px] leading-relaxed text-muted-foreground">
+                  Accepting reserves {formatCurrency(invite.stake_amount)} from your available
+                  balance. The stake settles only when the match ends; draws and cancellations are
+                  refunded in full.
+                </p>
+              )}
+
               {/* Ticking countdown for active joinable room */}
               {isJoinable && displaySecondsLeft > 0 && (
                 <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
@@ -366,7 +411,11 @@ export function AcceptInviteModal({
                       ) : (
                         <>
                           <Swords className="w-4 h-4" />
-                          <span>Accept Challenge ⚔️</span>
+                          <span>
+                            {invite.competition_mode === 'earn'
+                              ? `Accept & Stake ${formatCurrency(invite.stake_amount)}`
+                              : 'Accept Challenge ⚔️'}
+                          </span>
                         </>
                       )}
                     </Button>

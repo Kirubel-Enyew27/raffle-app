@@ -136,8 +136,9 @@ func (h *P2PHandler) GetLeaderboard(c *gin.Context) {
 
 func (h *P2PHandler) ListLobby(c *gin.Context) {
 	gameSlug := c.Query("game_slug")
+	mode := c.Query("mode")
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	matches, err := h.svc.ListWaitingMatches(c.Request.Context(), gameSlug, limit)
+	matches, err := h.svc.ListWaitingMatches(c.Request.Context(), gameSlug, mode, limit)
 	if err != nil {
 		h.log.Error("ListLobby failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"code": "SERVER_ERROR", "message": "internal server error"})
@@ -162,6 +163,43 @@ func (h *P2PHandler) ListUserMatches(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"code": "success", "data": gin.H{"matches": matches, "total": total}})
+}
+
+// GetConfig returns the backend-authoritative Compete to Earn configuration
+// plus the caller's spendable balance. The client never derives stake limits,
+// the fee or the payout on its own.
+func (h *P2PHandler) GetConfig(c *gin.Context) {
+	userID := c.GetString("user_id")
+	config, err := h.svc.GetConfig(c.Request.Context(), userID)
+	if err != nil {
+		h.log.Error("GetConfig failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "SERVER_ERROR", "message": "internal server error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": "success", "data": config})
+}
+
+// QuoteStake returns the exact stake, prize pool, fee and payout for a proposed
+// stake. Match creation re-validates all of it server-side.
+func (h *P2PHandler) QuoteStake(c *gin.Context) {
+	userID := c.GetString("user_id")
+	gameSlug := c.Query("game_slug")
+	if gameSlug == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "BAD_REQUEST", "message": "game_slug is required"})
+		return
+	}
+	stake, err := strconv.ParseFloat(c.Query("stake_amount"), 64)
+	if err != nil || stake <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "BAD_REQUEST", "message": "stake_amount must be a positive number"})
+		return
+	}
+
+	quote, err := h.svc.QuoteStake(c.Request.Context(), userID, gameSlug, stake)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": "success", "data": quote})
 }
 
 func (h *P2PHandler) CreateMatch(c *gin.Context) {
@@ -461,10 +499,80 @@ func isUUID(value string) bool {
 	return true
 }
 
+func (h *P2PHandler) AdminGetSettings(c *gin.Context) {
+	settings, err := h.svc.GetAdminSettings(c.Request.Context())
+	if err != nil {
+		h.log.Error("AdminGetSettings failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "SERVER_ERROR", "message": "internal server error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": "success", "data": settings})
+}
+
+func (h *P2PHandler) AdminUpdateSettings(c *gin.Context) {
+	adminID := c.GetString("user_id")
+	var req struct {
+		Settings map[string]string `json:"settings" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "BAD_REQUEST", "message": err.Error()})
+		return
+	}
+
+	if err := h.svc.UpdateAdminSettings(c.Request.Context(), adminID, req.Settings); err != nil {
+		h.handleAdminError(c, err)
+		return
+	}
+
+	updated, err := h.svc.GetAdminSettings(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"code": "success", "data": nil})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": "success", "data": updated})
+}
+
+func (h *P2PHandler) AdminListPaidMatches(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	filter := domain.MatchAdminFilter{
+		Status: c.Query("status"),
+		Game:   c.Query("game"),
+		Limit:  limit,
+		Offset: offset,
+	}
+
+	matches, total, err := h.svc.ListPaidMatches(c.Request.Context(), filter)
+	if err != nil {
+		h.log.Error("AdminListPaidMatches failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "SERVER_ERROR", "message": "internal server error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": "success", "data": gin.H{"matches": matches, "total": total}})
+}
+
+func (h *P2PHandler) handleAdminError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, domain.ErrPaidNotAuthorized):
+		c.JSON(http.StatusForbidden, gin.H{"code": "PAID_MATCHES_NOT_AUTHORIZED", "message": err.Error()})
+	case errors.Is(err, domain.ErrInvalidSetting):
+		c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_SETTING", "message": err.Error()})
+	default:
+		h.log.Error("admin p2p request failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "SERVER_ERROR", "message": "internal server error"})
+	}
+}
+
 func handleError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrPaidMatchesDisabled):
 		c.JSON(http.StatusForbidden, gin.H{"code": "PAID_MATCHES_DISABLED", "message": err.Error()})
+	case errors.Is(err, domain.ErrPaidNotAuthorized):
+		c.JSON(http.StatusForbidden, gin.H{"code": "PAID_MATCHES_NOT_AUTHORIZED", "message": err.Error()})
+	case errors.Is(err, domain.ErrInvalidMode):
+		c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_COMPETITION_MODE", "message": err.Error()})
+	case errors.Is(err, domain.ErrSettlementFinalized):
+		c.JSON(http.StatusConflict, gin.H{"code": "ALREADY_SETTLED", "message": err.Error()})
 	case errors.Is(err, domain.ErrInvitationExpired):
 		c.JSON(http.StatusGone, gin.H{"code": "INVITATION_EXPIRED", "message": "This invitation has expired"})
 	case errors.Is(err, domain.ErrNotParticipant):

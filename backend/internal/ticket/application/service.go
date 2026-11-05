@@ -11,8 +11,8 @@ import (
 	auditapp "github.com/raffle-app/backend/internal/audit/application"
 	realtime "github.com/raffle-app/backend/internal/realtime"
 	ticketdomain "github.com/raffle-app/backend/internal/ticket/domain"
-	apperrors "github.com/raffle-app/backend/pkg/errors"
 	appcontext "github.com/raffle-app/backend/pkg/context"
+	apperrors "github.com/raffle-app/backend/pkg/errors"
 )
 
 type IdempotencyStore interface {
@@ -21,13 +21,13 @@ type IdempotencyStore interface {
 }
 
 type TicketService struct {
-	db             *sql.DB
-	ticketRepo     ticketdomain.TicketRepository
-	raffleRepo     ticketdomain.RaffleRepository
-	walletRepo     ticketdomain.WalletRepository
-	auditService   *auditapp.AuditService
+	db               *sql.DB
+	ticketRepo       ticketdomain.TicketRepository
+	raffleRepo       ticketdomain.RaffleRepository
+	walletRepo       ticketdomain.WalletRepository
+	auditService     *auditapp.AuditService
 	idempotencyStore IdempotencyStore
-	realtimeSvc    *realtime.Service
+	realtimeSvc      *realtime.Service
 }
 
 func NewTicketService(
@@ -39,11 +39,11 @@ func NewTicketService(
 	idempotencyStore IdempotencyStore,
 ) *TicketService {
 	return &TicketService{
-		db:             db,
-		ticketRepo:     ticketRepo,
-		raffleRepo:     raffleRepo,
-		walletRepo:     walletRepo,
-		auditService:   auditService,
+		db:               db,
+		ticketRepo:       ticketRepo,
+		raffleRepo:       raffleRepo,
+		walletRepo:       walletRepo,
+		auditService:     auditService,
 		idempotencyStore: idempotencyStore,
 	}
 }
@@ -113,7 +113,8 @@ func (s *TicketService) PurchaseTickets(ctx context.Context, input *ticketdomain
 	}
 
 	cost := float64(input.Quantity) * raffle.TicketPrice
-	if wallet.Balance < cost {
+	// Funds reserved for active P2P stakes cannot be spent on tickets.
+	if wallet.Balance-wallet.ReservedBalance < cost {
 		return nil, apperrors.ErrInsufficientFunds
 	}
 
@@ -149,12 +150,12 @@ func (s *TicketService) PurchaseTickets(ctx context.Context, input *ticketdomain
 	tickets := make([]*ticketdomain.Ticket, input.Quantity)
 	for i := 0; i < input.Quantity; i++ {
 		tickets[i] = &ticketdomain.Ticket{
-			ID:          generateID(),
-			RaffleID:    input.RaffleID,
-			UserID:      input.UserID,
-			WalletTxID:  walletTxID,
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			ID:         generateID(),
+			RaffleID:   input.RaffleID,
+			UserID:     input.UserID,
+			WalletTxID: walletTxID,
+			CreatedAt:  time.Now(),
+			UpdatedAt:  time.Now(),
 		}
 	}
 	if err := s.ticketRepo.CreateBatchTx(ctx, tx, tickets); err != nil {

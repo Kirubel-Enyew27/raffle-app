@@ -1,5 +1,5 @@
 import { Navigate, Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Ticket, Trophy, Users, BarChart2, ScrollText, LogOut, User as UserIcon, Clock, Settings2 } from 'lucide-react'
+import { LayoutDashboard, Ticket, Trophy, Users, BarChart2, ScrollText, LogOut, User as UserIcon, Clock, Settings2, Coins } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/contexts/AuthContext'
 import { LanguageSelector } from '@/components/ui/LanguageSelector'
@@ -21,6 +21,7 @@ function Sidebar() {
     { to: '/admin/reports',     icon: BarChart2,       label: t('admin.reports')      },
     { to: '/admin/audit',          icon: ScrollText,      label: t('admin.auditLog')       },
     { to: '/admin/crash-settings', icon: Settings2,       label: 'Crash Settings'           },
+    { to: '/admin/p2p-settings',   icon: Coins,          label: 'P2P Earnings'             },
   ]
 
   return (

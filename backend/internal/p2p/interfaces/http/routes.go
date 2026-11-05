@@ -25,6 +25,10 @@ func RegisterP2PRoutes(r *gin.RouterGroup, handler *P2PHandler, rl ...*P2PRateLi
 		auth := p2p.Group("")
 		auth.Use(middleware.AuthMiddleware())
 		{
+			// Backend-authoritative paid-play configuration and stake quote.
+			auth.GET("/config", handler.GetConfig)
+			auth.GET("/stake-quote", handler.QuoteStake)
+
 			auth.GET("/matches/lobby", handler.ListLobby)
 			auth.GET("/matches/my", handler.ListUserMatches)
 
@@ -61,6 +65,16 @@ func RegisterP2PRoutes(r *gin.RouterGroup, handler *P2PHandler, rl ...*P2PRateLi
 			auth.POST("/matches/:id/rematch", handler.Rematch)
 			auth.GET("/matches/:id/state", handler.GetMatchState)
 			auth.GET("/matches/:id", handler.GetMatchState)
+		}
+
+		// Paid-play administration: configuration and financial oversight. These
+		// routes are permission-protected and recorded by the audit middleware.
+		admin := r.Group("/admin/p2p")
+		admin.Use(middleware.AuthMiddleware(), middleware.AdminMiddleware())
+		{
+			admin.GET("/settings", handler.AdminGetSettings)
+			admin.PATCH("/settings", handler.AdminUpdateSettings)
+			admin.GET("/matches", handler.AdminListPaidMatches)
 		}
 	}
 }

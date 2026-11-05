@@ -1,10 +1,14 @@
 import { api } from '@/lib/api'
 import type { ApiResponse, ReceiptDepositResult, Wallet, WalletTransaction } from '@/types/api'
 
-export const mapTransaction = (tx: any): WalletTransaction => ({
-  ...tx,
-  type: (tx.type === 'deposit' || tx.type === 'sms_deposit') ? 'deposit' : 'withdraw',
-})
+export const mapTransaction = (tx: any): WalletTransaction => {
+  // Preserve P2P ledger categories so stakes, refunds, prizes and platform fees
+  // are not mislabelled as ordinary withdrawals.
+  let type: string = tx.type
+  if (type === 'sms_deposit') type = 'deposit'
+  else if (type === 'withdrawal') type = 'withdraw'
+  return { ...tx, type }
+}
 
 export const walletApi = {
   balance: () =>

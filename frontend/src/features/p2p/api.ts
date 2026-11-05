@@ -1,9 +1,13 @@
 import { api } from '@/lib/api'
 import type {
   ApiResponse,
+  P2PAdminMatch,
+  P2PAdminSettings,
+  P2PConfig,
   P2PGame,
   P2PMatch,
   P2PRematchResult,
+  P2PStakeQuote,
   InviteSummary,
   LeaderboardData,
   LeaderboardParams,
@@ -12,6 +16,7 @@ import type {
 export interface CreateMatchPayload {
   game_slug: string
   match_type?: 'public_queue' | 'private_room'
+  competition_mode?: 'fun' | 'earn'
   stake_amount?: number
   /** Quick Play: join a waiting opponent when one exists instead of opening a new room. */
   auto_match?: boolean
@@ -24,12 +29,39 @@ export const p2pApi = {
   getGame: (slug: string) =>
     api.get<ApiResponse<P2PGame>>(`/p2p/games/${slug}`).then((r) => r.data.data),
 
-  listLobby: (gameSlug?: string, limit = 20) =>
+  listLobby: (gameSlug?: string, limit = 20, mode?: 'fun' | 'earn') =>
     api
       .get<ApiResponse<P2PMatch[]>>('/p2p/matches/lobby', {
-        params: { game_slug: gameSlug, limit },
+        params: { game_slug: gameSlug, limit, mode },
       })
       .then((r) => r.data.data ?? []),
+
+  /** Backend-authoritative paid-play limits, fee and spendable balance. */
+  getConfig: () =>
+    api.get<ApiResponse<P2PConfig>>('/p2p/config').then((r) => r.data.data),
+
+  /** Exact stake/pool/fee/payout quote; never calculate money on the client. */
+  quoteStake: (gameSlug: string, stakeAmount: number) =>
+    api
+      .get<ApiResponse<P2PStakeQuote>>('/p2p/stake-quote', {
+        params: { game_slug: gameSlug, stake_amount: stakeAmount },
+      })
+      .then((r) => r.data.data),
+
+  adminGetSettings: () =>
+    api.get<ApiResponse<P2PAdminSettings>>('/admin/p2p/settings').then((r) => r.data.data),
+
+  adminUpdateSettings: (settings: Record<string, string>) =>
+    api
+      .patch<ApiResponse<P2PAdminSettings>>('/admin/p2p/settings', { settings })
+      .then((r) => r.data.data),
+
+  adminListMatches: (params: { status?: string; game?: string; limit?: number; offset?: number }) =>
+    api
+      .get<ApiResponse<{ matches: P2PAdminMatch[]; total: number }>>('/admin/p2p/matches', {
+        params,
+      })
+      .then((r) => r.data.data ?? { matches: [], total: 0 }),
 
   listMyMatches: (limit = 20, offset = 0) =>
     api
@@ -60,7 +92,7 @@ export const p2pApi = {
   readyUp: (matchId: string) =>
     api.post<ApiResponse<P2PMatch>>(`/p2p/matches/${matchId}/ready`).then((r) => r.data.data),
 
-  submitMove: (matchId: string, action: Record<string, any>) =>
+  submitMove: (matchId: string, action: Record<string, unknown>) =>
     api.post<ApiResponse<P2PMatch>>(`/p2p/matches/${matchId}/move`, action).then((r) => r.data.data),
 
   resignMatch: (matchId: string) =>

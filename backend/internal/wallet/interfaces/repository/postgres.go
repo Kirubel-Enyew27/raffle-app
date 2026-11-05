@@ -32,43 +32,46 @@ func (r *WalletRepo) CreateTx(ctx context.Context, tx *sql.Tx, wallet *domain.Wa
 }
 
 func (r *WalletRepo) FindByUserID(ctx context.Context, userID string) (*domain.Wallet, error) {
-	query := `SELECT id, user_id, balance, currency, created_at, updated_at FROM wallets WHERE user_id = $1`
+	query := `SELECT id, user_id, balance, reserved_balance, currency, created_at, updated_at FROM wallets WHERE user_id = $1`
 	row := r.db.QueryRowContext(ctx, query, userID)
 	wallet := &domain.Wallet{}
-	err := row.Scan(&wallet.ID, &wallet.UserID, &wallet.Balance, &wallet.Currency, &wallet.CreatedAt, &wallet.UpdatedAt)
+	err := row.Scan(&wallet.ID, &wallet.UserID, &wallet.Balance, &wallet.ReservedBalance, &wallet.Currency, &wallet.CreatedAt, &wallet.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.ErrNotFound
 		}
 		return nil, err
 	}
+	wallet.AvailableBalance = wallet.Balance - wallet.ReservedBalance
 	return wallet, nil
 }
 
 func (r *WalletRepo) FindByUserIDWithLock(ctx context.Context, tx *sql.Tx, userID string) (*domain.Wallet, error) {
-	query := `SELECT id, user_id, balance, currency, created_at, updated_at FROM wallets WHERE user_id = $1 FOR UPDATE`
+	query := `SELECT id, user_id, balance, reserved_balance, currency, created_at, updated_at FROM wallets WHERE user_id = $1 FOR UPDATE`
 	row := tx.QueryRowContext(ctx, query, userID)
 	wallet := &domain.Wallet{}
-	err := row.Scan(&wallet.ID, &wallet.UserID, &wallet.Balance, &wallet.Currency, &wallet.CreatedAt, &wallet.UpdatedAt)
+	err := row.Scan(&wallet.ID, &wallet.UserID, &wallet.Balance, &wallet.ReservedBalance, &wallet.Currency, &wallet.CreatedAt, &wallet.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.ErrNotFound
 		}
 		return nil, err
 	}
+	wallet.AvailableBalance = wallet.Balance - wallet.ReservedBalance
 	return wallet, nil
 }
 
 func (r *WalletRepo) FindByID(ctx context.Context, id string) (*domain.Wallet, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, user_id, balance, currency, created_at, updated_at FROM wallets WHERE id = $1`, id)
+	row := r.db.QueryRowContext(ctx, `SELECT id, user_id, balance, reserved_balance, currency, created_at, updated_at FROM wallets WHERE id = $1`, id)
 	wallet := &domain.Wallet{}
-	err := row.Scan(&wallet.ID, &wallet.UserID, &wallet.Balance, &wallet.Currency, &wallet.CreatedAt, &wallet.UpdatedAt)
+	err := row.Scan(&wallet.ID, &wallet.UserID, &wallet.Balance, &wallet.ReservedBalance, &wallet.Currency, &wallet.CreatedAt, &wallet.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.ErrNotFound
 		}
 		return nil, err
 	}
+	wallet.AvailableBalance = wallet.Balance - wallet.ReservedBalance
 	return wallet, nil
 }
 
@@ -458,4 +461,3 @@ func nullIfEmpty(s string) sql.NullString {
 	}
 	return sql.NullString{String: s, Valid: true}
 }
-

@@ -61,6 +61,10 @@ export interface Wallet {
   id: string
   user_id: string
   balance: number
+  /** Funds held for active P2P stakes and pending withdrawals. */
+  reserved_balance: number
+  /** Balance minus reserved funds: what the player can still stake. */
+  available_balance: number
   currency: string
 }
 
@@ -118,11 +122,16 @@ export interface P2PMatch {
   game_slug: string
   status: 'waiting' | 'ready' | 'in_progress' | 'completed' | 'cancelled' | 'tied' | 'forfeited'
   match_type: 'public_queue' | 'private_room'
+  /** Match-level mode: free play or staked Compete to Earn. */
+  competition_mode: 'fun' | 'earn'
   invite_code?: string
   stake_amount: number
   prize_pool: number
+  service_fee_bp: number
   service_fee_percent: number
   total_fee: number
+  /** Winner payout if the match settled now (pool minus platform fee). */
+  potential_payout: number
   winner_user_id?: string
   current_turn_user_id?: string
   turn_seconds_left: number
@@ -180,9 +189,70 @@ export interface InviteSummary {
   creator_name: string
   creator_avatar_url?: string
   match_type: 'public_queue' | 'private_room'
+  competition_mode: 'fun' | 'earn'
+  stake_amount: number
+  prize_pool: number
+  service_fee_percent: number
+  potential_payout: number
   max_rounds: number
   default_turn_seconds: number
   created_at: string
+}
+
+export interface P2PConfig {
+  paid_matches_enabled: boolean
+  service_fee_bp: number
+  service_fee_percent: number
+  min_stake_cents: number
+  max_stake_cents: number
+  stake_increment_cents: number
+  available_balance: number
+  currency: string
+}
+
+export interface P2PStakeQuote {
+  game_slug: string
+  stake_cents: number
+  stake_amount: number
+  opponent_stake_amount: number
+  prize_pool: number
+  prize_pool_cents: number
+  service_fee_bp: number
+  service_fee_percent: number
+  fee_cents: number
+  fee: number
+  potential_payout: number
+  potential_payout_cents: number
+  available_balance: number
+  min_stake_cents: number
+  max_stake_cents: number
+  stake_increment_cents: number
+}
+
+export interface P2PLedgerEntry {
+  id: string
+  user_id: string
+  type: string
+  status: string
+  amount_cents: number
+  reference: string
+  description?: string
+  metadata?: Record<string, any>
+  created_at: string
+}
+
+export interface P2PAdminMatch {
+  match: P2PMatch
+  ledger: P2PLedgerEntry[]
+  financial_status: 'pending' | 'reserved' | 'settled' | 'refunded' | 'needs_attention'
+  needs_attention: boolean
+}
+
+export interface P2PAdminSettings {
+  settings: Record<string, string>
+  config: Omit<P2PConfig, 'available_balance' | 'currency'>
+  games: P2PGame[]
+  operator_gate_open: boolean
 }
 
 export type LeaderboardPeriod = 'all_time' | 'daily' | 'weekly' | 'monthly'

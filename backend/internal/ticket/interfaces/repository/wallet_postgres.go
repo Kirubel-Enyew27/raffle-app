@@ -19,28 +19,30 @@ func NewTicketWalletRepo(db *sql.DB) *TicketWalletRepo {
 }
 
 func (r *TicketWalletRepo) FindByUserID(ctx context.Context, userID string) (*ticketdomain.Wallet, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, balance FROM wallets WHERE user_id = $1`, userID)
+	row := r.db.QueryRowContext(ctx, `SELECT id, balance, reserved_balance FROM wallets WHERE user_id = $1`, userID)
 	wallet := &ticketdomain.Wallet{}
-	err := row.Scan(&wallet.ID, &wallet.Balance)
+	err := row.Scan(&wallet.ID, &wallet.Balance, &wallet.ReservedBalance)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, sql.ErrNoRows
 		}
 		return nil, err
 	}
+	wallet.AvailableBalance = wallet.Balance - wallet.ReservedBalance
 	return wallet, nil
 }
 
 func (r *TicketWalletRepo) FindByUserIDForUpdate(ctx context.Context, tx *sql.Tx, userID string) (*ticketdomain.Wallet, error) {
-	row := tx.QueryRowContext(ctx, `SELECT id, balance FROM wallets WHERE user_id = $1 FOR UPDATE`, userID)
+	row := tx.QueryRowContext(ctx, `SELECT id, balance, reserved_balance FROM wallets WHERE user_id = $1 FOR UPDATE`, userID)
 	wallet := &ticketdomain.Wallet{}
-	err := row.Scan(&wallet.ID, &wallet.Balance)
+	err := row.Scan(&wallet.ID, &wallet.Balance, &wallet.ReservedBalance)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, sql.ErrNoRows
 		}
 		return nil, err
 	}
+	wallet.AvailableBalance = wallet.Balance - wallet.ReservedBalance
 	return wallet, nil
 }
 

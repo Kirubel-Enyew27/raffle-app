@@ -16,6 +16,9 @@ import {
   Share2,
   AlertTriangle,
   Trophy,
+  Coins,
+  Wallet,
+  ShieldCheck,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -24,6 +27,8 @@ import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { p2pApi } from '@/features/p2p/api'
+import { walletApi } from '@/features/wallet/api'
+import { cn, formatCurrency } from '@/lib/utils'
 import {
   buildInviteUrl,
   buildWebInviteUrl,
@@ -64,6 +69,27 @@ function apiErrorMessage(err: unknown): string {
     if (message) return message
   }
   return 'Something went wrong'
+}
+
+function PaidMetric({
+  label,
+  value,
+  highlight = false,
+}: {
+  label: string
+  value: string
+  highlight?: boolean
+}) {
+  return (
+    <div className="space-y-0.5">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+        {label}
+      </p>
+      <p className={cn('font-bold tabular-nums', highlight ? 'text-success' : 'text-foreground')}>
+        {value}
+      </p>
+    </div>
+  )
 }
 
 export function Component() {
@@ -110,6 +136,16 @@ export function Component() {
     enabled: !!matchId,
     // The match channel pushes state changes; a fallback poll below keeps the
     // board in sync while that stream is down (see "resyncFromServer").
+  })
+
+  // Paid matches need the wallet balance for the pre-match and settlement
+  // panels. The balance is only fetched while a staked match is on screen.
+  const isPaidMatch = match?.competition_mode === 'earn'
+  const { data: wallet } = useQuery({
+    queryKey: ['wallet'],
+    queryFn: walletApi.balance,
+    enabled: !!isPaidMatch,
+    staleTime: 0,
   })
 
   const applyMatchSnapshot = useCallback(
@@ -246,7 +282,7 @@ export function Component() {
         refetch()
       }
     },
-    [matchId, applyMatchSnapshot, refetch, toast, user?.id, openRematch]
+    [matchId, applyMatchSnapshot, refetch, toast, openRematch]
   )
 
   // Reconnect mutation: when the SSE stream recovers from a disconnection,
@@ -303,6 +339,14 @@ export function Component() {
   })
 
   const isTerminalMatch = !!match && ['completed', 'tied', 'forfeited', 'cancelled'].includes(match.status)
+
+  // Refresh the wallet once settlement lands so the result panel shows the
+  // updated balance rather than the pre-match value.
+  useEffect(() => {
+    if (isPaidMatch && isTerminalMatch) {
+      void queryClient.invalidateQueries({ queryKey: ['wallet'] })
+    }
+  }, [isPaidMatch, isTerminalMatch, queryClient])
 
   // Staleness is observed by the poll timer below — the clock is read inside a
   // callback, never during render — and only published when it flips, so a
@@ -624,6 +668,14 @@ export function Component() {
   const isTicTacToe = match.game_slug === 'tic-tac-toe'
   const mySeat = isTicTacToe ? seatForPlayerIndex(myPlayer?.player_index) : null
   const isGameOver = ['completed', 'tied', 'forfeited', 'cancelled'].includes(match.status)
+  // Paid outcomes: a draw/cancel refunds the stake, otherwise the winner
+  // receives the pool minus the settled platform fee.
+  const paidPayout =
+    match.status === 'tied' || match.status === 'cancelled'
+      ? match.stake_amount
+      : match.winner_user_id === user?.id
+        ? match.prize_pool - match.total_fee
+        : 0
   // const damaHistory = (match.board_state?.move_history ?? []) as DamaHistoryEntry[]
 
   // Disconnect state derived from match (server-authoritative).
@@ -864,6 +916,54 @@ export function Component() {
         </div>
       )}
 
+      {/* Paid match summary: kept outside the board so the game stays clean. */}
+      {isPaidMatch && (
+        <Card className="border-[#fbbf24]/30 bg-[#fbbf24]/[0.04] shadow-sm">
+          <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#fbbf24]/10 text-[#b8860b] dark:text-[#fbbf24]">
+                <Coins className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#b8860b] dark:text-[#fbbf24]">
+                  Compete to Earn
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {match.status === 'waiting' || match.status === 'ready'
+                    ? 'Stakes are reserved until the match ends'
+                    : match.status === 'tied'
+                      ? 'Draw — both stakes refunded'
+                      : match.status === 'cancelled'
+                        ? 'Cancelled — stakes refunded'
+                        : 'Match settled'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+              <PaidMetric label="Your stake" value={formatCurrency(match.stake_amount)} />
+              <PaidMetric label="Opponent stake" value={formatCurrency(match.stake_amount)} />
+              <PaidMetric label="Prize pool" value={formatCurrency(match.prize_pool)} />
+              <PaidMetric
+                label={`Fee ${match.service_fee_percent.toFixed(2)}%`}
+                value={formatCurrency(match.status === 'tied' || match.status === 'cancelled' ? 0 : match.total_fee || (match.prize_pool * match.service_fee_bp) / 10000)}
+              />
+              <PaidMetric
+                label="Winner payout"
+                value={formatCurrency(match.potential_payout)}
+                highlight
+              />
+              {wallet && (
+                <PaidMetric
+                  label="Available"
+                  value={formatCurrency(wallet.available_balance ?? wallet.balance)}
+                />
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Opponents Duel Header Card */}
       <Card className="border-border/80 shadow-md bg-card/60 backdrop-blur overflow-hidden">
         <CardContent className="p-4 sm:p-6">
@@ -1038,9 +1138,13 @@ export function Component() {
               </div>
 
               <div>
-                <h3 className="text-xl font-bold">Waiting for Challenger</h3>
+                <h3 className="text-xl font-bold">
+                  {isPaidMatch ? 'Searching for a Staked Opponent' : 'Waiting for Challenger'}
+                </h3>
                 <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
-                  Share this invitation with a friend through Telegram or copy the room link to play!
+                  {isPaidMatch
+                    ? `Only a player staking exactly ${formatCurrency(match.stake_amount)} can join. Your stake is reserved while you wait.`
+                    : 'Share this invitation with a friend through Telegram or copy the room link to play!'}
                 </p>
               </div>
 
@@ -1154,9 +1258,13 @@ export function Component() {
                 <Swords className="w-8 h-8" />
               </div>
               <div>
-                <h3 className="text-xl font-bold">Both Players Joined!</h3>
+                <h3 className="text-xl font-bold">
+                  {isPaidMatch ? 'Confirm Your Stake' : 'Both Players Joined!'}
+                </h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Click Ready Up when you are prepared to begin the duel.
+                  {isPaidMatch
+                    ? `Both players must confirm the ${formatCurrency(match.stake_amount)} stake before the match starts. Funds settle only when the match ends.`
+                    : 'Click Ready Up when you are prepared to begin the duel.'}
                 </p>
               </div>
 
@@ -1176,7 +1284,11 @@ export function Component() {
                     onClick={() => readyMutation.mutate()}
                     className="w-full font-bold shadow-lg shadow-primary/20 text-base"
                   >
-                    {readyMutation.isPending ? 'Confirming…' : 'I am Ready! ⚔️'}
+                    {readyMutation.isPending
+                      ? 'Confirming…'
+                      : isPaidMatch
+                        ? `Confirm ${formatCurrency(match.stake_amount)} Stake`
+                        : 'I am Ready! ⚔️'}
                   </Button>
                   <p className="text-[11px] text-muted-foreground">
                     {opponentReady ? 'Your opponent is ready.' : 'Your opponent has not readied up yet.'}
@@ -1275,6 +1387,54 @@ export function Component() {
           )}
         </CardContent>
       </Card>
+
+      {/* Paid settlement result */}
+      {isGameOver && isPaidMatch && (
+        <Card className="border-[#fbbf24]/30 shadow-sm">
+          <CardContent className="space-y-3 p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="flex items-center gap-2 text-sm font-bold text-foreground">
+                <ShieldCheck className="h-4 w-4 text-success" />
+                Match Settlement
+              </h2>
+              <Badge variant={match.status === 'tied' ? 'outline' : 'success'} className="text-[10px] font-bold">
+                {match.status === 'tied'
+                  ? 'Draw — refunded'
+                  : match.status === 'cancelled'
+                    ? 'Refunded'
+                    : match.winner_user_id === user?.id
+                      ? 'You won'
+                      : 'Opponent won'}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              <PaidMetric label="Your stake" value={formatCurrency(match.stake_amount)} />
+              <PaidMetric label="Opponent stake" value={formatCurrency(match.stake_amount)} />
+              <PaidMetric label="Prize pool" value={formatCurrency(match.prize_pool)} />
+              <PaidMetric label={`Platform fee ${match.service_fee_percent.toFixed(2)}%`} value={formatCurrency(match.status === 'tied' || match.status === 'cancelled' ? 0 : match.total_fee)} />
+              <PaidMetric
+                label="Final payout"
+                value={formatCurrency(paidPayout)}
+                highlight
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Wallet className="h-3.5 w-3.5" />
+                Updated wallet balance:{' '}
+                <strong className="font-bold text-foreground">
+                  {wallet ? formatCurrency(wallet.balance) : '—'}
+                </strong>
+              </span>
+              <span className="font-mono text-[10px]">
+                Ref: {myPlayer?.credit_tx_id || myPlayer?.debit_tx_id || match.id}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Surrender / Resign Button during Active Play */}
       {match.status === 'in_progress' && (

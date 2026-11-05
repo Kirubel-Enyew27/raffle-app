@@ -10,6 +10,9 @@ import {
   Trophy,
   Clock,
   ArrowUpRight,
+  Check,
+  Coins,
+  Sparkles,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -23,7 +26,8 @@ import { GameArtwork } from '@/features/p2p/GameArtwork'
 import { ChallengeFriendModal } from '@/features/p2p/ChallengeFriendModal'
 import { AcceptInviteModal } from '@/features/p2p/AcceptInviteModal'
 import { extractStartInviteCode } from '@/lib/telegram'
-import { cn } from '@/lib/utils'
+import { StakeSetupModal } from '@/features/p2p/StakeSetupModal'
+import { cn, formatCurrency } from '@/lib/utils'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 function apiErrorMessage(err: unknown, fallback = 'Something went wrong'): string {
@@ -78,6 +82,12 @@ export function Component() {
   const [enteredCode, setEnteredCode] = useState<string | null>(null)
   const [selectedGameSlug, setSelectedGameSlug] = useState<string>('tic-tac-toe')
   const [matchType, setMatchType] = useState<'public_queue' | 'private_room'>('public_queue')
+  // Competition mode is a lobby-level choice. Free play is the default so
+  // existing players never have to opt out of anything.
+  const [selectedMode, setSelectedMode] = useState<'fun' | 'earn'>(
+    searchParams.get('mode') === 'earn' ? 'earn' : 'fun'
+  )
+  const [stakeGameSlug, setStakeGameSlug] = useState<string | null>(null)
 
   // Resolve active invite code from entered state, URL search params, or Telegram WebApp start param
   const urlInviteCode = (
@@ -104,17 +114,48 @@ export function Component() {
     }
   }
 
+  // Keep the chosen mode in the URL so it survives navigation to a game and
+  // back without the lobby silently reverting to free play.
+  const selectMode = (next: 'fun' | 'earn') => {
+    setSelectedMode(next)
+    setSearchParams(
+      (prev) => {
+        const updated = new URLSearchParams(prev)
+        updated.set('mode', next)
+        return updated
+      },
+      { replace: true }
+    )
+  }
+
   // Fetch games
   const { data: games = [] } = useQuery({
     queryKey: ['p2p-games'],
     queryFn: p2pApi.listGames,
   })
 
-  // Fetch lobby waiting matches. Refreshes are pushed over the shared
-  // realtime channel below, so this query does not poll.
-  const { data: lobbyMatches = [], isLoading: lobbyLoading, refetch: refetchLobby } = useQuery({
-    queryKey: ['p2p-lobby'],
-    queryFn: () => p2pApi.listLobby(),
+  // Backend-authoritative paid-play configuration (limits, fee, balance).
+  const { data: p2pConfig } = useQuery({
+    queryKey: ['p2p-config'],
+    queryFn: p2pApi.getConfig,
+    enabled: !!token,
+    staleTime: 10_000,
+  })
+  // Both competition modes are selectable. Paid play still requires a valid
+  // wallet balance and a backend-approved stake, but it is not gated behind an
+  // approval state in the lobby.
+  const mode = selectedMode
+
+  // Fetch lobby waiting matches for the selected mode. Free and paid rooms
+  // are separate queues, so the server filters by mode rather than the client.
+  // Refreshes are pushed over the shared realtime channel below.
+  const {
+    data: lobbyMatches = [],
+    isLoading: lobbyLoading,
+    refetch: refetchLobby,
+  } = useQuery({
+    queryKey: ['p2p-lobby', mode],
+    queryFn: () => p2pApi.listLobby(undefined, 20, mode),
   })
 
   useP2PStream({
@@ -143,6 +184,7 @@ export function Component() {
     mutationFn: (payload: {
       game_slug: string
       match_type: 'public_queue' | 'private_room'
+      competition_mode?: 'fun' | 'earn'
       stake_amount: number
       auto_match: boolean
     }) => p2pApi.createMatch(payload),
@@ -185,10 +227,28 @@ export function Component() {
     createMutation.mutate({
       game_slug: gameSlug,
       match_type: isPrivate ? 'private_room' : 'public_queue',
+      competition_mode: 'fun',
       stake_amount: 0,
       auto_match: autoMatch,
     })
   }
+
+  const openStakeSetup = (gameSlug?: string) => {
+    if (!user) {
+      navigate('/login')
+      return
+    }
+    setStakeGameSlug(gameSlug || games[0]?.slug || 'tic-tac-toe')
+    setCreateModalOpen(false)
+  }
+
+  const handleStakeCreate = (payload: {
+    game_slug: string
+    match_type: 'public_queue' | 'private_room'
+    competition_mode: 'earn'
+    stake_amount: number
+    auto_match: boolean
+  }) => createMutation.mutate(payload)
 
   // Join by code preview handler
   const handleJoinByCode = (e: React.FormEvent) => {
@@ -237,22 +297,95 @@ export function Component() {
 
           <div className="flex flex-col gap-2.5 pt-2 sm:flex-row sm:items-center">
             <Button
-              onClick={() => openChallenge()}
+              onClick={() => (mode === 'earn' ? openStakeSetup() : openChallenge())}
               className="h-11 gap-2 px-5 text-sm shadow-lg shadow-[#ff5b55]/20"
             >
               <Swords className="h-4 w-4" />
-              Challenge a Friend
+              {mode === 'earn' ? 'Start a Staked Match' : 'Challenge a Friend'}
             </Button>
             <Button
               variant="outline"
-              onClick={() => setCreateModalOpen(true)}
+              onClick={() => (mode === 'earn' ? openStakeSetup() : setCreateModalOpen(true))}
               className="h-11 gap-2 border-input bg-background px-5 text-sm font-semibold text-foreground hover:bg-accent hover:text-accent-foreground"
             >
               <PlusCircle className="h-4 w-4" />
-              Host Custom Match
+              {mode === 'earn' ? 'Choose Stake' : 'Host Custom Match'}
             </Button>
           </div>
         </div>
+      </section>
+
+      {/* Competition mode selection */}
+      <section className="grid gap-3 sm:grid-cols-2" aria-label="Competition mode">
+        <button
+          type="button"
+          onClick={() => selectMode('fun')}
+          aria-pressed={mode === 'fun'}
+          className={cn(
+            'group relative overflow-hidden rounded-2xl border p-4 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.99] sm:p-5',
+            mode === 'fun'
+              ? 'border-primary bg-primary/10 ring-2 ring-primary/45 shadow-[0_18px_40px_-30px_rgba(255,91,85,0.95)]'
+              : 'border-border bg-card hover:-translate-y-0.5 hover:border-primary/40 hover:bg-accent/50'
+          )}
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-bold text-foreground sm:text-base">Compete for Fun</h2>
+                {mode === 'fun' && (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-primary-foreground">
+                    <Check className="h-3 w-3" strokeWidth={3} />
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                Play your favorite games and challenge friends without financial risk.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                <span className="rounded-full border border-border px-2 py-0.5">Free to play</span>
+                <span className="rounded-full border border-border px-2 py-0.5">No wallet needed</span>
+              </div>
+            </div>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => selectMode('earn')}
+          aria-pressed={mode === 'earn'}
+          className={cn(
+            'group relative overflow-hidden rounded-2xl border p-4 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fbbf24] focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.99] sm:p-5',
+            mode === 'earn'
+              ? 'border-[#fbbf24] bg-[#fbbf24]/10 ring-2 ring-[#fbbf24]/45 shadow-[0_18px_40px_-30px_rgba(251,191,36,0.95)]'
+              : 'border-border bg-card hover:-translate-y-0.5 hover:border-[#fbbf24]/40 hover:bg-accent/50'
+          )}
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#fbbf24]/10 text-[#d99a06] dark:text-[#fbbf24]">
+              <Coins className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-bold text-foreground sm:text-base">Compete to Earn</h2>
+                {mode === 'earn' && (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#fbbf24] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-black">
+                    <Check className="h-3 w-3" strokeWidth={3} />
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                Stake your balance against an opponent at the same stake and compete for the prize pool.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                <span className="rounded-full border border-border px-2 py-0.5">Wallet required</span>
+                <span className="rounded-full border border-border px-2 py-0.5">Prize payouts</span>
+              </div>
+            </div>
+          </div>
+        </button>
       </section>
 
       {/* Join with Invite Code */}
@@ -291,20 +424,20 @@ export function Component() {
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              onClick={() => openChallenge()}
+              onClick={() => (mode === 'earn' ? openStakeSetup() : openChallenge())}
               className="h-8 gap-1.5 text-xs"
             >
               <Swords className="h-3.5 w-3.5" />
-              Challenge Friend
+              {mode === 'earn' ? 'Set Stake' : 'Challenge Friend'}
             </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCreateModalOpen(true)}
+              onClick={() => (mode === 'earn' ? openStakeSetup() : setCreateModalOpen(true))}
               className="h-8 gap-1.5 border-input bg-background text-xs text-foreground hover:bg-accent hover:text-accent-foreground"
             >
               <PlusCircle className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Host Custom Match</span>
+              <span className="hidden sm:inline">{mode === 'earn' ? 'Choose Stake' : 'Host Custom Match'}</span>
             </Button>
           </div>
         </div>
@@ -337,9 +470,9 @@ export function Component() {
                 />
                 <button
                   type="button"
-                  onClick={() => handleCreateMatch(g.slug, false, true)}
+                  onClick={() => (mode === 'earn' ? openStakeSetup(g.slug) : handleCreateMatch(g.slug, false, true))}
                   disabled={createMutation.isPending}
-                  aria-label={`Quick play ${g.title}`}
+                  aria-label={mode === 'earn' ? `Set a stake for ${g.title}` : `Quick play ${g.title}`}
                   className="absolute right-3 top-3 rounded-lg border border-border bg-background/80 p-1.5 text-primary backdrop-blur transition-all hover:border-primary/50 hover:text-primary hover:shadow-[0_0_18px_-4px_rgba(255,91,85,0.5)] dark:border-[#2c2f36] dark:bg-[#0c0d10]/70 dark:text-[#ff5b55] dark:hover:text-[#ff8a80]"
                 >
                   <ArrowUpRight className="h-4 w-4" />
@@ -370,16 +503,16 @@ export function Component() {
 
                 <div className="mt-auto grid grid-cols-2 gap-2">
                   <Button
-                    onClick={() => handleCreateMatch(g.slug, false, true)}
+                    onClick={() => (mode === 'earn' ? openStakeSetup(g.slug) : handleCreateMatch(g.slug, false, true))}
                     disabled={createMutation.isPending}
                     className="h-9 gap-1.5 px-2 text-[11px]"
                   >
                     <Swords className="h-3.5 w-3.5" />
-                    Quick Play
+                    {mode === 'earn' ? 'Set Stake' : 'Quick Play'}
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => openChallenge(g.slug)}
+                    onClick={() => (mode === 'earn' ? openStakeSetup(g.slug) : openChallenge(g.slug))}
                     className="h-9 gap-1.5 border-input bg-background px-2 text-[11px] text-foreground hover:bg-accent hover:text-accent-foreground"
                   >
                     <Users className="h-3.5 w-3.5" />
@@ -429,7 +562,10 @@ export function Component() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex w-full gap-1 rounded-xl border border-border bg-muted/50 p-1 sm:w-auto">
             {([
-              { key: 'lobby', label: `Live Lobby (${lobbyMatches.length})` },
+              {
+                key: 'lobby',
+                label: `Live ${mode === 'earn' ? 'Stake' : 'Free'} Lobby (${lobbyMatches.length})`,
+              },
               { key: 'history', label: 'My Match History' },
             ] as const).map(({ key, label }) => (
               <button
@@ -481,9 +617,11 @@ export function Component() {
             ) : lobbyMatches.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center">
                 <Users className="mx-auto mb-2 h-8 w-8 text-muted-foreground/50" />
-                <p className="font-semibold text-foreground">No open matches right now</p>
+                <p className="font-semibold text-foreground">No open {mode === 'earn' ? 'stake' : 'free'} matches right now</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Be the first to create an open room or start a quick match!
+                  {mode === 'earn'
+                    ? 'Set a stake to open a room. Only a player at the same stake can join.'
+                    : 'Be the first to create an open room or start a quick match!'}
                 </p>
               </div>
             ) : (
@@ -506,6 +644,18 @@ export function Component() {
                           <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
                             {m.max_rounds > 1 ? `Best of ${m.max_rounds}` : 'Single Round'}
                           </span>
+                          <span
+                            className={cn(
+                              'rounded-full border px-2 py-0.5 text-[10px] font-bold',
+                              m.competition_mode === 'earn'
+                                ? 'border-[#fbbf24]/40 bg-[#fbbf24]/10 text-[#b8860b] dark:text-[#fbbf24]'
+                                : 'border-border text-muted-foreground'
+                            )}
+                          >
+                            {m.competition_mode === 'earn'
+                              ? `${formatCurrency(m.stake_amount)} stake`
+                              : 'Free play'}
+                          </span>
                         </div>
                         <p className="truncate text-xs text-muted-foreground">
                           Host:{' '}
@@ -527,11 +677,17 @@ export function Component() {
                       ) : (
                         <Button
                           size="sm"
-                          disabled={joinMutation.isPending}
+                          disabled={
+                            joinMutation.isPending ||
+                            (m.competition_mode === 'earn' &&
+                              (!p2pConfig || p2pConfig.available_balance < m.stake_amount))
+                          }
                           onClick={() => joinMutation.mutate(m.id)}
                           className="h-8 shrink-0 text-xs"
                         >
-                          Join Duel
+                          {m.competition_mode === 'earn'
+                            ? `Join ${formatCurrency(m.stake_amount)}`
+                            : 'Join Duel'}
                         </Button>
                       )}
                     </div>
@@ -593,6 +749,11 @@ export function Component() {
                               )}
                             >
                               {outcome}
+                            </span>
+                            <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                              {m.competition_mode === 'earn'
+                                ? `Earn · ${formatCurrency(m.stake_amount)}`
+                                : 'Fun'}
                             </span>
                           </div>
                           <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -717,6 +878,16 @@ export function Component() {
           onOpenChallengeModal={() => openChallenge()}
         />
       )}
+
+      <StakeSetupModal
+        key={`${stakeGameSlug ?? 'none'}-${p2pConfig?.min_stake_cents ?? 0}`}
+        open={!!stakeGameSlug}
+        game={games.find((g) => g.slug === stakeGameSlug) ?? null}
+        config={p2pConfig}
+        pending={createMutation.isPending}
+        onClose={() => setStakeGameSlug(null)}
+        onCreate={handleStakeCreate}
+      />
     </div>
   )
 }

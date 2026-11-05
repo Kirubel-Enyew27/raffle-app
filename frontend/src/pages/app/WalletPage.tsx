@@ -49,8 +49,16 @@ function BalanceCard() {
       <CardContent>
         {isLoading ? <Skeleton className="h-9 w-40" /> : (
           <>
-            <p className="text-3xl font-bold">{formatCurrency(data?.balance ?? 0, data?.currency)}</p>
+            <p className="text-3xl font-bold">
+              {formatCurrency(data?.available_balance ?? data?.balance ?? 0, data?.currency)}
+            </p>
             <p className="mt-1 text-xs text-muted-foreground">{t('wallet.ethiopianBirr')}</p>
+            {(data?.reserved_balance ?? 0) > 0 && (
+              <p className="mt-2 text-[11px] font-medium text-warning">
+                {formatCurrency(data?.reserved_balance ?? 0, data?.currency)} reserved for active
+                matches and pending withdrawals
+              </p>
+            )}
           </>
         )}
       </CardContent>
@@ -552,8 +560,24 @@ function TransactionHistory() {
     month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit',
   })
 
-  // Translate transaction status/type labels
+  const isCredit = (type: string) =>
+    type === 'deposit' || type === 'p2p_stake_refund' || type === 'p2p_payout'
+  const isDebit = (type: string) =>
+    type === 'withdraw' || type === 'p2p_match_stake' || type === 'p2p_platform_fee'
+
+  // P2P ledger rows keep their own categories instead of being folded into
+  // ordinary deposits/withdrawals.
   const txLabel = (tx: typeof txs[0]) => {
+    switch (tx.type) {
+      case 'p2p_match_stake':
+        return tx.status === 'reserved' ? 'Stake reserved' : 'Stake settled'
+      case 'p2p_stake_refund':
+        return 'Stake refund'
+      case 'p2p_payout':
+        return 'Match prize'
+      case 'p2p_platform_fee':
+        return 'Platform fee'
+    }
     if (tx.status === 'completed') return tx.type === 'deposit' ? t('wallet.credit') : t('wallet.debit')
     if (tx.status === 'pending') return t('wallet.pending')
     if (tx.status === 'rejected') return t('wallet.failed')
@@ -568,6 +592,7 @@ function TransactionHistory() {
           <option value="all">{t('wallet.allTypes')}</option>
           <option value="deposit">{t('wallet.deposits')}</option>
           <option value="withdraw">{t('wallet.withdrawals')}</option>
+          <option value="p2p_match_stake">Match stakes</option>
         </Select>
       </CardHeader>
       <CardContent>
@@ -600,21 +625,23 @@ function TransactionHistory() {
                 <tr key={tx.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                   <td className="py-3 pr-4">
                     <span className="flex items-center gap-1.5">
-                      {tx.type === 'deposit'
+                      {isCredit(tx.type)
                         ? <ArrowDownLeft className="h-3.5 w-3.5 text-success" />
                         : <ArrowUpRight className="h-3.5 w-3.5 text-destructive" />}
                       <Badge variant={
                         tx.status === 'pending' ? 'warning'
                           : tx.status === 'rejected' ? 'destructive'
-                          : tx.type === 'deposit' ? 'success' : 'destructive'
+                          : isCredit(tx.type) ? 'success'
+                            : tx.type === 'p2p_platform_fee' ? 'outline' : 'destructive'
                       }>
                         {txLabel(tx)}
                       </Badge>
                     </span>
                   </td>
                   <td className={cn('py-3 pr-4 font-semibold tabular-nums',
-                    tx.type === 'deposit' ? 'text-success' : 'text-destructive')}>
-                    {tx.type === 'deposit' ? '+' : '-'}{formatCurrency(tx.amount)}
+                    isCredit(tx.type) ? 'text-success'
+                      : isDebit(tx.type) ? 'text-destructive' : 'text-muted-foreground')}>
+                    {isCredit(tx.type) ? '+' : isDebit(tx.type) ? '-' : ''}{formatCurrency(tx.amount)}
                   </td>
                   <td className="py-3 pr-4 tabular-nums text-muted-foreground">{formatCurrency(tx.balance_after)}</td>
                   <td className="max-w-[10rem] py-3 pr-4">

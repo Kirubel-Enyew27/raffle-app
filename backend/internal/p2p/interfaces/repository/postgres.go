@@ -101,7 +101,7 @@ const matchColumns = `id, game_slug, status, match_type, invite_code, stake_cent
 	prize_pool_cents, service_fee_bp, total_fee_cents, winner_user_id, current_turn_user_id,
 	turn_deadline, current_round, max_rounds, scores, board_state, created_by,
 	started_at, completed_at, created_at, updated_at, state_version, rematch_requested_by, rematch_match_id,
-	disconnect_user_id, disconnect_deadline`
+	disconnect_user_id, disconnect_deadline, competition_mode`
 
 // matchColumnsM is the same list qualified with the `m` alias. Queries that join
 // p2p_match_players must use it: both tables expose id/status/created_at, and an
@@ -110,7 +110,7 @@ const matchColumnsM = `m.id, m.game_slug, m.status, m.match_type, m.invite_code,
 	m.prize_pool_cents, m.service_fee_bp, m.total_fee_cents, m.winner_user_id, m.current_turn_user_id,
 	m.turn_deadline, m.current_round, m.max_rounds, m.scores, m.board_state, m.created_by,
 	m.started_at, m.completed_at, m.created_at, m.updated_at, m.state_version, m.rematch_requested_by, m.rematch_match_id,
-	m.disconnect_user_id, m.disconnect_deadline`
+	m.disconnect_user_id, m.disconnect_deadline, m.competition_mode`
 
 func scanMatch(row interface {
 	Scan(dest ...interface{}) error
@@ -127,7 +127,16 @@ func scanMatch(row interface {
 		&poolCents, &m.ServiceFeeBP, &feeCents, &winnerID, &turnUserID,
 		&turnDeadline, &m.CurrentRound, &m.MaxRounds, &scoresRaw, &boardRaw, &m.CreatedBy,
 		&startedAt, &completedAt, &m.CreatedAt, &m.UpdatedAt, &m.StateVersion, &rematchRequestedBy, &rematchMatchID,
-		&disconnectUserID, &disconnectDeadline)
+		&disconnectUserID, &disconnectDeadline, &m.CompetitionMode)
+	if m.CompetitionMode == "" {
+		// Rows written before the mode column existed still need a usable mode
+		// when a test database is not migrated; derive it from the stake.
+		if m.StakeCents > 0 {
+			m.CompetitionMode = domain.ModeEarn
+		} else {
+			m.CompetitionMode = domain.ModeFun
+		}
+	}
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, domain.ErrMatchNotFound
@@ -205,8 +214,8 @@ func (r *MatchRepo) CreateTx(ctx context.Context, tx *sql.Tx, match *domain.Matc
 		id, game_slug, status, match_type, invite_code, stake_cents, stake_amount,
 		prize_pool_cents, service_fee_bp, total_fee_cents, winner_user_id, current_turn_user_id,
 		turn_deadline, current_round, max_rounds, scores, board_state, created_by,
-		rematch_requested_by, rematch_match_id, started_at, created_at, updated_at
-	) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,NOW(),NOW())
+		rematch_requested_by, rematch_match_id, started_at, competition_mode, created_at, updated_at
+	) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,NOW(),NOW())
 	RETURNING created_at, updated_at, state_version`
 
 	return tx.QueryRowContext(ctx, query,
@@ -216,7 +225,7 @@ func (r *MatchRepo) CreateTx(ctx context.Context, tx *sql.Tx, match *domain.Matc
 		nullIfEmpty(ptrStr(match.CurrentTurnUserID)), match.TurnDeadline, match.CurrentRound,
 		match.MaxRounds, string(scoresJSON), string(boardJSON), match.CreatedBy,
 		nullIfEmpty(ptrStr(match.RematchRequestedBy)), nullIfEmpty(ptrStr(match.RematchMatchID)),
-		match.StartedAt).Scan(&match.CreatedAt, &match.UpdatedAt, &match.StateVersion)
+		match.StartedAt, match.CompetitionMode).Scan(&match.CreatedAt, &match.UpdatedAt, &match.StateVersion)
 }
 
 func (r *MatchRepo) FindByID(ctx context.Context, id string) (*domain.Match, error) {
@@ -239,21 +248,24 @@ func (r *MatchRepo) FindByInviteCodeForUpdate(ctx context.Context, tx *sql.Tx, c
 	return scanMatch(row)
 }
 
-func (r *MatchRepo) ListWaiting(ctx context.Context, gameSlug string, limit int) ([]*domain.Match, error) {
+func (r *MatchRepo) ListWaiting(ctx context.Context, gameSlug, mode string, limit int) ([]*domain.Match, error) {
 	if limit <= 0 {
 		limit = 20
 	}
-	var rows *sql.Rows
-	var err error
+	where := `status = 'waiting' AND match_type = 'public_queue'`
+	args := []interface{}{}
 	if gameSlug != "" {
-		rows, err = r.db.QueryContext(ctx, `SELECT `+matchColumns+` FROM p2p_matches
-			WHERE status = 'waiting' AND match_type = 'public_queue' AND game_slug = $1
-			ORDER BY created_at DESC LIMIT $2`, gameSlug, limit)
-	} else {
-		rows, err = r.db.QueryContext(ctx, `SELECT `+matchColumns+` FROM p2p_matches
-			WHERE status = 'waiting' AND match_type = 'public_queue'
-			ORDER BY created_at DESC LIMIT $1`, limit)
+		args = append(args, gameSlug)
+		where += fmt.Sprintf(" AND game_slug = $%d", len(args))
 	}
+	if mode != "" {
+		args = append(args, mode)
+		where += fmt.Sprintf(" AND competition_mode = $%d", len(args))
+	}
+	args = append(args, limit)
+
+	rows, err := r.db.QueryContext(ctx, `SELECT `+matchColumns+` FROM p2p_matches
+		WHERE `+where+` ORDER BY created_at DESC LIMIT $`+fmt.Sprintf("%d", len(args)), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -268,6 +280,57 @@ func (r *MatchRepo) ListWaiting(ctx context.Context, gameSlug string, limit int)
 		list = append(list, m)
 	}
 	return list, rows.Err()
+}
+
+func (r *MatchRepo) ListAdminMatches(ctx context.Context, filter domain.MatchAdminFilter) ([]*domain.Match, int, error) {
+	limit := filter.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	if filter.Offset < 0 {
+		filter.Offset = 0
+	}
+
+	where := []string{"m.stake_cents > 0"}
+	args := []interface{}{}
+	if filter.Game != "" {
+		args = append(args, filter.Game)
+		where = append(where, fmt.Sprintf("m.game_slug = $%d", len(args)))
+	}
+	if filter.Status == "needs_attention" {
+		where = append(where, "m.status IN ('completed','tied','forfeited','cancelled')")
+		where = append(where, `NOT EXISTS (
+			SELECT 1 FROM wallet_transactions wt
+			WHERE wt.reference IN ('p2p_stake:'||m.id, 'p2p_refund:'||m.id, 'p2p_payout:'||m.id)
+			  AND wt.status IN ('completed','refunded'))`)
+	} else if filter.Status != "" {
+		args = append(args, filter.Status)
+		where = append(where, fmt.Sprintf("m.status = $%d", len(args)))
+	}
+	clause := strings.Join(where, " AND ")
+
+	var count int
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM p2p_matches m WHERE `+clause, args...).Scan(&count); err != nil {
+		return nil, 0, err
+	}
+
+	queryArgs := append(append([]interface{}{}, args...), limit, filter.Offset)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+matchColumnsM+` FROM p2p_matches m
+		WHERE `+clause+` ORDER BY m.created_at DESC LIMIT $`+fmt.Sprintf("%d", len(args)+1)+` OFFSET $`+fmt.Sprintf("%d", len(args)+2), queryArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var list []*domain.Match
+	for rows.Next() {
+		m, err := scanMatch(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		list = append(list, m)
+	}
+	return list, count, rows.Err()
 }
 
 func (r *MatchRepo) ListUserMatches(ctx context.Context, userID string, limit, offset int) ([]*domain.Match, int, error) {
@@ -1044,6 +1107,56 @@ func (r *EscrowRepo) PlayersWithoutReservedStake(ctx context.Context, tx *sql.Tx
 		}
 	}
 	return missing, nil
+}
+
+// AvailableBalance reports the funds a player can still stake: the wallet
+// balance minus every active reservation. A missing wallet simply has nothing
+// available rather than being an error.
+func (r *EscrowRepo) AvailableBalance(ctx context.Context, userID string) (money.Cents, error) {
+	var available float64
+	err := r.db.QueryRowContext(ctx, `SELECT GREATEST(balance - reserved_balance, 0) FROM wallets WHERE user_id = $1`, userID).Scan(&available)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return money.FromFloat(available), nil
+}
+
+// ListMatchLedger returns the immutable wallet rows for a match in creation
+// order. Every financial operation on a paid match references the match id, so
+// this is the complete audit trail for reservations, refunds and settlement.
+func (r *EscrowRepo) ListMatchLedger(ctx context.Context, matchID string) ([]*domain.LedgerEntry, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, user_id, type, status, amount, reference,
+		COALESCE(description, ''), metadata, created_at
+		FROM wallet_transactions
+		WHERE reference IN ('p2p_stake:'||$1, 'p2p_refund:'||$1, 'p2p_payout:'||$1, 'p2p_fee:'||$1)
+		ORDER BY created_at ASC`, matchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []*domain.LedgerEntry
+	for rows.Next() {
+		e := &domain.LedgerEntry{}
+		var userID sql.NullString
+		var amount float64
+		var metadataRaw []byte
+		if err := rows.Scan(&e.ID, &userID, &e.Type, &e.Status, &amount, &e.Reference, &e.Description, &metadataRaw, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		if userID.Valid {
+			e.UserID = userID.String
+		}
+		e.Amount = money.FromFloat(amount)
+		if len(metadataRaw) > 0 {
+			_ = json.Unmarshal(metadataRaw, &e.Metadata)
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
 }
 
 func (r *EscrowRepo) FinalizeLoserTx(ctx context.Context, tx *sql.Tx, loserUserID string, stake money.Cents, matchID string) error {

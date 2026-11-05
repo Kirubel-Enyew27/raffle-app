@@ -176,10 +176,11 @@ type SettingsRepository interface {
 
 // Wallet mirrors the wallets row (subset used by the game).
 type Wallet struct {
-	ID       string
-	UserID   string
-	Balance  float64
-	Currency string
+	ID              string
+	UserID          string
+	Balance         float64
+	ReservedBalance float64
+	Currency        string
 }
 
 // WalletTransaction mirrors the wallet_transactions row.

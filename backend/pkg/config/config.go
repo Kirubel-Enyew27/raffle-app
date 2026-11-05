@@ -22,6 +22,7 @@ type Config struct {
 	// FrontendURL is where the browser returns after an OAuth callback.
 	FrontendURL         string
 	Crash               CrashConfig
+	P2P                 P2PConfig
 	SMSAPIKey           string
 	TeleVerifyURL       string
 	TeleVerifyKey       string
@@ -121,6 +122,31 @@ type CrashConfig struct {
 	MinParticipants int
 	MaxParticipants int
 	PlatformUserID  string
+}
+
+// P2PConfig holds the peer-to-peer multiplayer policy knobs. PAID_MATCHES_ENABLED
+// is the operator-level kill switch; an administrator can also disable paid play
+// in the P2P settings screen (see p2p_settings.paid_matches_enabled).
+type P2PConfig struct {
+	// PaidMatchesEnabled is the operator-level kill switch. It can only ever
+	// restrict paid play: both this flag and the admin setting must be on.
+	PaidMatchesEnabled bool
+	// ServiceFeeFactor is the platform commission on the prize pool, expressed
+	// as a fraction (0.05 = 5%). Stored as basis points inside match rows.
+	ServiceFeeFactor float64
+}
+
+// ServiceFeeBP converts the configured factor to basis points, clamping to the
+// range a match can represent.
+func (p P2PConfig) ServiceFeeBP() int {
+	bp := int(p.ServiceFeeFactor*10000 + 0.5)
+	if bp < 0 {
+		return 0
+	}
+	if bp > 10000 {
+		return 10000
+	}
+	return bp
 }
 
 // loadDotEnv fills values in from a local .env file so a plain `go run
@@ -227,6 +253,12 @@ func Load() (*Config, error) {
 	viper.SetDefault("CRASH_MAX_PARTICIPANTS", 100)
 	viper.SetDefault("CRASH_PLATFORM_USER_ID", "")
 
+	// P2P paid competition. Enabled by default; set PAID_MATCHES_ENABLED=false
+	// to switch staking off for an entire deployment. Wallet, stake and balance
+	// validation remain enforced independently of this flag.
+	viper.SetDefault("PAID_MATCHES_ENABLED", true)
+	viper.SetDefault("SERVICE_FEE_FACTOR", 0.05)
+
 	viper.AutomaticEnv()
 
 	// Fail closed in production when the signing secret is still the shipped
@@ -305,6 +337,10 @@ func Load() (*Config, error) {
 			MinParticipants:    viper.GetInt("CRASH_MIN_PARTICIPANTS"),
 			MaxParticipants:    viper.GetInt("CRASH_MAX_PARTICIPANTS"),
 			PlatformUserID:     viper.GetString("CRASH_PLATFORM_USER_ID"),
+		},
+		P2P: P2PConfig{
+			PaidMatchesEnabled: viper.GetBool("PAID_MATCHES_ENABLED"),
+			ServiceFeeFactor:   viper.GetFloat64("SERVICE_FEE_FACTOR"),
 		},
 	}, nil
 }

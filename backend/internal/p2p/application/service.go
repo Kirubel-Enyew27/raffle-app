@@ -30,11 +30,14 @@ type MatchView struct {
 	GameSlug          string                 `json:"game_slug"`
 	Status            string                 `json:"status"`
 	MatchType         string                 `json:"match_type"`
+	CompetitionMode   string                 `json:"competition_mode"`
 	InviteCode        string                 `json:"invite_code,omitempty"`
 	StakeAmount       float64                `json:"stake_amount"`
 	PrizePool         float64                `json:"prize_pool"`
 	ServiceFeePercent float64                `json:"service_fee_percent"`
+	ServiceFeeBP      int                    `json:"service_fee_bp"`
 	TotalFee          float64                `json:"total_fee"`
+	PotentialPayout   float64                `json:"potential_payout"`
 	WinnerUserID      *string                `json:"winner_user_id,omitempty"`
 	CurrentTurnUserID *string                `json:"current_turn_user_id,omitempty"`
 	TurnSecondsLeft   int                    `json:"turn_seconds_left"`
@@ -90,15 +93,24 @@ type InviteSummary struct {
 	CreatorName        string    `json:"creator_name"`
 	CreatorAvatarURL   *string   `json:"creator_avatar_url,omitempty"`
 	MatchType          string    `json:"match_type"`
+	CompetitionMode    string    `json:"competition_mode"`
+	StakeAmount        float64   `json:"stake_amount"`
+	PrizePool          float64   `json:"prize_pool"`
+	ServiceFeePercent  float64   `json:"service_fee_percent"`
+	PotentialPayout    float64   `json:"potential_payout"`
 	MaxRounds          int       `json:"max_rounds"`
 	DefaultTurnSeconds int       `json:"default_turn_seconds"`
 	CreatedAt          time.Time `json:"created_at"`
 }
 
 type CreateMatchRequest struct {
-	GameSlug    string  `json:"game_slug" binding:"required"`
-	MatchType   string  `json:"match_type"` // public_queue | private_room
-	StakeAmount float64 `json:"stake_amount"`
+	GameSlug  string `json:"game_slug" binding:"required"`
+	MatchType string `json:"match_type"` // public_queue | private_room
+	// CompetitionMode is "fun" (free) or "earn" (staked). Older clients may
+	// omit it; the mode is then inferred from StakeAmount so free play keeps
+	// working exactly as before.
+	CompetitionMode string  `json:"competition_mode"`
+	StakeAmount     float64 `json:"stake_amount"`
 	// AutoMatch turns a public-queue create into matchmaking: join a waiting
 	// room for the same game and stake if one exists, otherwise open a new one.
 	AutoMatch bool `json:"auto_match"`
@@ -115,6 +127,11 @@ type P2PService struct {
 	realtime           *realtime.Service
 	auditSvc           *auditapp.AuditService
 	paidMatchesEnabled bool
+	// paidMatchesOperatorAllowed is the deployment/environment feature gate.
+	// An administrator can switch paid play off at any time, but cannot switch
+	// it on unless the operator has cleared it for this environment.
+	paidMatchesOperatorAllowed bool
+	defaultServiceFeeBP        int
 }
 
 func NewP2PService(
@@ -135,21 +152,204 @@ func NewP2PService(
 	}
 
 	return &P2PService{
-		gameRepo:           gameRepo,
-		matchRepo:          matchRepo,
-		playerRepo:         playerRepo,
-		moveRepo:           moveRepo,
-		settingsRepo:       settingsRepo,
-		escrowRepo:         escrowRepo,
-		ruleEngines:        engines,
-		realtime:           realtime,
-		auditSvc:           auditSvc,
-		paidMatchesEnabled: false, // Strict default: paid matches disabled until regulatory clearance
+		gameRepo:            gameRepo,
+		matchRepo:           matchRepo,
+		playerRepo:          playerRepo,
+		moveRepo:            moveRepo,
+		settingsRepo:        settingsRepo,
+		escrowRepo:          escrowRepo,
+		ruleEngines:         engines,
+		realtime:            realtime,
+		auditSvc:            auditSvc,
+		paidMatchesEnabled:  false, // Strict default: paid matches disabled until regulatory clearance
+		defaultServiceFeeBP: 500,   // 5.00% platform fee unless configured otherwise
 	}
 }
 
 func (s *P2PService) SetPaidMatchesEnabled(enabled bool) {
 	s.paidMatchesEnabled = enabled
+}
+
+// SetPaidMatchesPolicy applies the deployment-level paid-play gate and the
+// platform fee from configuration (PAID_MATCHES_ENABLED / SERVICE_FEE_FACTOR).
+// The DB setting may still disable paid play; it can only be enabled here when
+// the operator gate is on.
+func (s *P2PService) SetPaidMatchesPolicy(operatorAllowed bool, serviceFeeFactor float64) {
+	s.paidMatchesOperatorAllowed = operatorAllowed
+	bp := int(serviceFeeFactor*10000 + 0.5)
+	if bp < 0 {
+		bp = 0
+	}
+	if bp > 10000 {
+		bp = 10000
+	}
+	if bp > 0 {
+		s.defaultServiceFeeBP = bp
+	}
+	if !operatorAllowed {
+		s.paidMatchesEnabled = false
+	}
+}
+
+// PaidConfig is the backend-authoritative staked-play configuration. Clients
+// only display it; every cap, increment and fee is re-checked when a match is
+// created and when it is settled.
+type PaidConfig struct {
+	PaidMatchesEnabled  bool        `json:"paid_matches_enabled"`
+	ServiceFeeBP        int         `json:"service_fee_bp"`
+	ServiceFeePercent   float64     `json:"service_fee_percent"`
+	MinStakeCents       money.Cents `json:"min_stake_cents"`
+	MaxStakeCents       money.Cents `json:"max_stake_cents"`
+	StakeIncrementCents money.Cents `json:"stake_increment_cents"`
+}
+
+type P2PConfigView struct {
+	PaidConfig
+	AvailableBalance float64 `json:"available_balance"`
+	Currency         string  `json:"currency"`
+}
+
+type StakeQuote struct {
+	GameSlug             string      `json:"game_slug"`
+	StakeCents           money.Cents `json:"stake_cents"`
+	StakeAmount          float64     `json:"stake_amount"`
+	OpponentStakeAmount  float64     `json:"opponent_stake_amount"`
+	PrizePool            float64     `json:"prize_pool"`
+	PrizePoolCents       money.Cents `json:"prize_pool_cents"`
+	ServiceFeeBP         int         `json:"service_fee_bp"`
+	ServiceFeePercent    float64     `json:"service_fee_percent"`
+	FeeCents             money.Cents `json:"fee_cents"`
+	Fee                  float64     `json:"fee"`
+	PotentialPayout      float64     `json:"potential_payout"`
+	PotentialPayoutCents money.Cents `json:"potential_payout_cents"`
+	AvailableBalance     float64     `json:"available_balance"`
+	MinStakeCents        money.Cents `json:"min_stake_cents"`
+	MaxStakeCents        money.Cents `json:"max_stake_cents"`
+	StakeIncrementCents  money.Cents `json:"stake_increment_cents"`
+}
+
+func (s *P2PService) paidConfig(ctx context.Context) PaidConfig {
+	cfg := PaidConfig{
+		PaidMatchesEnabled:  s.paidMatchesEnabled,
+		ServiceFeeBP:        s.defaultServiceFeeBP,
+		ServiceFeePercent:   float64(s.defaultServiceFeeBP) / 100.0,
+		MinStakeCents:       1000,
+		MaxStakeCents:       500000,
+		StakeIncrementCents: 1000,
+	}
+	if s.settingsRepo == nil {
+		return cfg
+	}
+	values, err := s.settingsRepo.GetAll(ctx)
+	if err != nil {
+		return cfg
+	}
+	if bp, err := strconv.Atoi(strings.TrimSpace(values[domain.SettingDefaultFeeBP])); err == nil && bp >= 0 && bp <= 10000 {
+		cfg.ServiceFeeBP = bp
+		cfg.ServiceFeePercent = float64(bp) / 100.0
+	}
+	if v, err := strconv.ParseInt(strings.TrimSpace(values[domain.SettingMinStakeCents]), 10, 64); err == nil && v > 0 {
+		cfg.MinStakeCents = money.Cents(v)
+	}
+	if v, err := strconv.ParseInt(strings.TrimSpace(values[domain.SettingMaxStakeCents]), 10, 64); err == nil && v > 0 {
+		cfg.MaxStakeCents = money.Cents(v)
+	}
+	if v, err := strconv.ParseInt(strings.TrimSpace(values[domain.SettingStakeIncrement]), 10, 64); err == nil && v > 0 {
+		cfg.StakeIncrementCents = money.Cents(v)
+	}
+	if cfg.MinStakeCents < 1 {
+		cfg.MinStakeCents = 1
+	}
+	if cfg.MaxStakeCents < cfg.MinStakeCents {
+		cfg.MaxStakeCents = cfg.MinStakeCents
+	}
+	if cfg.StakeIncrementCents > cfg.MaxStakeCents {
+		cfg.StakeIncrementCents = cfg.MaxStakeCents
+	}
+	return cfg
+}
+
+// effectiveStakeLimits intersects the global admin limits with the per-game
+// catalogue limits. A zero game limit means "no additional restriction".
+func effectiveStakeLimits(game *domain.Game, cfg PaidConfig) (money.Cents, money.Cents) {
+	min := cfg.MinStakeCents
+	max := cfg.MaxStakeCents
+	if game.MinStakeCents > min {
+		min = game.MinStakeCents
+	}
+	if game.MaxStakeCents > 0 && game.MaxStakeCents < max {
+		max = game.MaxStakeCents
+	}
+	if max < min {
+		max = min
+	}
+	return min, max
+}
+
+func (s *P2PService) GetConfig(ctx context.Context, userID string) (*P2PConfigView, error) {
+	cfg := s.paidConfig(ctx)
+	available := money.Cents(0)
+	if userID != "" && s.escrowRepo != nil {
+		value, err := s.escrowRepo.AvailableBalance(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		available = value
+	}
+	return &P2PConfigView{
+		PaidConfig:       cfg,
+		AvailableBalance: available.Float(),
+		Currency:         "ETB",
+	}, nil
+}
+
+func (s *P2PService) QuoteStake(ctx context.Context, userID, gameSlug string, stakeAmount float64) (*StakeQuote, error) {
+	game, err := s.gameRepo.FindBySlug(ctx, gameSlug)
+	if err != nil {
+		return nil, err
+	}
+	cfg := s.paidConfig(ctx)
+	if !cfg.PaidMatchesEnabled {
+		return nil, domain.ErrPaidMatchesDisabled
+	}
+	if _, ok := s.ruleEngines[game.Slug]; !ok {
+		return nil, domain.ErrUnsupportedGame
+	}
+
+	stakeCents := money.FromFloat(stakeAmount)
+	min, max := effectiveStakeLimits(game, cfg)
+	if err := domain.ValidateStake(stakeCents, min, max, cfg.StakeIncrementCents); err != nil {
+		return nil, err
+	}
+
+	settlement := domain.CalculateSettlement(stakeCents*2, cfg.ServiceFeeBP, false)
+	available := money.Cents(0)
+	if s.escrowRepo != nil {
+		value, err := s.escrowRepo.AvailableBalance(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		available = value
+	}
+
+	return &StakeQuote{
+		GameSlug:             game.Slug,
+		StakeCents:           stakeCents,
+		StakeAmount:          stakeCents.Float(),
+		OpponentStakeAmount:  stakeCents.Float(),
+		PrizePool:            settlement.PrizePoolCents.Float(),
+		PrizePoolCents:       settlement.PrizePoolCents,
+		ServiceFeeBP:         cfg.ServiceFeeBP,
+		ServiceFeePercent:    cfg.ServiceFeePercent,
+		FeeCents:             settlement.FeeCents,
+		Fee:                  settlement.FeeCents.Float(),
+		PotentialPayout:      settlement.NetPayoutCents.Float(),
+		PotentialPayoutCents: settlement.NetPayoutCents,
+		AvailableBalance:     available.Float(),
+		MinStakeCents:        min,
+		MaxStakeCents:        max,
+		StakeIncrementCents:  cfg.StakeIncrementCents,
+	}, nil
 }
 
 func (s *P2PService) ListGames(ctx context.Context) ([]*domain.Game, error) {
@@ -183,8 +383,18 @@ func (s *P2PService) GetLeaderboard(ctx context.Context, filter domain.Leaderboa
 	return s.matchRepo.GetLeaderboard(ctx, filter)
 }
 
-func (s *P2PService) ListWaitingMatches(ctx context.Context, gameSlug string, limit int) ([]*MatchView, error) {
-	matches, err := s.matchRepo.ListWaiting(ctx, gameSlug, limit)
+func (s *P2PService) ListWaitingMatches(ctx context.Context, gameSlug, mode string, limit int) ([]*MatchView, error) {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode != "" && mode != domain.ModeFun && mode != domain.ModeEarn {
+		return nil, domain.ErrInvalidMode
+	}
+	// Paid rooms must never leak into the free lobby (or vice versa). When
+	// paid play is switched off there is nothing paid to advertise either.
+	if mode == domain.ModeEarn && !s.paidMatchesEnabled {
+		return []*MatchView{}, nil
+	}
+
+	matches, err := s.matchRepo.ListWaiting(ctx, gameSlug, mode, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -213,6 +423,207 @@ func (s *P2PService) ListUserMatches(ctx context.Context, userID string, limit, 
 	return views, total, nil
 }
 
+// AdminSettingsView is the configuration surface for the paid-play admin
+// screen. Settings are returned exactly as stored so an operator sees the
+// effective persisted values rather than a client-side guess.
+type AdminSettingsView struct {
+	Settings         map[string]string `json:"settings"`
+	Config           PaidConfig        `json:"config"`
+	Games            []*domain.Game    `json:"games"`
+	OperatorGateOpen bool              `json:"operator_gate_open"`
+}
+
+var adminSettingDescriptions = map[string]string{
+	domain.SettingPaidEnabled:    "Enables Compete to Earn. Wallet balance and stake validation still apply to every paid match.",
+	domain.SettingDefaultFeeBP:   "Platform commission on the paid prize pool in basis points (500 = 5.00%).",
+	domain.SettingMinStakeCents:  "Minimum Compete to Earn stake in minor units.",
+	domain.SettingMaxStakeCents:  "Maximum Compete to Earn stake in minor units.",
+	domain.SettingStakeIncrement: "Permitted Compete to Earn stake increment in minor units.",
+}
+
+func (s *P2PService) GetAdminSettings(ctx context.Context) (*AdminSettingsView, error) {
+	values := map[string]string{}
+	if s.settingsRepo != nil {
+		stored, err := s.settingsRepo.GetAll(ctx)
+		if err != nil {
+			return nil, err
+		}
+		values = stored
+	}
+	values[domain.SettingPaidEnabled] = strconv.FormatBool(s.paidMatchesEnabled)
+
+	games, err := s.gameRepo.ListActive(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &AdminSettingsView{
+		Settings:         values,
+		Config:           s.paidConfig(ctx),
+		Games:            games,
+		OperatorGateOpen: s.paidMatchesOperatorAllowed,
+	}, nil
+}
+
+// UpdateAdminSettings validates and persists paid-play configuration. The
+// caller must already be authenticated as an administrator (the route applies
+// AdminMiddleware) and the request is recorded by the audit middleware.
+func (s *P2PService) UpdateAdminSettings(ctx context.Context, adminID string, updates map[string]string) error {
+	if len(updates) == 0 || s.settingsRepo == nil {
+		return domain.ErrInvalidSetting
+	}
+
+	stored, err := s.settingsRepo.GetAll(ctx)
+	if err != nil {
+		return err
+	}
+	merged := make(map[string]string, len(stored)+len(updates))
+	for k, v := range stored {
+		merged[k] = v
+	}
+
+	normalized := make(map[string]string, len(updates))
+	for key, raw := range updates {
+		value := strings.TrimSpace(raw)
+		switch key {
+		case domain.SettingPaidEnabled:
+			enabled, err := strconv.ParseBool(value)
+			if err != nil {
+				return domain.ErrInvalidSetting
+			}
+			if enabled && !s.paidMatchesOperatorAllowed {
+				return domain.ErrPaidNotAuthorized
+			}
+			normalized[key] = strconv.FormatBool(enabled)
+		case domain.SettingDefaultFeeBP:
+			bp, err := strconv.Atoi(value)
+			if err != nil || bp < 0 || bp > 10000 {
+				return domain.ErrInvalidSetting
+			}
+			normalized[key] = strconv.Itoa(bp)
+		case domain.SettingMinStakeCents, domain.SettingMaxStakeCents, domain.SettingStakeIncrement:
+			cents, err := strconv.ParseInt(value, 10, 64)
+			if err != nil || cents <= 0 {
+				return domain.ErrInvalidSetting
+			}
+			normalized[key] = strconv.FormatInt(cents, 10)
+		default:
+			return domain.ErrInvalidSetting
+		}
+		merged[key] = normalized[key]
+	}
+
+	parse := func(key string, fallback int64) int64 {
+		v, err := strconv.ParseInt(strings.TrimSpace(merged[key]), 10, 64)
+		if err != nil || v <= 0 {
+			return fallback
+		}
+		return v
+	}
+	minStake := parse(domain.SettingMinStakeCents, 1000)
+	maxStake := parse(domain.SettingMaxStakeCents, 500000)
+	increment := parse(domain.SettingStakeIncrement, 1000)
+	if maxStake < minStake || increment > maxStake || minStake%increment != 0 {
+		return domain.ErrInvalidSetting
+	}
+
+	for key, value := range normalized {
+		description := adminSettingDescriptions[key]
+		if err := s.settingsRepo.Set(ctx, key, value, description, &adminID); err != nil {
+			return err
+		}
+	}
+
+	if value, ok := normalized[domain.SettingPaidEnabled]; ok {
+		s.paidMatchesEnabled = value == "true"
+	}
+
+	// Keep an explicit audit trail of who changed paid-play policy, alongside
+	// the request audit recorded by the HTTP middleware.
+	if s.auditSvc != nil {
+		oldVal := fmt.Sprintf("%v", stored)
+		newVal := fmt.Sprintf("%v", normalized)
+		_ = s.auditSvc.Record(ctx, &adminID, "admin", "p2p_settings_updated", "p2p_settings", nil, "", &oldVal, &newVal)
+	}
+	return nil
+}
+
+// AdminPaidMatch pairs a paid match with its complete wallet ledger so an
+// administrator can audit reservations, refunds, fees and settlement.
+type AdminPaidMatch struct {
+	Match           *MatchView            `json:"match"`
+	Ledger          []*domain.LedgerEntry `json:"ledger"`
+	FinancialStatus string                `json:"financial_status"`
+	NeedsAttention  bool                  `json:"needs_attention"`
+}
+
+func (s *P2PService) ListPaidMatches(ctx context.Context, filter domain.MatchAdminFilter) ([]*AdminPaidMatch, int, error) {
+	matches, total, err := s.matchRepo.ListAdminMatches(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	result := make([]*AdminPaidMatch, 0, len(matches))
+	for _, m := range matches {
+		players, err := s.playerRepo.ListByMatch(ctx, m.ID)
+		if err != nil {
+			return nil, 0, err
+		}
+		m.Players = players
+
+		var ledger []*domain.LedgerEntry
+		if s.escrowRepo != nil {
+			ledger, err = s.escrowRepo.ListMatchLedger(ctx, m.ID)
+			if err != nil {
+				return nil, 0, err
+			}
+		}
+
+		status, needsAttention := summarizePaidMatch(m, ledger)
+		result = append(result, &AdminPaidMatch{
+			Match:           s.buildView(m, ""),
+			Ledger:          ledger,
+			FinancialStatus: status,
+			NeedsAttention:  needsAttention,
+		})
+	}
+	return result, total, nil
+}
+
+func summarizePaidMatch(m *domain.Match, ledger []*domain.LedgerEntry) (string, bool) {
+	reserved, refunded, payouts := 0, 0, 0
+	for _, entry := range ledger {
+		switch entry.Type {
+		case "p2p_match_stake":
+			if entry.Status == "reserved" {
+				reserved++
+			}
+		case "p2p_stake_refund":
+			if entry.Status == "completed" || entry.Status == "refunded" {
+				refunded++
+			}
+		case "p2p_payout":
+			if entry.Status == "completed" {
+				payouts++
+			}
+		}
+	}
+
+	terminal := m.Finished()
+	if payouts > 0 {
+		return "settled", false
+	}
+	if refunded > 0 && reserved == 0 {
+		return "refunded", false
+	}
+	if terminal {
+		return "needs_attention", true
+	}
+	if reserved > 0 {
+		return "reserved", false
+	}
+	return "pending", false
+}
+
 func (s *P2PService) CreateMatch(ctx context.Context, userID string, req CreateMatchRequest) (*MatchView, error) {
 	game, err := s.gameRepo.FindBySlug(ctx, req.GameSlug)
 	if err != nil {
@@ -230,14 +641,23 @@ func (s *P2PService) CreateMatch(ctx context.Context, userID string, req CreateM
 	}
 
 	stakeCents := money.FromFloat(req.StakeAmount)
-	if stakeCents > 0 {
-		if !s.paidMatchesEnabled {
+	mode, err := domain.NormalizeCompetitionMode(req.CompetitionMode, stakeCents)
+	if err != nil {
+		return nil, err
+	}
+
+	paidCfg := s.paidConfig(ctx)
+	feeBP := game.DefaultFeeBP
+	if mode == domain.ModeEarn {
+		if !paidCfg.PaidMatchesEnabled {
 			return nil, domain.ErrPaidMatchesDisabled
 		}
-		if stakeCents < game.MinStakeCents || stakeCents > game.MaxStakeCents {
-			return nil, fmt.Errorf("%w: stake must be between %.2f and %.2f ETB",
-				domain.ErrInvalidStake, game.MinStakeCents.Float(), game.MaxStakeCents.Float())
+		minStake, maxStake := effectiveStakeLimits(game, paidCfg)
+		if err := domain.ValidateStake(stakeCents, minStake, maxStake, paidCfg.StakeIncrementCents); err != nil {
+			return nil, fmt.Errorf("%w: stake must be between %.2f and %.2f ETB in increments of %.2f ETB",
+				domain.ErrInvalidStake, minStake.Float(), maxStake.Float(), paidCfg.StakeIncrementCents.Float())
 		}
+		feeBP = paidCfg.ServiceFeeBP
 	}
 
 	matchType := domain.TypePublicQueue
@@ -248,7 +668,7 @@ func (s *P2PService) CreateMatch(ctx context.Context, userID string, req CreateM
 	// Quick Play: pair with a waiting opponent instead of opening a second
 	// room. Both players used to sit in their own "waiting" room forever.
 	if matchType == domain.TypePublicQueue && req.AutoMatch {
-		if view := s.tryAutoMatch(ctx, userID, game.Slug, stakeCents); view != nil {
+		if view := s.tryAutoMatch(ctx, userID, game.Slug, mode, stakeCents); view != nil {
 			return view, nil
 		}
 	}
@@ -272,19 +692,20 @@ func (s *P2PService) CreateMatch(ctx context.Context, userID string, req CreateM
 	defer tx.Rollback()
 
 	match := &domain.Match{
-		GameSlug:       game.Slug,
-		Status:         domain.StatusWaiting,
-		MatchType:      matchType,
-		InviteCode:     inviteCode,
-		StakeCents:     stakeCents,
-		StakeAmount:    stakeCents.Float(),
-		PrizePoolCents: stakeCents,
-		ServiceFeeBP:   game.DefaultFeeBP,
-		CurrentRound:   1,
-		MaxRounds:      maxRounds,
-		Scores:         map[string]int{"0": 0, "1": 0},
-		BoardState:     engine.InitBoard(),
-		CreatedBy:      userID,
+		GameSlug:        game.Slug,
+		Status:          domain.StatusWaiting,
+		MatchType:       matchType,
+		CompetitionMode: mode,
+		InviteCode:      inviteCode,
+		StakeCents:      stakeCents,
+		StakeAmount:     stakeCents.Float(),
+		PrizePoolCents:  stakeCents,
+		ServiceFeeBP:    feeBP,
+		CurrentRound:    1,
+		MaxRounds:       maxRounds,
+		Scores:          map[string]int{"0": 0, "1": 0},
+		BoardState:      engine.InitBoard(),
+		CreatedBy:       userID,
 	}
 
 	// 1. Create the match row first so the generated ID is available as the
@@ -340,8 +761,8 @@ func (s *P2PService) CreateMatch(ctx context.Context, userID string, req CreateM
 // that belongs to somebody else. Failing that it re-opens the caller's own
 // waiting room, so a double click does not queue them twice. Returns nil when
 // there is nothing to join and the caller should open a fresh room.
-func (s *P2PService) tryAutoMatch(ctx context.Context, userID, gameSlug string, stakeCents money.Cents) *MatchView {
-	rooms, err := s.matchRepo.ListWaiting(ctx, gameSlug, 20)
+func (s *P2PService) tryAutoMatch(ctx context.Context, userID, gameSlug, mode string, stakeCents money.Cents) *MatchView {
+	rooms, err := s.matchRepo.ListWaiting(ctx, gameSlug, mode, 20)
 	if err != nil {
 		return nil
 	}
@@ -349,7 +770,7 @@ func (s *P2PService) tryAutoMatch(ctx context.Context, userID, gameSlug string, 
 	// ListWaiting returns newest first: prefer the room whose host just opened
 	// it, so an opponent who is still on the page is picked over an old room.
 	for _, room := range rooms {
-		if room.CreatedBy == userID || room.StakeCents != stakeCents {
+		if room.CreatedBy == userID || room.StakeCents != stakeCents || room.CompetitionMode != mode {
 			continue
 		}
 		// JoinMatch re-checks the room under a row lock, so a room filled or
@@ -361,7 +782,7 @@ func (s *P2PService) tryAutoMatch(ctx context.Context, userID, gameSlug string, 
 	}
 
 	for _, room := range rooms {
-		if room.CreatedBy != userID || room.StakeCents != stakeCents {
+		if room.CreatedBy != userID || room.StakeCents != stakeCents || room.CompetitionMode != mode {
 			continue
 		}
 		players, err := s.playerRepo.ListByMatch(ctx, room.ID)
@@ -432,6 +853,13 @@ func (s *P2PService) JoinMatch(ctx context.Context, userID, matchID, inviteCode 
 
 	if len(existingPlayers) >= 2 {
 		return nil, domain.ErrMatchFull
+	}
+
+	// A paid room is only joinable while paid play is enabled. Existing paid
+	// matches already in progress are unaffected: this check runs before a
+	// player is seated and before any funds are reserved.
+	if match.CompetitionMode == domain.ModeEarn && !s.paidMatchesEnabled {
+		return nil, domain.ErrPaidMatchesDisabled
 	}
 
 	// Reserve joiner's stake in escrow
@@ -592,6 +1020,8 @@ func (s *P2PService) GetInvite(ctx context.Context, code string) (*InviteSummary
 		}
 	}
 
+	inviteSettlement := domain.CalculateSettlement(match.StakeCents*2, match.ServiceFeeBP, false)
+
 	summary := &InviteSummary{
 		InviteCode:         cleanCode,
 		MatchID:            match.ID,
@@ -607,6 +1037,11 @@ func (s *P2PService) GetInvite(ctx context.Context, code string) (*InviteSummary
 		CreatorName:        creatorName,
 		CreatorAvatarURL:   creatorAvatar,
 		MatchType:          match.MatchType,
+		CompetitionMode:    match.CompetitionMode,
+		StakeAmount:        match.StakeAmount,
+		PrizePool:          inviteSettlement.PrizePoolCents.Float(),
+		ServiceFeePercent:  float64(match.ServiceFeeBP) / 100.0,
+		PotentialPayout:    inviteSettlement.NetPayoutCents.Float(),
 		MaxRounds:          match.MaxRounds,
 		DefaultTurnSeconds: game.DefaultTurnSeconds,
 		CreatedAt:          match.CreatedAt,
@@ -1309,6 +1744,7 @@ func (s *P2PService) createRematchTx(ctx context.Context, tx *sql.Tx, prev *doma
 		GameSlug:          prev.GameSlug,
 		Status:            domain.StatusInProgress,
 		MatchType:         prev.MatchType,
+		CompetitionMode:   prev.CompetitionMode,
 		StakeCents:        prev.StakeCents,
 		StakeAmount:       prev.StakeAmount,
 		PrizePoolCents:    prev.StakeCents * 2,
@@ -1484,11 +1920,14 @@ func (s *P2PService) buildView(m *domain.Match, userID string) *MatchView {
 		GameSlug:              m.GameSlug,
 		Status:                m.Status,
 		MatchType:             m.MatchType,
+		CompetitionMode:       competitionModeOf(m),
 		InviteCode:            m.InviteCode,
 		StakeAmount:           m.StakeAmount,
 		PrizePool:             m.PrizePoolCents.Float(),
 		ServiceFeePercent:     float64(m.ServiceFeeBP) / 100.0,
+		ServiceFeeBP:          m.ServiceFeeBP,
 		TotalFee:              m.TotalFeeCents.Float(),
+		PotentialPayout:       potentialPayoutCents(m).Float(),
 		WinnerUserID:          m.WinnerUserID,
 		CurrentTurnUserID:     m.CurrentTurnUserID,
 		TurnSecondsLeft:       secondsLeft,
@@ -1579,6 +2018,33 @@ func publishLobbyUpdate(ctx context.Context, rt *realtime.Service, change string
 		"stake":      m.StakeAmount,
 		"created_by": m.CreatedBy,
 	})
+}
+
+// competitionModeOf derives the mode for rows created before the explicit
+// competition_mode column existed. Free play is the safe default.
+func competitionModeOf(m *domain.Match) string {
+	if m.CompetitionMode == domain.ModeEarn || m.CompetitionMode == domain.ModeFun {
+		return m.CompetitionMode
+	}
+	if m.StakeCents > 0 {
+		return domain.ModeEarn
+	}
+	return domain.ModeFun
+}
+
+// potentialPayoutCents is the amount the winner would receive if the match
+// settled now: both stakes in the pool, minus the platform fee. A draw is
+// refunded instead, so it has no winner payout.
+func potentialPayoutCents(m *domain.Match) money.Cents {
+	if m.StakeCents <= 0 {
+		return 0
+	}
+	pool := m.PrizePoolCents
+	if !m.Finished() && pool < m.StakeCents*2 {
+		pool = m.StakeCents * 2
+	}
+	settlement := domain.CalculateSettlement(pool, m.ServiceFeeBP, m.Status == domain.StatusTied)
+	return settlement.NetPayoutCents
 }
 
 // symbolFor is the single source of truth for the seat markers shown in the

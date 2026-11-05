@@ -514,8 +514,9 @@ func TestP2PService_QuickPlayPairsWithWaitingOpponent(t *testing.T) {
 	)
 	svc.SetPaidMatchesEnabled(true)
 
-	// A stake no other test uses, so matchmaking can only find rooms created here.
-	const stake = 41.5
+	// A stake no other test uses, so matchmaking can only find rooms created
+	// here. It must also be a permitted increment (10.00 ETB steps).
+	const stake = 410.0
 	quickPlay := func(userID string) *MatchView {
 		t.Helper()
 		view, err := svc.CreateMatch(ctx, userID, CreateMatchRequest{
@@ -561,7 +562,7 @@ func TestP2PService_QuickPlayPairsWithWaitingOpponent(t *testing.T) {
 	}
 
 	var waiting int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM p2p_matches WHERE status = 'waiting' AND game_slug = 'connect-four' AND stake_cents = $1`, 4150).Scan(&waiting); err != nil {
+	if err := db.QueryRow(`SELECT COUNT(*) FROM p2p_matches WHERE status = 'waiting' AND game_slug = 'connect-four' AND stake_cents = $1`, 41000).Scan(&waiting); err != nil {
 		t.Fatalf("failed to count waiting rooms: %v", err)
 	}
 	if waiting != 0 {

@@ -306,6 +306,16 @@ func main() {
 		auditSvc,
 	)
 
+	// Paid competition is gated by the deployment switch (PAID_MATCHES_ENABLED)
+	// and the persisted admin setting. Both default to enabled; either one can
+	// switch staking off without affecting free play.
+	p2pSvc.SetPaidMatchesPolicy(cfg.P2P.PaidMatchesEnabled, cfg.P2P.ServiceFeeFactor)
+	if cfg.P2P.PaidMatchesEnabled {
+		if stored, err := p2pSettingsRepo.Get(context.Background(), "paid_matches_enabled"); err == nil && stored == "true" {
+			p2pSvc.SetPaidMatchesEnabled(true)
+		}
+	}
+
 	p2pEngine := p2papp.NewP2PEngine(
 		p2pMatchRepo,
 		p2pPlayerRepo,
