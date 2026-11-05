@@ -27,8 +27,11 @@ import { ChallengeFriendModal } from '@/features/p2p/ChallengeFriendModal'
 import { AcceptInviteModal } from '@/features/p2p/AcceptInviteModal'
 import { extractStartInviteCode } from '@/lib/telegram'
 import { StakeSetupModal } from '@/features/p2p/StakeSetupModal'
+import { MatchDetailsModal, MatchHistoryList } from '@/features/p2p/MatchHistory'
+import { isTerminalMatch } from '@/features/p2p/matchHistory'
 import { cn, formatCurrency } from '@/lib/utils'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import type { P2PMatch } from '@/types/api'
 
 function apiErrorMessage(err: unknown, fallback = 'Something went wrong'): string {
   if (typeof err === 'object' && err !== null) {
@@ -88,6 +91,7 @@ export function Component() {
     searchParams.get('mode') === 'earn' ? 'earn' : 'fun'
   )
   const [stakeGameSlug, setStakeGameSlug] = useState<string | null>(null)
+  const [selectedHistoryMatch, setSelectedHistoryMatch] = useState<P2PMatch | null>(null)
 
   // Resolve active invite code from entered state, URL search params, or Telegram WebApp start param
   const urlInviteCode = (
@@ -170,14 +174,22 @@ export function Component() {
     onReconnect: () => refetchLobby(),
   })
 
-  // Fetch user matches
-  const { data: myMatchesData, isLoading: historyLoading } = useQuery({
+  // Fetch user matches. Only terminal matches belong in history; active rooms
+  // remain reachable from the lobby and the live match page.
+  const {
+    data: myMatchesData,
+    isLoading: historyLoading,
+    isError: historyError,
+    refetch: refetchHistory,
+  } = useQuery({
     queryKey: ['p2p-my-matches'],
     queryFn: () => p2pApi.listMyMatches(20, 0),
     enabled: !!user,
   })
 
-  const myMatches = myMatchesData?.matches || []
+  const myMatches = (myMatchesData?.matches || []).filter((match) =>
+    isTerminalMatch(match)
+  )
 
   // Create match mutation
   const createMutation = useMutation({
@@ -330,13 +342,13 @@ export function Component() {
         >
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Sparkles className="h-5 w-5" />
+              <Gamepad2 className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-bold text-foreground sm:text-base">Compete for Fun</h2>
                 {mode === 'fun' && (
-                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-primary-foreground">
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary px-1 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-primary-foreground">
                     <Check className="h-3 w-3" strokeWidth={3} />
                   </span>
                 )}
@@ -371,7 +383,7 @@ export function Component() {
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-bold text-foreground sm:text-base">Compete to Earn</h2>
                 {mode === 'earn' && (
-                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#fbbf24] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-black">
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#fbbf24] px-1 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-black">
                     <Check className="h-3 w-3" strokeWidth={3} />
                   </span>
                 )}
@@ -699,84 +711,14 @@ export function Component() {
         )}
 
         {activeTab === 'history' && (
-          <div>
-            {historyLoading ? (
-              <div className="py-12 text-center text-sm text-muted-foreground">
-                Loading match history…
-              </div>
-            ) : myMatches.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center">
-                <Trophy className="mx-auto mb-2 h-8 w-8 text-muted-foreground/50" />
-                <p className="font-semibold text-foreground">No completed matches yet</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Play your first match to start tracking wins and statistics!
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {myMatches.map((m) => {
-                  const isWinner = m.winner_user_id === user?.id
-                  const isTie = m.status === 'tied'
-                  const outcome = isTie
-                    ? 'Tie'
-                    : isWinner
-                      ? 'Victory'
-                      : m.status === 'forfeited'
-                        ? 'Forfeited'
-                        : 'Defeat'
-                  const outcomeClass = isTie
-                    ? 'border-border bg-muted text-foreground'
-                    : isWinner
-                      ? 'border-success/30 bg-success/10 text-success'
-                      : 'border-destructive/30 bg-destructive/10 text-destructive'
-
-                  return (
-                    <div
-                      key={m.id}
-                      className={cn(CARD, 'flex items-center justify-between gap-3 p-3.5')}
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <GameIcon slug={m.game_slug} size="lg" />
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-bold capitalize text-foreground">
-                              {m.game_slug.replace(/-/g, ' ')}
-                            </span>
-                            <span
-                              className={cn(
-                                'rounded-full border px-2 py-0.5 text-[10px] font-semibold',
-                                outcomeClass
-                              )}
-                            >
-                              {outcome}
-                            </span>
-                            <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                              {m.competition_mode === 'earn'
-                                ? `Earn · ${formatCurrency(m.stake_amount)}`
-                                : 'Fun'}
-                            </span>
-                          </div>
-                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                            Final Score: {m.scores?.['0'] ?? 0} - {m.scores?.['1'] ?? 0} •{' '}
-                            {new Date(m.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => navigate(`/games/match/${m.id}`)}
-                        className="h-8 shrink-0 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-                      >
-                        Inspect
-                      </Button>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+          <MatchHistoryList
+            matches={myMatches}
+            isLoading={historyLoading}
+            isError={historyError}
+            onRetry={() => void refetchHistory()}
+            currentUserId={user?.id}
+            onSelect={setSelectedHistoryMatch}
+          />
         )}
       </section>
 
@@ -888,6 +830,15 @@ export function Component() {
         onClose={() => setStakeGameSlug(null)}
         onCreate={handleStakeCreate}
       />
+
+      {selectedHistoryMatch && (
+        <MatchDetailsModal
+          match={selectedHistoryMatch}
+          currentUserId={user?.id}
+          viewer={user ?? undefined}
+          onClose={() => setSelectedHistoryMatch(null)}
+        />
+      )}
     </div>
   )
 }

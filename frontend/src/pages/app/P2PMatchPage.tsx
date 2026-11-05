@@ -9,6 +9,7 @@ import {
   Check,
   Flag,
   ArrowLeft,
+  X,
   Wifi,
   WifiOff,
   Loader2,
@@ -17,8 +18,7 @@ import {
   AlertTriangle,
   Trophy,
   Coins,
-  Wallet,
-  ShieldCheck,
+  History,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -28,7 +28,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { p2pApi } from '@/features/p2p/api'
 import { walletApi } from '@/features/wallet/api'
-import { cn, formatCurrency } from '@/lib/utils'
+import { formatCurrency } from '@/lib/utils'
 import {
   buildInviteUrl,
   buildWebInviteUrl,
@@ -52,6 +52,11 @@ import { DamaBoard } from '@/features/p2p/DamaBoard'
 import { type DamaBoardState } from '@/features/p2p/dama'
 import { useGameSounds } from '@/features/p2p/useGameSounds'
 import { SoundToggle } from '@/features/p2p/SoundToggle'
+import { MatchHistoryList, PaidMetric } from '@/features/p2p/MatchHistory'
+import {
+  RECENT_HISTORY_LIMIT,
+  isTerminalMatch as isTerminalMatchRecord,
+} from '@/features/p2p/matchHistory'
 import {
   useGameOutcomeController,
   GameOutcomeOverlay,
@@ -71,23 +76,79 @@ function apiErrorMessage(err: unknown): string {
   return 'Something went wrong'
 }
 
-function PaidMetric({
-  label,
-  value,
-  highlight = false,
+function MatchHistoryModal({
+  matches,
+  isLoading,
+  isError,
+  onRetry,
+  onClose,
+  currentUserId,
 }: {
-  label: string
-  value: string
-  highlight?: boolean
+  matches: P2PMatch[]
+  isLoading: boolean
+  isError: boolean
+  onRetry: () => void
+  onClose: () => void
+  currentUserId?: string
 }) {
   return (
-    <div className="space-y-0.5">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-        {label}
-      </p>
-      <p className={cn('font-bold tabular-nums', highlight ? 'text-success' : 'text-foreground')}>
-        {value}
-      </p>
+    <div
+      className="fixed inset-0 z-50 flex items-stretch justify-center bg-background/80 backdrop-blur-sm sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="match-history-title"
+      onClick={onClose}
+    >
+      <Card
+        className="flex h-screen h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-none border-0 bg-card pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-2xl sm:h-auto sm:max-h-[85vh] sm:rounded-2xl sm:border sm:border-border/80 sm:pb-0 sm:pt-0"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/70 px-4 py-3.5 sm:px-5">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <History className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <h2 id="match-history-title" className="truncate text-base font-bold text-foreground">
+                Recent Match History
+              </h2>
+              <p className="truncate text-xs text-muted-foreground">
+                Your latest results and settlement records
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {!isLoading && !isError && matches.length > 0 && (
+              <Badge
+                variant="outline"
+                className="hidden text-[10px] font-semibold sm:inline-flex"
+              >
+                {matches.length} recent
+              </Badge>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              autoFocus
+              aria-label="Close match history"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5">
+          <MatchHistoryList
+            matches={matches}
+            isLoading={isLoading}
+            isError={isError}
+            onRetry={onRetry}
+            currentUserId={currentUserId}
+          />
+        </div>
+      </Card>
     </div>
   )
 }
@@ -117,6 +178,7 @@ export function Component() {
   const [disconnectSecondsLeft, setDisconnectSecondsLeft] = useState<number>(0)
   const [resignDialogOpen, setResignDialogOpen] = useState(false)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   // Fetch initial match state
   const {
@@ -138,14 +200,28 @@ export function Component() {
     // board in sync while that stream is down (see "resyncFromServer").
   })
 
-  // Paid matches need the wallet balance for the pre-match and settlement
-  // panels. The balance is only fetched while a staked match is on screen.
+  // Paid matches need the wallet balance for the paid match summary. The
+  // balance is only fetched while a staked match is on screen.
   const isPaidMatch = match?.competition_mode === 'earn'
   const { data: wallet } = useQuery({
     queryKey: ['wallet'],
     queryFn: walletApi.balance,
     enabled: !!isPaidMatch,
     staleTime: 0,
+  })
+
+  // Reuse the same cached history query as the lobby so opening a match does
+  // not duplicate the endpoint or lose the already-loaded history. History is
+  // only requested once the user opens it from the match page.
+  const {
+    data: matchHistory,
+    isLoading: historyLoading,
+    isError: historyError,
+    refetch: refetchHistory,
+  } = useQuery({
+    queryKey: ['p2p-my-matches'],
+    queryFn: () => p2pApi.listMyMatches(20, 0),
+    enabled: !!user && historyOpen,
   })
 
   const applyMatchSnapshot = useCallback(
@@ -340,10 +416,12 @@ export function Component() {
 
   const isTerminalMatch = !!match && ['completed', 'tied', 'forfeited', 'cancelled'].includes(match.status)
 
-  // Refresh the wallet once settlement lands so the result panel shows the
-  // updated balance rather than the pre-match value.
+  // Refresh the settled history and wallet once a match reaches a terminal
+  // state so the latest result and ledger references appear immediately.
   useEffect(() => {
-    if (isPaidMatch && isTerminalMatch) {
+    if (!isTerminalMatch) return
+    void queryClient.invalidateQueries({ queryKey: ['p2p-my-matches'] })
+    if (isPaidMatch) {
       void queryClient.invalidateQueries({ queryKey: ['wallet'] })
     }
   }, [isPaidMatch, isTerminalMatch, queryClient])
@@ -601,16 +679,27 @@ export function Component() {
 
   // Escape closes dialogs without action.
   useEffect(() => {
-    if (!resignDialogOpen && !cancelDialogOpen) return
+    if (!resignDialogOpen && !cancelDialogOpen && !historyOpen) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setResignDialogOpen(false)
         setCancelDialogOpen(false)
+        setHistoryOpen(false)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [resignDialogOpen, cancelDialogOpen])
+  }, [resignDialogOpen, cancelDialogOpen, historyOpen])
+
+  // Keep the page behind the full-screen history view from scrolling.
+  useEffect(() => {
+    if (!historyOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [historyOpen])
 
   if (isError) {
     return (
@@ -668,14 +757,9 @@ export function Component() {
   const isTicTacToe = match.game_slug === 'tic-tac-toe'
   const mySeat = isTicTacToe ? seatForPlayerIndex(myPlayer?.player_index) : null
   const isGameOver = ['completed', 'tied', 'forfeited', 'cancelled'].includes(match.status)
-  // Paid outcomes: a draw/cancel refunds the stake, otherwise the winner
-  // receives the pool minus the settled platform fee.
-  const paidPayout =
-    match.status === 'tied' || match.status === 'cancelled'
-      ? match.stake_amount
-      : match.winner_user_id === user?.id
-        ? match.prize_pool - match.total_fee
-        : 0
+  const recentMatches = (matchHistory?.matches ?? [])
+    .filter((historyMatch) => isTerminalMatchRecord(historyMatch))
+    .slice(0, RECENT_HISTORY_LIMIT)
   // const damaHistory = (match.board_state?.move_history ?? []) as DamaHistoryEntry[]
 
   // Disconnect state derived from match (server-authoritative).
@@ -756,7 +840,7 @@ export function Component() {
   return (
     <div className="mx-auto max-w-4xl py-6 px-4 space-y-6">
       {/* Top Navigation & Status Bar */}
-      <div className="flex items-center justify-between border-b border-border pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
         <Button
           variant="ghost"
           size="sm"
@@ -767,7 +851,7 @@ export function Component() {
           <span>Exit to Lobby</span>
         </Button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <SoundToggle isMuted={isMuted} onToggle={toggleMute} />
 
           {match.invite_code && (
@@ -813,6 +897,17 @@ export function Component() {
               </span>
             )}
           </Badge>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setHistoryOpen(true)}
+            aria-haspopup="dialog"
+            className="h-8 gap-1.5 border-border/80 bg-card/60 text-xs font-semibold"
+          >
+            <History className="h-3.5 w-3.5" />
+            <span>Match History</span>
+          </Button>
         </div>
       </div>
 
@@ -1388,54 +1483,6 @@ export function Component() {
         </CardContent>
       </Card>
 
-      {/* Paid settlement result */}
-      {isGameOver && isPaidMatch && (
-        <Card className="border-[#fbbf24]/30 shadow-sm">
-          <CardContent className="space-y-3 p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="flex items-center gap-2 text-sm font-bold text-foreground">
-                <ShieldCheck className="h-4 w-4 text-success" />
-                Match Settlement
-              </h2>
-              <Badge variant={match.status === 'tied' ? 'outline' : 'success'} className="text-[10px] font-bold">
-                {match.status === 'tied'
-                  ? 'Draw — refunded'
-                  : match.status === 'cancelled'
-                    ? 'Refunded'
-                    : match.winner_user_id === user?.id
-                      ? 'You won'
-                      : 'Opponent won'}
-              </Badge>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-              <PaidMetric label="Your stake" value={formatCurrency(match.stake_amount)} />
-              <PaidMetric label="Opponent stake" value={formatCurrency(match.stake_amount)} />
-              <PaidMetric label="Prize pool" value={formatCurrency(match.prize_pool)} />
-              <PaidMetric label={`Platform fee ${match.service_fee_percent.toFixed(2)}%`} value={formatCurrency(match.status === 'tied' || match.status === 'cancelled' ? 0 : match.total_fee)} />
-              <PaidMetric
-                label="Final payout"
-                value={formatCurrency(paidPayout)}
-                highlight
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <Wallet className="h-3.5 w-3.5" />
-                Updated wallet balance:{' '}
-                <strong className="font-bold text-foreground">
-                  {wallet ? formatCurrency(wallet.balance) : '—'}
-                </strong>
-              </span>
-              <span className="font-mono text-[10px]">
-                Ref: {myPlayer?.credit_tx_id || myPlayer?.debit_tx_id || match.id}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Surrender / Resign Button during Active Play */}
       {match.status === 'in_progress' && (
         <div className="flex justify-end">
@@ -1450,6 +1497,17 @@ export function Component() {
             <span>Surrender Match</span>
           </Button>
         </div>
+      )}
+
+      {historyOpen && (
+        <MatchHistoryModal
+          matches={recentMatches}
+          isLoading={historyLoading}
+          isError={historyError}
+          onRetry={() => void refetchHistory()}
+          onClose={() => setHistoryOpen(false)}
+          currentUserId={user?.id}
+        />
       )}
 
       {resignDialogOpen && (
