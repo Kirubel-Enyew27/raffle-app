@@ -12,7 +12,6 @@ import {
   ArrowUpRight,
   Check,
   Coins,
-  Sparkles,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
