@@ -447,6 +447,8 @@
   },
   "admin": {
     "dashboard": "Dashboard",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
     "platformOverview": "Platform overview",
     "raffles": "Raffles",
     "winners": "Winners",
