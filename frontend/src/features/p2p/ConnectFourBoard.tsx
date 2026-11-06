@@ -1,4 +1,9 @@
-import { useState, useMemo, type CSSProperties } from 'react'
+import {
+  useMemo,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { ChevronDown } from 'lucide-react'
 
 import { ConnectFourToken } from './ConnectFourToken'
@@ -42,13 +47,74 @@ export function ConnectFourBoard({
   const winningLine = boardState?.winning_line || null
   const lastMove = boardState?.last_move ?? null
 
+  // Mouse hover drives the desktop preview. Touch has its own, transient
+  // selection state: a touch preview exists only while the player is pressing
+  // an actionable column, so opening the board can never show a phantom ball.
   const [hoveredCol, setHoveredCol] = useState<number | null>(null)
+  const [touchPreviewCol, setTouchPreviewCol] = useState<number | null>(null)
+  const [previewTurn, setPreviewTurn] = useState(isMyTurn)
+
+  // A new turn invalidates any touch selection that was still in progress.
+  // Adjust it during render (React's recommended prop-change pattern) so the
+  // preview cannot reappear automatically when it becomes this player's turn
+  // again.
+  if (previewTurn !== isMyTurn) {
+    setPreviewTurn(isMyTurn)
+    setTouchPreviewCol(null)
+  }
 
   const mySeat = seatForSymbol(mySymbol)
   const canDropIn = (column: number) =>
     isMyTurn && !disabled && !isGameOver && !isColumnFull(cells, column, cols)
-  const canDropHovered = hoveredCol !== null && canDropIn(hoveredCol)
-  const ghostIndex = canDropHovered && hoveredCol !== null ? landingIndex(cells, hoveredCol, cols, rows) : null
+  const touchPreviewValid =
+    touchPreviewCol !== null && canDropIn(touchPreviewCol)
+  const previewCol =
+    touchPreviewValid
+      ? touchPreviewCol
+      : hoveredCol !== null && canDropIn(hoveredCol)
+        ? hoveredCol
+        : null
+  const ghostIndex =
+    previewCol !== null ? landingIndex(cells, previewCol, cols, rows) : null
+
+  const previewPointerHandlers = (column: number) => ({
+    onPointerEnter: (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (event.pointerType === 'mouse') setHoveredCol(column)
+    },
+    onPointerLeave: (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (event.pointerType === 'mouse') {
+        setHoveredCol((current) => (current === column ? null : current))
+      } else {
+        setTouchPreviewCol((current) => (current === column ? null : current))
+      }
+    },
+    onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (event.pointerType === 'mouse' || !canDropIn(column)) return
+      // Touch/pen: show only for the duration of this intentional press.
+      setHoveredCol(null)
+      setTouchPreviewCol(column)
+    },
+    onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (event.pointerType === 'mouse') return
+      setTouchPreviewCol((current) => (current === column ? null : current))
+    },
+    onPointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (event.pointerType === 'mouse') return
+      setTouchPreviewCol((current) => (current === column ? null : current))
+    },
+    onPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (event.pointerType === 'mouse' || touchPreviewCol !== column) return
+      const rect = event.currentTarget.getBoundingClientRect()
+      const movedAway =
+        event.clientX < rect.left ||
+        event.clientX > rect.right ||
+        event.clientY < rect.top ||
+        event.clientY > rect.bottom
+      if (movedAway) {
+        setTouchPreviewCol((current) => (current === column ? null : current))
+      }
+    },
+  })
 
   // Sort winning line tokens along their geometric direction for a sequential reveal
   const sortedWinningLine = useMemo(() => {
@@ -58,6 +124,9 @@ export function ConnectFourBoard({
 
   const handleColClick = (column: number) => {
     if (!canDropIn(column)) return
+    // A committed move ends the touch preview immediately. Desktop hover is
+    // left untouched because it follows the pointer independently.
+    setTouchPreviewCol(null)
     onMove(column)
   }
 
@@ -72,15 +141,14 @@ export function ConnectFourBoard({
       <div className="mb-2 grid h-8 w-full max-w-md gap-1.5 sm:gap-2.5" style={gridStyle}>
         {Array.from({ length: cols }).map((_, column) => {
           const canDrop = canDropIn(column)
-          const isHovered = hoveredCol === column && canDrop
+          const isPreviewed = previewCol === column && canDrop
 
           return (
             <button
               key={`indicator-${column}`}
               type="button"
               onClick={() => handleColClick(column)}
-              onMouseEnter={() => setHoveredCol(column)}
-              onMouseLeave={() => setHoveredCol(null)}
+              {...previewPointerHandlers(column)}
               disabled={!canDrop}
               className={[
                 'flex items-center justify-center rounded-lg transition-colors',
@@ -88,7 +156,7 @@ export function ConnectFourBoard({
               ].join(' ')}
               aria-label={`Drop token into column ${column + 1}`}
             >
-              {isHovered && mySeat ? (
+              {isPreviewed && mySeat ? (
                 <span aria-hidden="true">
                   <ConnectFourToken seat={mySeat} ghost className="h-5 w-5" />
                 </span>
@@ -126,8 +194,7 @@ export function ConnectFourBoard({
                   key={`slot-${row}-${column}`}
                   type="button"
                   onClick={() => handleColClick(column)}
-                  onMouseEnter={() => setHoveredCol(column)}
-                  onMouseLeave={() => setHoveredCol(null)}
+                  {...previewPointerHandlers(column)}
                   disabled={!canClickColumn}
                   style={isWin && winIndex >= 0 ? { animationDelay: `${winIndex * 150}ms` } : undefined}
                   className={[
@@ -135,7 +202,7 @@ export function ConnectFourBoard({
                     'bg-[var(--art-hole)]',
                     'shadow-[inset_0_2px_4px_rgba(0,0,0,0.16),inset_0_-1px_2px_rgba(255,255,255,0.5)] dark:shadow-[inset_0_3px_7px_rgba(0,0,0,0.75),inset_0_-1px_2px_rgba(255,255,255,0.08)]',
                     canClickColumn ? 'cursor-pointer' : 'cursor-default',
-                    hoveredCol === column && canClickColumn
+                    previewCol === column && canClickColumn
                       ? 'ring-1 ring-inset ring-foreground/25 dark:ring-white/20'
                       : '',
                     isWin
