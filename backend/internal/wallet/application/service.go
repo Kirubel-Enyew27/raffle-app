@@ -171,44 +171,20 @@ func (s *WalletService) ListPendingWithdrawals(ctx context.Context) ([]*domain.W
 }
 
 func (s *WalletService) ApproveWithdrawal(ctx context.Context, txID, adminUserID string) (*domain.WalletTransaction, error) {
-	tx, err := s.repo.FindTransactionByID(ctx, txID)
+	tx, wallet, err := s.repo.ApproveWithdrawal(ctx, txID)
 	if err != nil {
-		return nil, errors.ErrNotFound
-	}
-	if tx.Type != "withdrawal" || tx.Status != "pending" {
-		return nil, fmt.Errorf("transaction is not a pending withdrawal")
-	}
-
-	// Deduct balance now
-	wallet, err := s.repo.FindByID(ctx, tx.WalletID)
-	if err != nil {
-		return nil, err
-	}
-	if wallet.Balance-wallet.ReservedBalance < tx.Amount {
-		return nil, errors.ErrInsufficientFunds
-	}
-
-	newBalance := wallet.Balance - tx.Amount
-	if err := s.repo.UpdateBalance(ctx, wallet.ID, newBalance); err != nil {
-		return nil, err
-	}
-
-	tx.Status = "completed"
-	tx.BalanceAfter = newBalance
-	tx.UpdatedAt = time.Now()
-	if err := s.repo.UpdateTransactionStatus(ctx, tx.ID, "completed"); err != nil {
 		return nil, err
 	}
 
 	if s.auditService != nil {
-		oldVal := fmt.Sprintf("%.2f", wallet.Balance+tx.Amount)
-		newVal := fmt.Sprintf("%.2f", newBalance)
-		_ = s.auditService.Record(ctx, &adminUserID, "admin", "withdrawal_approved", "wallet", &wallet.ID, "", &oldVal, &newVal)
+		oldVal := fmt.Sprintf("status=pending; amount=%.2f; balance=%.2f", tx.Amount, tx.BalanceBefore)
+		newVal := fmt.Sprintf("status=completed; balance=%.2f", tx.BalanceAfter)
+		_ = s.auditService.Record(ctx, &adminUserID, "admin", "withdrawal_approved", "wallet_transaction", &tx.ID, "", &oldVal, &newVal)
 	}
 
 	if s.realtimeSvc != nil {
 		_ = s.realtimeSvc.Publish(ctx, "wallet_update", tx.UserID, "", map[string]interface{}{
-			"balance":  newBalance,
+			"balance":  tx.BalanceAfter,
 			"currency": wallet.Currency,
 		})
 		_ = s.realtimeSvc.Publish(ctx, "withdrawal_status", tx.UserID, "", tx)
@@ -219,22 +195,15 @@ func (s *WalletService) ApproveWithdrawal(ctx context.Context, txID, adminUserID
 }
 
 func (s *WalletService) RejectWithdrawal(ctx context.Context, txID, adminUserID string) (*domain.WalletTransaction, error) {
-	tx, err := s.repo.FindTransactionByID(ctx, txID)
+	tx, err := s.repo.RejectWithdrawal(ctx, txID)
 	if err != nil {
-		return nil, errors.ErrNotFound
-	}
-	if tx.Type != "withdrawal" || tx.Status != "pending" {
-		return nil, fmt.Errorf("transaction is not a pending withdrawal")
-	}
-
-	tx.Status = "rejected"
-	tx.UpdatedAt = time.Now()
-	if err := s.repo.UpdateTransactionStatus(ctx, tx.ID, "rejected"); err != nil {
 		return nil, err
 	}
 
 	if s.auditService != nil {
-		_ = s.auditService.Record(ctx, &adminUserID, "admin", "withdrawal_rejected", "wallet", &tx.WalletID, "", nil, nil)
+		oldVal := fmt.Sprintf("status=pending; amount=%.2f", tx.Amount)
+		newVal := "status=rejected"
+		_ = s.auditService.Record(ctx, &adminUserID, "admin", "withdrawal_rejected", "wallet_transaction", &tx.ID, "", &oldVal, &newVal)
 	}
 
 	if s.realtimeSvc != nil {

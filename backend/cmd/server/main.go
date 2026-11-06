@@ -11,6 +11,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	adminapp "github.com/raffle-app/backend/internal/admin/application"
+	adminhttp "github.com/raffle-app/backend/internal/admin/interfaces/http"
+	adminrepo "github.com/raffle-app/backend/internal/admin/interfaces/repository"
 	auditapp "github.com/raffle-app/backend/internal/audit/application"
 	audithttp "github.com/raffle-app/backend/internal/audit/interfaces/http"
 	auditmw "github.com/raffle-app/backend/internal/audit/interfaces/http/middleware"
@@ -221,6 +224,7 @@ func main() {
 	)
 
 	reportSvc := reportapp.NewReportService(reportrepo.NewReportRepo(db))
+	adminSvc := adminapp.NewAdminService(adminrepo.NewAdminRepo(db))
 
 	// Multiplayer crash game: shared authoritative round engine + player service.
 	crashCfg := crashdomain.RoundConfig{
@@ -328,7 +332,7 @@ func main() {
 	// Router
 	r := gin.New()
 	r.Use(middleware.RecoveryMiddleware())
-	r.Use(middleware.CORSMiddleware())
+	r.Use(middleware.CORSMiddlewareWithLogger(logger.With()))
 	r.Use(middleware.AuditContextMiddleware())
 
 	// Serve uploaded files (avatars, etc.)
@@ -356,6 +360,7 @@ func main() {
 	notificationhttp.RegisterRoutes(api, notificationhttp.NewHandler(notificationSvc))
 	audithttp.RegisterAuditRoutes(api, audithttp.NewAuditHandler(auditSvc))
 	reporthttp.RegisterReportRoutes(api, reporthttp.NewReportHandler(reportSvc))
+	adminhttp.RegisterAdminRoutes(api, adminhttp.NewAdminHandler(adminSvc))
 	smshttp.RegisterSMSRoutes(api, smshttp.NewSMSHandler(smsSvc), cfg.SMSAPIKey)
 
 	crashHandler := crashhttp.NewCrashHandler(crashSvc)

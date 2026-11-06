@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
@@ -24,7 +25,18 @@ function toLocal(iso: string) {
 export function RaffleFormModal({ raffle, onClose }: Props) {
   const { t } = useTranslation()
   const qc = useQueryClient()
-  const [form, setForm] = useState<CreateRaffleInput>(EMPTY)
+  const [form, setForm] = useState<CreateRaffleInput>(() =>
+    raffle ? {
+      title: raffle.title,
+      description: raffle.description,
+      ticket_price: raffle.ticket_price,
+      max_tickets: raffle.total_tickets,
+      draw_date: toLocal(raffle.draw_date),
+      status: raffle.status,
+      prize_pool: raffle.prize_pool,
+      currency: raffle.currency,
+    } : EMPTY
+  )
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -32,10 +44,6 @@ export function RaffleFormModal({ raffle, onClose }: Props) {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
-
-  useEffect(() => {
-    if (raffle) setForm({ title: raffle.title, description: raffle.description, ticket_price: raffle.ticket_price, max_tickets: raffle.total_tickets, draw_date: toLocal(raffle.draw_date), status: raffle.status, prize_pool: raffle.prize_pool, currency: raffle.currency })
-  }, [raffle])
 
   const numberKeys = new Set<keyof CreateRaffleInput>(['ticket_price', 'max_tickets', 'prize_pool'])
   const set = (k: keyof CreateRaffleInput) =>

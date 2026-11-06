@@ -526,7 +526,7 @@ func (r *MatchRepo) GetLeaderboard(ctx context.Context, filter domain.Leaderboar
     FROM p2p_matches m
     JOIN p2p_match_players p ON m.id = p.match_id
     WHERE m.status IN ('completed', 'forfeited', 'tied')
-      AND ($1 = '' OR m.game_slug = $1)
+      AND (($1 = '' AND m.game_slug NOT LIKE '%test%') OR ($1 != '' AND m.game_slug = $1))
 ),
 period_stats AS (
     SELECT

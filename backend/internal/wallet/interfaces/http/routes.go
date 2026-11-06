@@ -21,7 +21,7 @@ func RegisterWalletRoutes(r *gin.RouterGroup, handler *WalletHandler) {
 	}
 
 	// Admin routes for withdrawal management
-	admin := r.Group("/admin/wallets", middleware.AuthMiddleware())
+	admin := r.Group("/admin/wallets", middleware.AuthMiddleware(), middleware.AdminMiddleware())
 	{
 		admin.GET("/pending-withdrawals", handler.ListPendingWithdrawals)
 		admin.POST("/approve-withdrawal/:id", handler.ApproveWithdrawal)

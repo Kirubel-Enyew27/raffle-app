@@ -41,16 +41,16 @@ export function ProfitSummaryReport({ range, onRange }: Props) {
     if (!data) return
     exportCSV('profit-summary.csv',
       ['Metric', 'Value'],
-      [
-        [t('admin.netProfit'),        data.net_profit],
-        [t('admin.ticketRevenue'),    data.total_ticket_revenue],
-        [t('admin.depositVolume'),    data.total_deposit_volume],
-        [t('admin.withdrawVolume'),   data.total_withdraw_volume],
-        [t('admin.prizePaid'),        data.total_prize_paid],
-        [t('admin.ticketsSoldKpi'),   data.total_tickets_sold],
-        [t('admin.winnersKpi'),       data.total_winners],
-        [t('admin.activeUsersKpi'),   data.total_active_users],
-      ],
+      Object.entries({
+        [t('admin.netProfit')]:        data.net_profit,
+        [t('admin.ticketRevenue')]:    data.total_ticket_revenue,
+        [t('admin.depositVolume')]:    data.total_deposit_volume,
+        [t('admin.withdrawVolume')]:   data.total_withdraw_volume,
+        [t('admin.prizePaid')]:        data.total_prize_paid,
+        [t('admin.ticketsSoldKpi')]:   data.total_tickets_sold,
+        [t('admin.winnersKpi')]:       data.total_winners,
+        [t('admin.activeUsersKpi')]:   data.total_active_users,
+      }).map(([k, v]) => [k, v] as [string, number]),
     )
   }
 

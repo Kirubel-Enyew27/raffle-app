@@ -40,10 +40,10 @@ func (r *ReportRepo) Revenue(ctx context.Context, period domain.Period, f domain
 WITH wallet_buckets AS (
   SELECT
     DATE_TRUNC('%s', created_at)            AS bucket,
-    SUM(CASE WHEN type = 'deposit'    THEN amount ELSE 0 END) AS deposits,
-    SUM(CASE WHEN type = 'withdrawal' THEN amount ELSE 0 END) AS withdrawals
+    SUM(CASE WHEN type IN ('deposit','sms_deposit') AND status = 'completed' THEN amount ELSE 0 END) AS deposits,
+    SUM(CASE WHEN type = 'withdrawal' AND status = 'completed' THEN amount ELSE 0 END) AS withdrawals
   FROM wallet_transactions
-  WHERE created_at BETWEEN $1 AND $2
+  WHERE created_at >= $1 AND created_at < $2
   GROUP BY bucket
 ),
 ticket_buckets AS (
@@ -52,7 +52,7 @@ ticket_buckets AS (
     SUM(r.ticket_price)            AS ticket_revenue
   FROM tickets t
   JOIN raffles r ON r.id = t.raffle_id
-  WHERE t.created_at BETWEEN $1 AND $2
+  WHERE t.created_at >= $1 AND t.created_at < $2
   GROUP BY bucket
 ),
 prize_buckets AS (
@@ -60,7 +60,7 @@ prize_buckets AS (
     DATE_TRUNC('%s', payment_date) AS bucket,
     SUM(prize_amount)              AS prize_paid
   FROM winners
-  WHERE prize_paid = TRUE AND payment_date BETWEEN $1 AND $2
+  WHERE prize_paid = TRUE AND payment_date >= $1 AND payment_date < $2
   GROUP BY bucket
 ),
 all_buckets AS (
@@ -127,7 +127,7 @@ WITH buckets AS (
     COUNT(DISTINCT t.raffle_id)    AS raffles_held,
     COUNT(*) OVER ()               AS total_count
   FROM tickets t
-  WHERE t.created_at BETWEEN $1 AND $2
+  WHERE t.created_at >= $1 AND t.created_at < $2
   GROUP BY bucket
 )
 SELECT
@@ -168,7 +168,7 @@ WITH buckets AS (
     COUNT(DISTINCT user_id)       AS active_users,
     COUNT(*) OVER ()              AS total_count
   FROM wallet_transactions
-  WHERE created_at BETWEEN $1 AND $2
+  WHERE created_at >= $1 AND created_at < $2
   GROUP BY bucket
 )
 SELECT
@@ -213,7 +213,7 @@ SELECT
 FROM winners w
 JOIN users   u  ON u.id  = w.user_id
 JOIN raffles rf ON rf.id = w.raffle_id
-WHERE w.created_at BETWEEN $1 AND $2
+WHERE w.created_at >= $1 AND w.created_at < $2
 ORDER BY w.created_at DESC
 LIMIT $3 OFFSET $4`
 
@@ -242,19 +242,19 @@ LIMIT $3 OFFSET $4`
 func (r *ReportRepo) ProfitSummary(ctx context.Context, f domain.Filter) (*domain.ProfitSummary, error) {
 	query := `
 SELECT
-  COALESCE(SUM(CASE WHEN wt.type = 'deposit'    THEN wt.amount ELSE 0 END), 0) AS deposit_volume,
-  COALESCE(SUM(CASE WHEN wt.type = 'withdrawal' THEN wt.amount ELSE 0 END), 0) AS withdraw_volume,
+  COALESCE(SUM(CASE WHEN wt.type IN ('deposit','sms_deposit') AND wt.status = 'completed' THEN wt.amount ELSE 0 END), 0) AS deposit_volume,
+  COALESCE(SUM(CASE WHEN wt.type = 'withdrawal' AND wt.status = 'completed' THEN wt.amount ELSE 0 END), 0) AS withdraw_volume,
   (SELECT COALESCE(SUM(r.ticket_price), 0)
      FROM tickets t JOIN raffles r ON r.id = t.raffle_id
-    WHERE t.created_at BETWEEN $1 AND $2)                                        AS ticket_revenue,
+    WHERE t.created_at >= $1 AND t.created_at < $2)                              AS ticket_revenue,
   (SELECT COALESCE(SUM(prize_amount), 0)
-     FROM winners WHERE prize_paid = TRUE AND payment_date BETWEEN $1 AND $2)    AS prize_paid,
-  (SELECT COUNT(*) FROM tickets WHERE created_at BETWEEN $1 AND $2)              AS tickets_sold,
-  (SELECT COUNT(*) FROM winners WHERE created_at BETWEEN $1 AND $2)              AS total_winners,
+     FROM winners WHERE prize_paid = TRUE AND payment_date >= $1 AND payment_date < $2) AS prize_paid,
+  (SELECT COUNT(*) FROM tickets WHERE created_at >= $1 AND created_at < $2)              AS tickets_sold,
+  (SELECT COUNT(*) FROM winners WHERE created_at >= $1 AND created_at < $2)              AS total_winners,
   (SELECT COUNT(DISTINCT user_id)
-     FROM wallet_transactions WHERE created_at BETWEEN $1 AND $2)                AS active_users
+     FROM wallet_transactions WHERE created_at >= $1 AND created_at < $2)                AS active_users
 FROM wallet_transactions wt
-WHERE wt.created_at BETWEEN $1 AND $2`
+WHERE wt.created_at >= $1 AND wt.created_at < $2`
 
 	s := &domain.ProfitSummary{}
 	err := r.db.QueryRowContext(ctx, query, f.From, f.To).Scan(

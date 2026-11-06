@@ -8,7 +8,7 @@ import (
 func RegisterAuditRoutes(r *gin.RouterGroup, handler *AuditHandler) {
 	audit := r.Group("/audit")
 	{
-		audit.GET("/logs", middleware.AuthMiddleware(), handler.GetAuditLogs)
-		audit.GET("/logs/:id", middleware.AuthMiddleware(), handler.GetAuditLog)
+		audit.GET("/logs", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handler.GetAuditLogs)
+		audit.GET("/logs/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handler.GetAuditLog)
 	}
 }

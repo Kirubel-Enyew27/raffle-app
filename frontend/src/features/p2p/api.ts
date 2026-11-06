@@ -61,7 +61,7 @@ export const p2pApi = {
       .get<ApiResponse<{ matches: P2PAdminMatch[]; total: number }>>('/admin/p2p/matches', {
         params,
       })
-      .then((r) => r.data.data ?? { matches: [], total: 0 }),
+      .then((r) => ({ matches: r.data.data?.matches ?? [], total: r.data.data?.total ?? 0 })),
 
   listMyMatches: (limit = 20, offset = 0) =>
     api

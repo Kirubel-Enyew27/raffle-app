@@ -27,16 +27,16 @@ func (s *AuditService) Record(ctx context.Context, actorID *string, actorType, a
 	}
 
 	log := &domain.AuditLog{
-		ActorID:       actorID,
-		ActorType:     actorType,
-		Action:        action,
-		ResourceType:  resourceType,
-		ResourceID:    resourceID,
-		OldValue:      oldValue,
-		NewValue:      newValue,
-		IPAddress:     ipAddress,
-		UserAgent:     userAgent,
-		CreatedAt:     time.Now(),
+		ActorID:      actorID,
+		ActorType:    actorType,
+		Action:       action,
+		ResourceType: resourceType,
+		ResourceID:   resourceID,
+		OldValue:     oldValue,
+		NewValue:     newValue,
+		IPAddress:    ipAddress,
+		UserAgent:    userAgent,
+		CreatedAt:    time.Now(),
 	}
 	return s.auditRepo.Create(ctx, log)
 }

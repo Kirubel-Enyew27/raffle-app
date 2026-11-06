@@ -211,6 +211,111 @@ func (r *WalletRepo) UpdateTransactionStatus(ctx context.Context, id, status str
 	return err
 }
 
+// ApproveWithdrawal locks the withdrawal and wallet rows before changing either
+// one. Two admins approving the same request therefore cannot both debit the
+// wallet, and a database failure rolls the whole action back.
+func (r *WalletRepo) ApproveWithdrawal(ctx context.Context, id string) (*domain.WalletTransaction, *domain.Wallet, error) {
+	dbTx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer dbTx.Rollback()
+
+	walletTx := &domain.WalletTransaction{}
+	var metaJSON []byte
+	err = dbTx.QueryRowContext(ctx,
+		`SELECT id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at
+		 FROM wallet_transactions WHERE id = $1 FOR UPDATE`, id).Scan(
+		&walletTx.ID, &walletTx.WalletID, &walletTx.UserID, &walletTx.Type, &walletTx.Status,
+		&walletTx.Amount, &walletTx.BalanceBefore, &walletTx.BalanceAfter, &walletTx.Reference,
+		&walletTx.Description, &metaJSON, &walletTx.CreatedAt, &walletTx.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil, errors.ErrNotFound
+		}
+		return nil, nil, err
+	}
+	if walletTx.Type != "withdrawal" || walletTx.Status != "pending" {
+		return nil, nil, errors.ErrConflict
+	}
+	if metaJSON != nil {
+		if err := json.Unmarshal(metaJSON, &walletTx.Metadata); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	wallet := &domain.Wallet{}
+	err = dbTx.QueryRowContext(ctx,
+		`SELECT id, user_id, balance, reserved_balance, currency, created_at, updated_at
+		 FROM wallets WHERE id = $1 FOR UPDATE`, walletTx.WalletID).Scan(
+		&wallet.ID, &wallet.UserID, &wallet.Balance, &wallet.ReservedBalance,
+		&wallet.Currency, &wallet.CreatedAt, &wallet.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil, errors.ErrNotFound
+		}
+		return nil, nil, err
+	}
+	if wallet.Balance-wallet.ReservedBalance < walletTx.Amount {
+		return nil, nil, errors.ErrInsufficientFunds
+	}
+
+	now := time.Now()
+	newBalance := wallet.Balance - walletTx.Amount
+	if _, err := dbTx.ExecContext(ctx,
+		`UPDATE wallets SET balance = $1, updated_at = $2 WHERE id = $3`, newBalance, now, wallet.ID); err != nil {
+		return nil, nil, err
+	}
+	if _, err := dbTx.ExecContext(ctx,
+		`UPDATE wallet_transactions SET status = 'completed', balance_after = $1, updated_at = $2 WHERE id = $3`,
+		newBalance, now, walletTx.ID); err != nil {
+		return nil, nil, err
+	}
+	if err := dbTx.Commit(); err != nil {
+		return nil, nil, err
+	}
+
+	wallet.Balance = newBalance
+	wallet.AvailableBalance = newBalance - wallet.ReservedBalance
+	wallet.UpdatedAt = now
+	walletTx.Status = "completed"
+	walletTx.BalanceBefore = wallet.Balance + walletTx.Amount
+	walletTx.BalanceAfter = newBalance
+	walletTx.UpdatedAt = now
+	return walletTx, wallet, nil
+}
+
+// RejectWithdrawal conditionally moves a pending withdrawal to rejected in one
+// statement, so an approval racing the rejection cannot be overwritten.
+func (r *WalletRepo) RejectWithdrawal(ctx context.Context, id string) (*domain.WalletTransaction, error) {
+	walletTx := &domain.WalletTransaction{}
+	var metaJSON []byte
+	err := r.db.QueryRowContext(ctx,
+		`UPDATE wallet_transactions
+		    SET status = 'rejected', updated_at = $2
+		  WHERE id = $1 AND type = 'withdrawal' AND status = 'pending'
+		  RETURNING id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at`,
+		id, time.Now()).Scan(
+		&walletTx.ID, &walletTx.WalletID, &walletTx.UserID, &walletTx.Type, &walletTx.Status,
+		&walletTx.Amount, &walletTx.BalanceBefore, &walletTx.BalanceAfter, &walletTx.Reference,
+		&walletTx.Description, &metaJSON, &walletTx.CreatedAt, &walletTx.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.ErrConflict
+		}
+		return nil, err
+	}
+	if metaJSON != nil {
+		if err := json.Unmarshal(metaJSON, &walletTx.Metadata); err != nil {
+			return nil, err
+		}
+	}
+	return walletTx, nil
+}
+
 func (r *WalletRepo) ExistsByReference(ctx context.Context, reference string) (bool, error) {
 	var exists bool
 	query := `SELECT EXISTS(SELECT 1 FROM wallet_transactions WHERE reference = $1 AND status NOT IN ('failed', 'rejected'))`

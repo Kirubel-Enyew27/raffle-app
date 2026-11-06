@@ -22,6 +22,8 @@ type WalletRepository interface {
 	FindTransactionsByStatus(ctx context.Context, txType, status string) ([]*WalletTransaction, error)
 	FindTransactionByID(ctx context.Context, id string) (*WalletTransaction, error)
 	UpdateTransactionStatus(ctx context.Context, id, status string) error
+	ApproveWithdrawal(ctx context.Context, id string) (*WalletTransaction, *Wallet, error)
+	RejectWithdrawal(ctx context.Context, id string) (*WalletTransaction, error)
 	ExistsByReference(ctx context.Context, reference string) (bool, error)
 }
 
@@ -40,4 +42,3 @@ type DepositRepository interface {
 type PaymentVerifier interface {
 	Verify(ctx context.Context, req VerificationRequest) (*VerificationResult, error)
 }
-

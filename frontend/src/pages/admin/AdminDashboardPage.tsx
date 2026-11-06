@@ -1,353 +1,323 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import {
-  AreaChart, Area, BarChart, Bar,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { TrendingUp, Users, Ticket, DollarSign, Activity, Calendar } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import {
+  Activity, ArrowRight, CircleDollarSign, Clock3, Gamepad2, Swords,
+  TrendingUp, UserPlus, Users, WalletCards,
+} from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { adminApi, defaultRange } from '@/features/admin/api'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { cn, formatCurrency } from '@/lib/utils'
+import { adminApi, defaultRange } from '@/features/admin/api'
+import { DateRangeBar, EmptyState, ErrorState, KpiCard, Panel, StatusBadge } from '@/features/admin/AdminUi'
+import { chartTooltipStyle, formatDate, formatMoney, formatNumber, relativeTime } from '@/features/admin/AdminUtils'
+import { GameArtwork, CrashArtwork } from '@/features/p2p/GameArtwork'
+import { cn } from '@/lib/utils'
 
-const usd = (n: number) => formatCurrency(n)
-const num = (n: number) => n.toLocaleString()
+const CHART = {
+  brand: '#ff5b55',
+  green: '#34d399',
+  amber: '#fbbf24',
+  blue: '#60a5fa',
+  purple: '#a78bfa',
+}
 
-interface Range { from: string; to: string }
-
-function DateRangePicker({ value, onChange }: { value: Range; onChange: (r: Range) => void }) {
-  const preset = (days: number) => {
-    const to = new Date()
-    const from = new Date(to); from.setDate(from.getDate() - days + 1)
-    onChange({ from: from.toISOString().split('T')[0], to: to.toISOString().split('T')[0] })
-  }
+function ChartEmpty({ label = 'No activity in this period' }: { label?: string }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {[7, 30, 90].map(d => (
-        <Button key={d} variant="outline" size="sm" onClick={() => preset(d)}>{d}d</Button>
-      ))}
-      <input type="date" value={value.from} max={value.to}
-        onChange={e => onChange({ ...value, from: e.target.value })}
-        className="h-8 rounded-md border border-input bg-background px-2 text-sm" />
-      <span className="text-muted-foreground">–</span>
-      <input type="date" value={value.to} min={value.from}
-        onChange={e => onChange({ ...value, to: e.target.value })}
-        className="h-8 rounded-md border border-input bg-background px-2 text-sm" />
-    </div>
+    <div className="flex h-[230px] items-center justify-center text-xs text-muted-foreground">{label}</div>
   )
 }
 
-function StatCard({ label, value, icon: Icon, sub, loading, className }: {
-  label: string; value: string | number; icon: React.ElementType; sub?: string; loading?: boolean; className?: string
-}) {
+function GrowthChart({ data }: { data: { period: string; count: number }[] }) {
   return (
-    <Card className={className}>
-      <CardHeader className="flex flex-row items-center justify-between pb-1">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" />
-      </CardHeader>
-      <CardContent>
-        {loading ? <Skeleton className="h-8 w-28" /> : <p className="text-2xl font-bold">{value}</p>}
-        {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
-      </CardContent>
-    </Card>
+    <ResponsiveContainer width="100%" height={240}>
+      <AreaChart data={data} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+        <defs>
+          <linearGradient id="adminGrowth" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={CHART.brand} stopOpacity={0.32} />
+            <stop offset="100%" stopColor={CHART.brand} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+        <XAxis dataKey="period" tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }} tickLine={false} axisLine={false} minTickGap={22} />
+        <YAxis tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }} tickLine={false} axisLine={false} allowDecimals={false} />
+        <Tooltip contentStyle={chartTooltipStyle()} formatter={(value) => [formatNumber(Number(value)), 'Registrations']} />
+        <Area type="monotone" dataKey="count" stroke={CHART.brand} fill="url(#adminGrowth)" strokeWidth={2.2} dot={false} />
+      </AreaChart>
+    </ResponsiveContainer>
   )
 }
 
-function RevenueChart({ range, period }: { range: Range; period: string }) {
-  const { t } = useTranslation()
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'revenue', range, period],
-    queryFn: () => adminApi.revenue(range.from, range.to, period),
-  })
-  const rows = data?.items ?? []
+function MatchChart({ data }: { data: { period: string; total: number; completed: number; paid: number }[] }) {
   return (
-    <Card className="col-span-full lg:col-span-2">
-      <CardHeader className="pb-2"><CardTitle className="text-base">{t('admin.revenueProfit')}</CardTitle></CardHeader>
-      <CardContent>
-        {isLoading ? <Skeleton className="h-56 w-full" />
-          : rows.length === 0 ? <p className="py-10 text-center text-sm text-muted-foreground">{t('admin.noDataPeriod')}</p>
-          : (
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={rows} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gProfit" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                <XAxis dataKey="period" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={v => `${(v/1000).toFixed(0)}k Br`} />
-                <Tooltip formatter={(v) => usd(Number(v))} />
-                <Legend />
-                <Area type="monotone" dataKey="ticket_revenue" name={t('admin.ticketRevenue')} stroke="#6366f1" fill="url(#gRevenue)" strokeWidth={2} dot={false} />
-                <Area type="monotone" dataKey="profit" name={t('reports.profit')} stroke="#22c55e" fill="url(#gProfit)" strokeWidth={2} dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-      </CardContent>
-    </Card>
+    <ResponsiveContainer width="100%" height={240}>
+      <BarChart data={data} margin={{ top: 8, right: 8, left: -20, bottom: 0 }} barGap={2}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+        <XAxis dataKey="period" tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }} tickLine={false} axisLine={false} minTickGap={22} />
+        <YAxis tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }} tickLine={false} axisLine={false} allowDecimals={false} />
+        <Tooltip contentStyle={chartTooltipStyle()} />
+        <Legend wrapperStyle={{ fontSize: 11 }} />
+        <Bar dataKey="total" name="Created" fill={CHART.brand} radius={[3, 3, 0, 0]} />
+        <Bar dataKey="completed" name="Completed" fill={CHART.green} radius={[3, 3, 0, 0]} />
+        <Bar dataKey="paid" name="Paid" fill={CHART.amber} radius={[3, 3, 0, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
   )
 }
 
-function TicketSalesChart({ range, period }: { range: Range; period: string }) {
-  const { t } = useTranslation()
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'tickets', range, period],
-    queryFn: () => adminApi.ticketSales(range.from, range.to, period),
-  })
-  const rows = data?.items ?? []
+function RevenueChart({ data }: { data: { period: string; p2p_fees: number; crash_fees: number; raffle_profit: number; total: number }[] }) {
   return (
-    <Card>
-      <CardHeader className="pb-2"><CardTitle className="text-base">{t('admin.ticketSalesChart')}</CardTitle></CardHeader>
-      <CardContent>
-        {isLoading ? <Skeleton className="h-56 w-full" />
-          : rows.length === 0 ? <p className="py-10 text-center text-sm text-muted-foreground">{t('admin.noData')}</p>
-          : (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={rows} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-                <XAxis dataKey="period" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <Tooltip />
-                <Bar dataKey="tickets_sold" name={t('admin.ticketsSold')} fill="#6366f1" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-      </CardContent>
-    </Card>
+    <ResponsiveContainer width="100%" height={240}>
+      <BarChart data={data} margin={{ top: 8, right: 8, left: -10, bottom: 0 }} barGap={2}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+        <XAxis dataKey="period" tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }} tickLine={false} axisLine={false} minTickGap={22} />
+        <YAxis tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }} tickLine={false} axisLine={false} tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`} />
+        <Tooltip contentStyle={chartTooltipStyle()} formatter={(value) => formatMoney(Number(value))} />
+        <Legend wrapperStyle={{ fontSize: 11 }} />
+        <Bar dataKey="p2p_fees" name="P2P fees" stackId="revenue" fill={CHART.brand} />
+        <Bar dataKey="crash_fees" name="Crash fees" stackId="revenue" fill={CHART.amber} />
+        <Bar dataKey="raffle_profit" name="Raffle profit" stackId="revenue" fill={CHART.blue} radius={[3, 3, 0, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
   )
 }
 
-function ActiveUsersChart({ range, period }: { range: Range; period: string }) {
-  const { t } = useTranslation()
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'users', range, period],
-    queryFn: () => adminApi.activeUsers(range.from, range.to, period),
-  })
-  const rows = data?.items ?? []
+function FinanceChart({ data }: { data: { period: string; deposits: number; withdrawals: number }[] }) {
   return (
-    <Card>
-      <CardHeader className="pb-2"><CardTitle className="text-base">{t('admin.activeUsersChart')}</CardTitle></CardHeader>
-      <CardContent>
-        {isLoading ? <Skeleton className="h-56 w-full" />
-          : rows.length === 0 ? <p className="py-10 text-center text-sm text-muted-foreground">{t('admin.noData')}</p>
-          : (
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={rows} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gUsers" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                <XAxis dataKey="period" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <Tooltip />
-                <Area type="monotone" dataKey="active_users" name={t('admin.activeUsersChart')} stroke="#f59e0b" fill="url(#gUsers)" strokeWidth={2} dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-      </CardContent>
-    </Card>
-  )
-}
-
-const STATUS_VARIANT: Record<string, 'success' | 'secondary' | 'outline' | 'warning' | 'destructive'> = {
-  active: 'success', scheduled: 'secondary', completed: 'outline', cancelled: 'destructive', draft: 'warning',
-}
-const PAGE_SIZE = 8
-
-function RaffleTable() {
-  const { t } = useTranslation()
-  const [page, setPage] = useState(0)
-  const [status, setStatus] = useState('')
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'raffles', page, status],
-    queryFn: () => adminApi.raffles(PAGE_SIZE, page * PAGE_SIZE, status || undefined),
-  })
-  const raffles = data?.raffles ?? []
-  const total = data?.total ?? 0
-  const totalPages = Math.ceil(total / PAGE_SIZE)
-
-  return (
-    <Card className="col-span-full">
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 pb-3">
-        <CardTitle className="text-base">{t('admin.raffles')}</CardTitle>
-        <Select value={status} onChange={e => { setStatus(e.target.value); setPage(0) }} className="w-36">
-          <option value="">{t('admin.allStatuses')}</option>
-          <option value="active">{t('raffles.status.active')}</option>
-          <option value="scheduled">{t('raffles.status.upcoming')}</option>
-          <option value="completed">{t('raffles.status.completed')}</option>
-          <option value="cancelled">{t('raffles.status.cancelled')}</option>
-        </Select>
-      </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-xs text-muted-foreground">
-                {[t('admin.raffleTitle'), t('admin.status'), t('admin.ticketsSold'), t('admin.prizePool'), t('admin.drawDate')].map(h => (
-                  <th key={h} className="pb-2 pr-4 font-medium">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading && Array.from({ length: PAGE_SIZE }).map((_, i) => (
-                <tr key={i} className="border-b">
-                  {Array.from({ length: 5 }).map((_, j) => (
-                    <td key={j} className="py-2.5 pr-4"><Skeleton className="h-4 w-full" /></td>
-                  ))}
-                </tr>
-              ))}
-              {!isLoading && raffles.length === 0 && (
-                <tr><td colSpan={5} className="py-8 text-center text-muted-foreground">{t('admin.noRafflesFound')}</td></tr>
-              )}
-              {raffles.map(r => (
-                <tr key={r.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                  <td className="py-2.5 pr-4">
-                    <Link to="/admin/raffles" className="font-medium hover:text-primary line-clamp-1">{r.title}</Link>
-                  </td>
-                  <td className="py-2.5 pr-4"><Badge variant={STATUS_VARIANT[r.status] ?? 'outline'}>{r.status}</Badge></td>
-                  <td className="py-2.5 pr-4 tabular-nums">
-                    {num(r.sold_tickets)}/{num(r.total_tickets)}
-                    <span className="ml-1 text-xs text-muted-foreground">({Math.round(r.sold_tickets / r.total_tickets * 100)}%)</span>
-                  </td>
-                  <td className="py-2.5 pr-4 tabular-nums">{usd(r.prize_pool)}</td>
-                  <td className="py-2.5 text-muted-foreground">
-                    {new Date(r.draw_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {totalPages > 1 && (
-          <div className="mt-4 flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} {t('common.of')} {num(total)}</span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>{t('admin.previous')}</Button>
-              <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>{t('admin.next')}</Button>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function UpcomingDraws() {
-  const { t } = useTranslation()
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'raffles', 'scheduled-active'],
-    queryFn: () => adminApi.raffles(5, 0, 'active'),
-  })
-  const upcoming = (data?.raffles ?? []).filter(r => r.draw_date)
-    .sort((a, b) => new Date(a.draw_date).getTime() - new Date(b.draw_date).getTime())
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base">{t('admin.upcomingDraws')}</CardTitle>
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-2.5">
-        {isLoading && Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="flex gap-3"><Skeleton className="h-4 flex-1" /><Skeleton className="h-4 w-20" /></div>
-        ))}
-        {!isLoading && upcoming.length === 0 && (
-          <p className="py-4 text-center text-sm text-muted-foreground">{t('admin.noUpcomingDraws')}</p>
-        )}
-        {upcoming.map(r => {
-          const diff = new Date(r.draw_date).getTime() - Date.now()
-          const days = Math.max(0, Math.floor(diff / 86_400_000))
-          const hours = Math.max(0, Math.floor((diff % 86_400_000) / 3_600_000))
-          return (
-            <div key={r.id} className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{r.title}</p>
-                <p className="text-xs text-muted-foreground">
-                  {new Date(r.draw_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                </p>
-              </div>
-              <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums',
-                days === 0 ? 'bg-destructive/10 text-destructive' : days <= 3 ? 'bg-warning/10 text-warning' : 'bg-muted text-muted-foreground')}>
-                {days > 0 ? `${days}d` : `${hours}h`}
-              </span>
-            </div>
-          )
-        })}
-      </CardContent>
-    </Card>
+    <ResponsiveContainer width="100%" height={240}>
+      <AreaChart data={data} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+        <defs>
+          <linearGradient id="adminDeposits" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={CHART.green} stopOpacity={0.28} />
+            <stop offset="100%" stopColor={CHART.green} stopOpacity={0} />
+          </linearGradient>
+          <linearGradient id="adminWithdrawals" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={CHART.amber} stopOpacity={0.22} />
+            <stop offset="100%" stopColor={CHART.amber} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+        <XAxis dataKey="period" tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }} tickLine={false} axisLine={false} minTickGap={22} />
+        <YAxis tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }} tickLine={false} axisLine={false} tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`} />
+        <Tooltip contentStyle={chartTooltipStyle()} formatter={(value) => formatMoney(Number(value))} />
+        <Legend wrapperStyle={{ fontSize: 11 }} />
+        <Area type="monotone" dataKey="deposits" name="Deposits" stroke={CHART.green} fill="url(#adminDeposits)" strokeWidth={2} dot={false} />
+        <Area type="monotone" dataKey="withdrawals" name="Withdrawals" stroke={CHART.amber} fill="url(#adminWithdrawals)" strokeWidth={2} dot={false} />
+      </AreaChart>
+    </ResponsiveContainer>
   )
 }
 
 export function Component() {
-  const { t } = useTranslation()
-  usePageTitle(t('admin.dashboard'))
+  usePageTitle('Admin Overview')
   const [range, setRange] = useState(defaultRange)
-  const [period, setPeriod] = useState('daily')
-  const { data: summary, isLoading: summaryLoading } = useQuery({
-    queryKey: ['admin', 'profit', range],
-    queryFn: () => adminApi.profit(range.from, range.to),
+  const [period, setPeriod] = useState('day')
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: ['admin', 'overview', range, period],
+    queryFn: () => adminApi.overview(range.from, range.to, period),
+  })
+  const { data: live } = useQuery({
+    queryKey: ['admin', 'live', 'overview'],
+    queryFn: adminApi.live,
+    refetchInterval: 20_000,
   })
 
+  const revenueMix = data ? [
+    { name: 'P2P fees', value: data.p2p_service_fees, color: CHART.brand },
+    { name: 'Crash fees', value: data.crash_service_fees, color: CHART.amber },
+    { name: 'Raffle profit', value: Math.max(0, data.raffle_profit), color: CHART.blue },
+  ].filter(item => item.value > 0) : []
+
   return (
-    <div className="space-y-6 p-4 sm:p-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{t('admin.dashboard')}</h1>
-          <p className="text-sm text-muted-foreground">{t('admin.platformOverview')}</p>
+    <div className="mx-auto w-full max-w-[1600px] space-y-5 p-3 sm:p-5 lg:p-7">
+      <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card p-4 sm:p-6">
+        <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+        <div className="relative flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-primary">Play. Compete. Earn.</p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">Platform command center</h1>
+            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+              Live activity, player growth, competition, and money movement — from persisted KWIK records.
+            </p>
+          </div>
+          <DateRangeBar from={range.from} to={range.to} onChange={(from, to) => setRange({ from, to })}>
+            <Select value={period} onChange={event => setPeriod(event.target.value)} className="h-9 w-24 text-xs">
+              <option value="day">Daily</option>
+              <option value="week">Weekly</option>
+              <option value="month">Monthly</option>
+            </Select>
+          </DateRangeBar>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Select value={period} onChange={e => setPeriod(e.target.value)} className="w-28">
-            <option value="daily">{t('admin.daily')}</option>
-            <option value="weekly">{t('admin.weekly')}</option>
-            <option value="monthly">{t('admin.monthly')}</option>
-          </Select>
-          <DateRangePicker value={range} onChange={setRange} />
+        <div className="relative mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+          <span>Showing {formatDate(`${data?.from ?? range.from}T00:00:00`)} – {formatDate(`${data?.to ?? range.to}T00:00:00`)} (UTC dates)</span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-success" />
+            {live ? `${live.live_players} players in matches` : 'Live snapshot loading'}
+          </span>
+          {isFetching && <span>Refreshing…</span>}
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-        <StatCard label={t('admin.netProfit')} value={usd(summary?.net_profit ?? 0)}
-          icon={TrendingUp} loading={summaryLoading}
-          sub={t('admin.revenueLabel', { value: usd(summary?.total_ticket_revenue ?? 0) })} />
-        <StatCard label={t('admin.ticketRevenue')} value={usd(summary?.total_ticket_revenue ?? 0)}
-          icon={DollarSign} loading={summaryLoading} />
-        <StatCard label={t('admin.ticketsSoldKpi')} value={num(summary?.total_tickets_sold ?? 0)}
-          icon={Ticket} loading={summaryLoading} />
-        <StatCard label={t('admin.activeUsersKpi')} value={num(summary?.total_active_users ?? 0)}
-          icon={Users} loading={summaryLoading} />
-        <StatCard label={t('admin.depositVolume')} value={usd(summary?.total_deposit_volume ?? 0)}
-          icon={Activity} loading={summaryLoading} />
-        <StatCard label={t('admin.winnersKpi')} value={num(summary?.total_winners ?? 0)}
-          icon={TrendingUp} loading={summaryLoading}
-          sub={t('admin.prizesPaid', { value: usd(summary?.total_prize_paid ?? 0) })} />
-      </div>
+      {isError ? (
+        <Card><ErrorState message={(error as Error)?.message} onRetry={() => refetch()} /></Card>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 xl:grid-cols-5">
+            <KpiCard label="Registered users" value={formatNumber(data?.total_users ?? 0)} icon={Users}
+              detail={`+${formatNumber(data?.new_users ?? 0)} in period`} change={data?.new_users_change} loading={isLoading} />
+            <KpiCard label="Active users" value={formatNumber(data?.active_users ?? 0)} icon={Activity}
+              detail="Users with wallet activity" change={data?.active_users_change} accent="blue" loading={isLoading} />
+            <KpiCard label="Live players" value={formatNumber(live?.live_players ?? data?.live_players ?? 0)} icon={Gamepad2}
+              detail={`${formatNumber(live?.active_matches ?? data?.live_matches ?? 0)} active matches`} accent="green" loading={isLoading} />
+            <KpiCard label="Matches" value={formatNumber(data?.total_matches ?? 0)} icon={Swords}
+              detail={`${formatNumber(data?.matches_today ?? 0)} created today`} change={data?.total_matches_change} loading={isLoading} />
+            <KpiCard label="Completed matches" value={formatNumber(data?.completed_matches ?? 0)} icon={TrendingUp}
+              detail={`${formatNumber(data?.tied_matches ?? 0)} draws · ${formatNumber(data?.forfeited_matches ?? 0)} forfeits`} accent="green" loading={isLoading} />
+            <KpiCard label="Deposits" value={formatMoney(data?.total_deposits ?? 0)} icon={WalletCards}
+              detail={`${formatNumber(data?.pending_deposits ?? 0)} awaiting review`} change={data?.deposits_change} accent="green" loading={isLoading} />
+            <KpiCard label="Withdrawals" value={formatMoney(data?.total_withdrawals ?? 0)} icon={CircleDollarSign}
+              detail={`${formatNumber(data?.pending_withdrawals ?? 0)} pending requests`} change={data?.withdrawals_change} accent="amber" loading={isLoading} />
+            <KpiCard label="Platform revenue" value={formatMoney(data?.platform_revenue ?? 0)} icon={TrendingUp}
+              detail="P2P + Crash fees + raffle profit" change={data?.platform_revenue_change} accent="brand" loading={isLoading} />
+            <KpiCard label="New users" value={formatNumber(data?.new_users ?? 0)} icon={UserPlus}
+              detail="Registrations in period" accent="blue" loading={isLoading} />
+            <KpiCard label="Pending actions" value={formatNumber((data?.pending_deposits ?? 0) + (data?.pending_withdrawals ?? 0))} icon={Clock3}
+              detail="Deposits and withdrawals" accent="amber" loading={isLoading} />
+          </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <RevenueChart range={range} period={period} />
-        <UpcomingDraws />
-      </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <TicketSalesChart range={range} period={period} />
-        <ActiveUsersChart range={range} period={period} />
-      </div>
-      <div className="grid"><RaffleTable /></div>
+          <div className="grid gap-4 xl:grid-cols-3">
+            <Panel title="Player growth" description="New registrations over the selected period">
+              {isLoading ? <Skeleton className="m-4 h-[240px]" /> : data?.registration_trend.length ? <div className="p-2"><GrowthChart data={data.registration_trend} /></div> : <ChartEmpty />}
+            </Panel>
+            <Panel title="Match activity" description="Created, completed, and paid competition volume">
+              {isLoading ? <Skeleton className="m-4 h-[240px]" /> : data?.match_trend.length ? <div className="p-2"><MatchChart data={data.match_trend} /></div> : <ChartEmpty />}
+            </Panel>
+            <Panel title="Money movement" description="Completed deposits and withdrawals">
+              {isLoading ? <Skeleton className="m-4 h-[240px]" /> : data?.finance_trend.length ? <div className="p-2"><FinanceChart data={data.finance_trend} /></div> : <ChartEmpty />}
+            </Panel>
+            <Panel title="Platform revenue" description="Collected P2P fees, settled Crash fees, and fully paid raffle margin" className="xl:col-span-2">
+              {isLoading ? <Skeleton className="m-4 h-[240px]" /> : data?.revenue_trend.length ? <div className="p-2"><RevenueChart data={data.revenue_trend} /></div> : <ChartEmpty label="No realized revenue in this period" />}
+            </Panel>
+            <Panel title="Revenue mix" description="Service fees and raffle profit">
+              {isLoading ? <Skeleton className="m-4 h-[240px]" /> : revenueMix.length ? (
+                <div className="grid items-center gap-2 p-3 sm:grid-cols-[1fr_1.1fr]">
+                  <ResponsiveContainer width="100%" height={230}>
+                    <PieChart>
+                      <Pie data={revenueMix} dataKey="value" nameKey="name" innerRadius={54} outerRadius={82} paddingAngle={3} stroke="none">
+                        {revenueMix.map(item => <Cell key={item.name} fill={item.color} />)}
+                      </Pie>
+                      <Tooltip contentStyle={chartTooltipStyle()} formatter={(value) => formatMoney(Number(value))} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="space-y-2.5">
+                    {revenueMix.map(item => (
+                      <div key={item.name} className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2">
+                        <span className="flex items-center gap-2 text-xs font-medium">
+                          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
+                          {item.name}
+                        </span>
+                        <span className="text-xs font-bold tabular-nums">{formatMoney(item.value)}</span>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between border-t border-border/60 pt-2 text-xs">
+                      <span className="font-semibold text-muted-foreground">Total revenue</span>
+                      <span className="font-black text-primary">{formatMoney(data?.platform_revenue ?? 0)}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : <ChartEmpty label="No realized platform revenue in this period" />}
+            </Panel>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[1.35fr_1fr]">
+            <Panel
+              title="Live matches"
+              description="Matches with players currently waiting or playing"
+              action={<Link to="/admin/live" className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">Open live activity <ArrowRight className="h-3.5 w-3.5" /></Link>}
+            >
+              {!live ? <Skeleton className="m-4 h-32" /> : live.matches.length === 0 ? (
+                <EmptyState title="No live matches right now" description="Active P2P matches will appear here as soon as players join." />
+              ) : (
+                <div className="divide-y divide-border/60">
+                  {live.matches.slice(0, 5).map(match => (
+                    <div key={match.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-5">
+                      <div className="flex -space-x-2">
+                        {match.players.slice(0, 2).map(player => (
+                          <span key={player.user_id} className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border-2 border-card bg-muted text-[10px] font-bold">
+                            {player.avatar_url ? <img src={player.avatar_url} alt="" className="h-full w-full object-cover" /> : player.display_name.charAt(0)}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold">
+                          {match.players.map(player => player.display_name).join(' vs ') || match.game_title}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {match.game_title} · {match.competition_mode === 'earn' ? formatMoney(match.stake_amount) + ' stake' : 'Free play'} · {relativeTime(match.created_at)}
+                        </p>
+                      </div>
+                      <StatusBadge status={match.status} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Panel>
+
+            <Panel
+              title="Most played games"
+              description="Share of matches in the selected period"
+              action={<Link to="/admin/games" className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">Game analytics <ArrowRight className="h-3.5 w-3.5" /></Link>}
+            >
+              {isLoading ? <Skeleton className="m-4 h-32" /> : (data?.games.length ?? 0) === 0 ? <EmptyState /> : (
+                <div className="space-y-3 p-4 sm:p-5">
+                  {data!.games.slice(0, 5).map((game, index) => {
+                    const max = Math.max(...data!.games.map(item => item.total_matches), 1)
+                    return (
+                      <div key={game.slug} className="flex items-center gap-3">
+                        <span className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[10px] font-black',
+                          index === 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>
+                          {index + 1}
+                        </span>
+                        <div className="h-9 w-16 shrink-0 overflow-hidden rounded-md border border-border/60 bg-muted/30">
+                          {game.slug === 'crash' ? <CrashArtwork /> : <GameArtwork slug={game.slug} />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <span className="truncate font-semibold">{game.title}</span>
+                            <span className="shrink-0 tabular-nums text-muted-foreground">{formatNumber(game.total_matches)}</span>
+                          </div>
+                          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                            <div className="h-full rounded-full bg-primary/80" style={{ width: `${Math.max(3, (game.total_matches / max) * 100)}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </Panel>
+          </div>
+
+          <Card className="overflow-hidden border-border/70">
+            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+              <div>
+                <p className="text-sm font-bold">Need a deeper operational view?</p>
+                <p className="text-xs text-muted-foreground">Inspect player records, match settlements, or transaction history.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Link to="/admin/users" className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold hover:bg-accent">Browse players</Link>
+                <Link to="/admin/matches" className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold hover:bg-accent">Audit matches</Link>
+                <Link to="/admin/deposits" className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90">Review finance</Link>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   )
 }

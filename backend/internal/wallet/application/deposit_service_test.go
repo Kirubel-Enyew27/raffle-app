@@ -146,6 +146,14 @@ func (m *mockWalletRepo) UpdateTransactionStatus(ctx context.Context, id, status
 	return nil
 }
 
+func (m *mockWalletRepo) ApproveWithdrawal(ctx context.Context, id string) (*domain.WalletTransaction, *domain.Wallet, error) {
+	return nil, nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockWalletRepo) RejectWithdrawal(ctx context.Context, id string) (*domain.WalletTransaction, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
 func (m *mockWalletRepo) ExistsByReference(ctx context.Context, reference string) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

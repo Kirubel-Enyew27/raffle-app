@@ -22,6 +22,11 @@ import { AdminLayout } from '@/layouts/AdminLayout'
  *     ├── /dashboard    AdminLayout → AdminDashboardPage
  *     ├── /raffles      AdminLayout → AdminRafflesPage
  *     ├── /users        AdminLayout → AdminUsersPage
+ *     ├── /live         AdminLayout → AdminLivePage
+ *     ├── /players      AdminLayout → AdminPlayersPage
+ *     ├── /matches      AdminLayout → AdminMatchesPage
+ *     ├── /games        AdminLayout → AdminGamesPage
+ *     ├── /deposits     AdminLayout → AdminDepositsPage
  *     ├── /reports      AdminLayout → AdminReportsPage
  *     └── /audit        AdminLayout → AdminAuditPage
  */
@@ -61,8 +66,14 @@ export const router = createBrowserRouter([
           { path: '/admin/dashboard', lazy: () => import('@/pages/admin/AdminDashboardPage') },
           { path: '/admin/raffles', lazy: () => import('@/pages/admin/AdminRafflesPage') },
           { path: '/admin/winners', lazy: () => import('@/pages/admin/AdminWinnersPage') },
+          { path: '/admin/live', lazy: () => import('@/pages/admin/AdminLivePage') },
+          { path: '/admin/players', lazy: () => import('@/pages/admin/AdminPlayersPage') },
+          { path: '/admin/matches', lazy: () => import('@/pages/admin/AdminMatchesPage') },
+          { path: '/admin/games', lazy: () => import('@/pages/admin/AdminGamesPage') },
+          { path: '/admin/deposits', lazy: () => import('@/pages/admin/AdminDepositsPage') },
           { path: '/admin/withdrawals', lazy: () => import('@/pages/admin/AdminWithdrawalsPage') },
           { path: '/admin/users', lazy: () => import('@/pages/admin/AdminUsersPage') },
+          { path: '/admin/users/:id', lazy: () => import('@/pages/admin/AdminUserDetailPage') },
           { path: '/admin/reports', lazy: () => import('@/pages/admin/AdminReportsPage') },
           { path: '/admin/audit', lazy: () => import('@/pages/admin/AdminAuditPage') },
           { path: '/admin/crash-settings', lazy: () => import('@/pages/admin/AdminCrashSettingsPage') },

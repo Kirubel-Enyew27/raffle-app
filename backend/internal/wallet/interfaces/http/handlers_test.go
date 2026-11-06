@@ -70,6 +70,12 @@ func (s *stubWalletRepo) FindTransactionByID(ctx context.Context, id string) (*d
 func (s *stubWalletRepo) UpdateTransactionStatus(ctx context.Context, id, status string) error {
 	return nil
 }
+func (s *stubWalletRepo) ApproveWithdrawal(ctx context.Context, id string) (*domain.WalletTransaction, *domain.Wallet, error) {
+	return nil, nil, nil
+}
+func (s *stubWalletRepo) RejectWithdrawal(ctx context.Context, id string) (*domain.WalletTransaction, error) {
+	return nil, nil
+}
 func (s *stubWalletRepo) ExistsByReference(ctx context.Context, reference string) (bool, error) {
 	return false, nil
 }

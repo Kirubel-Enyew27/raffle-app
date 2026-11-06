@@ -3,6 +3,7 @@ package http
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/raffle-app/backend/internal/audit/application"
@@ -35,6 +36,17 @@ func (h *AuditHandler) GetAuditLogs(c *gin.Context) {
 	if userID := c.Query("user_id"); userID != "" {
 		filter.ActorID = &userID
 	}
+	if from := c.Query("from"); from != "" {
+		if parsed, err := time.Parse(time.DateOnly, from); err == nil {
+			filter.StartDate = &parsed
+		}
+	}
+	if to := c.Query("to"); to != "" {
+		if parsed, err := time.Parse(time.DateOnly, to); err == nil {
+			end := parsed.AddDate(0, 0, 1)
+			filter.EndDate = &end
+		}
+	}
 
 	logs, total, err := h.auditService.GetAuditLogs(c.Request.Context(), filter)
 	if err != nil {
@@ -45,10 +57,10 @@ func (h *AuditHandler) GetAuditLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code": "SUCCESS",
 		"data": gin.H{
-			"logs":    logs,
-			"total":   total,
-			"limit":   limit,
-			"offset":  offset,
+			"logs":   logs,
+			"total":  total,
+			"limit":  limit,
+			"offset": offset,
 		},
 	})
 }

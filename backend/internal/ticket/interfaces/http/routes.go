@@ -12,5 +12,5 @@ func RegisterTicketRoutes(r *gin.RouterGroup, handler *TicketHandler) {
 	}
 
 	// Admin: list tickets for a specific raffle
-	r.GET("/raffles/:id/tickets", middleware.AuthMiddleware(), handler.ListByRaffle)
+	r.GET("/raffles/:id/tickets", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handler.ListByRaffle)
 }

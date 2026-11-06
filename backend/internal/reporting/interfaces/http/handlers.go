@@ -25,10 +25,14 @@ func parseFilter(c *gin.Context) domain.Filter {
 		Offset: intQuery(c, "offset", 0),
 	}
 	if s := c.Query("from"); s != "" {
-		f.From, _ = time.Parse(time.DateOnly, s)
+		if parsed, err := time.Parse(time.DateOnly, s); err == nil {
+			f.From = parsed
+		}
 	}
 	if s := c.Query("to"); s != "" {
-		f.To, _ = time.Parse(time.DateOnly, s)
+		if parsed, err := time.Parse(time.DateOnly, s); err == nil {
+			f.To = parsed.AddDate(0, 0, 1)
+		}
 	}
 	return f
 }

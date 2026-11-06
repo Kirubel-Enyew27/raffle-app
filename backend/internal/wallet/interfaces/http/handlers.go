@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/raffle-app/backend/internal/wallet/application"
+	apperrors "github.com/raffle-app/backend/pkg/errors"
 )
 
 type WalletHandler struct {
@@ -160,7 +161,6 @@ func (h *WalletHandler) VerifyDeposit(c *gin.Context) {
 	})
 }
 
-
 func (h *WalletHandler) ExtractReceipt(c *gin.Context) {
 	method := c.PostForm("method")
 	if method == "" {
@@ -291,8 +291,8 @@ func (h *WalletHandler) VerifyAndDepositReceipt(c *gin.Context) {
 func (h *WalletHandler) Withdraw(c *gin.Context) {
 	userID := c.GetString("user_id")
 	var req struct {
-		Amount      float64 `json:"amount"`
-		Phone       string  `json:"phone"`
+		Amount float64 `json:"amount"`
+		Phone  string  `json:"phone"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "error", "message": err.Error()})
@@ -321,6 +321,25 @@ func (h *WalletHandler) ListPendingWithdrawals(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": "success", "data": txs})
 }
 
+func isUUID(value string) bool {
+	if len(value) != 36 {
+		return false
+	}
+	for i, c := range value {
+		switch i {
+		case 8, 13, 18, 23:
+			if c != '-' {
+				return false
+			}
+		default:
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func (h *WalletHandler) ApproveWithdrawal(c *gin.Context) {
 	if c.GetString("role") != "admin" {
 		c.JSON(http.StatusForbidden, gin.H{"code": "error", "message": "admin only"})
@@ -328,9 +347,13 @@ func (h *WalletHandler) ApproveWithdrawal(c *gin.Context) {
 	}
 	adminUserID := c.GetString("user_id")
 	txID := c.Param("id")
+	if !isUUID(txID) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "error", "message": "invalid transaction id"})
+		return
+	}
 	tx, err := h.walletService.ApproveWithdrawal(c.Request.Context(), txID, adminUserID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "error", "message": err.Error()})
+		c.JSON(apperrors.HTTPStatus(err), gin.H{"code": "error", "message": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"code": "success", "data": tx})
@@ -343,9 +366,13 @@ func (h *WalletHandler) RejectWithdrawal(c *gin.Context) {
 	}
 	adminUserID := c.GetString("user_id")
 	txID := c.Param("id")
+	if !isUUID(txID) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "error", "message": "invalid transaction id"})
+		return
+	}
 	tx, err := h.walletService.RejectWithdrawal(c.Request.Context(), txID, adminUserID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "error", "message": err.Error()})
+		c.JSON(apperrors.HTTPStatus(err), gin.H{"code": "error", "message": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"code": "success", "data": tx})

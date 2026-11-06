@@ -38,6 +38,14 @@ const financialBadge: Record<P2PAdminMatch['financial_status'], string> = {
   needs_attention: 'border-destructive/40 bg-destructive/10 text-destructive',
 }
 
+const financialLabel: Record<P2PAdminMatch['financial_status'], string> = {
+  settled: 'settlement recorded (derived)',
+  refunded: 'refund unverified',
+  reserved: 'stake reserved',
+  pending: 'pending',
+  needs_attention: 'needs review',
+}
+
 type MatchFilter = 'all' | 'reserved' | 'settled' | 'refunded' | 'needs_attention'
 
 export function Component() {
@@ -281,8 +289,8 @@ export function Component() {
             >
               <option value="all">All paid matches</option>
               <option value="reserved">Reserved / pending</option>
-              <option value="settled">Settled</option>
-              <option value="refunded">Refunded</option>
+              <option value="settled">Settlement recorded (derived)</option>
+              <option value="refunded">Refund unverified</option>
               <option value="needs_attention">Needs attention</option>
             </select>
             <Button
@@ -324,9 +332,10 @@ export function Component() {
                 <tbody>
                   {matches.map((entry) => {
                     const match = entry.match
-                    const reserved = entry.ledger.filter((l) => l.status === 'reserved').length
-                    const refunds = entry.ledger.filter((l) => l.type === 'p2p_stake_refund').length
-                    const payouts = entry.ledger.filter((l) => l.type === 'p2p_payout').length
+                    const ledger = entry.ledger ?? []
+                    const reserved = ledger.filter((l) => l.status === 'reserved').length
+                    const refunds = ledger.filter((l) => l.type === 'p2p_stake_refund').length
+                    const payouts = ledger.filter((l) => l.type === 'p2p_payout').length
                     return (
                       <tr key={match.id} className="border-b align-top last:border-0">
                         <td className="py-3 pr-3">
@@ -355,7 +364,7 @@ export function Component() {
                               financialBadge[entry.financial_status]
                             )}
                           >
-                            {entry.financial_status.replace(/_/g, ' ')}
+                            {financialLabel[entry.financial_status]}
                           </span>
                         </td>
                       </tr>
@@ -365,6 +374,9 @@ export function Component() {
               </table>
             </div>
           )}
+          <p className="mt-3 text-[10px] text-muted-foreground">
+            Settlement is derived from match state. The ledger column is the source of truth for reserved stakes, refunds, and payouts.
+          </p>
         </CardContent>
       </Card>
     </div>

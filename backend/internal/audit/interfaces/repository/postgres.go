@@ -3,8 +3,8 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"time"
 	"fmt"
+	"time"
 
 	"github.com/raffle-app/backend/internal/audit/domain"
 )
