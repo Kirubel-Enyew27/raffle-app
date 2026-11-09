@@ -12,6 +12,7 @@
  */
 
 import type { SSEStatus } from '@/lib/sseClient'
+import type { TFunction } from 'i18next'
 
 /** Transport status of the per-match realtime stream. */
 export type MatchTransport = SSEStatus
@@ -111,7 +112,7 @@ const DEFAULT_STALE_AFTER_MS = 8_000
  *   3. Without a live transport, a match in progress is "reconnecting" (never
  *      "Connecting…" forever) and a dead transport is "failed".
  */
-export function deriveMatchConnection(input: MatchConnectionInput): MatchConnectionView {
+export function deriveMatchConnection(input: MatchConnectionInput, t?: TFunction): MatchConnectionView {
   const {
     transport,
     hasState,
@@ -128,6 +129,8 @@ export function deriveMatchConnection(input: MatchConnectionInput): MatchConnect
   const terminal = isTerminalStatus(matchStatus)
   const stale = staleOverride ?? (isTransportLive && (msSinceLastSync ?? 0) > staleAfterMs)
   const needsSync = !isTransportLive || stale
+
+  const tr = (key: string, fallback: string): string => (t ? t(key, fallback) : fallback)
 
   const build = (
     state: MatchConnectionState,
@@ -148,7 +151,11 @@ export function deriveMatchConnection(input: MatchConnectionInput): MatchConnect
   //    already known and the player must be able to see it.
   if (terminal) {
     return {
-      ...build('completed', 'Match finished', 'This match is over.'),
+      ...build(
+        'completed',
+        tr('p2p.connection.finished', 'Match finished'),
+        tr('p2p.connection.matchOver', 'This match is over.')
+      ),
       // The result is already authoritative; a dropped stream must not keep
       // polling a finished match.
       needsSync: false,
@@ -160,56 +167,97 @@ export function deriveMatchConnection(input: MatchConnectionInput): MatchConnect
     switch (matchStatus) {
       case undefined:
       case null:
-        return build('connecting', 'Connecting', 'Loading the match…')
+        return build(
+          'connecting',
+          tr('p2p.connection.connecting', 'Connecting'),
+          tr('p2p.connection.loadingMatch', 'Loading the match…')
+        )
       case 'waiting':
         return isParticipant
-          ? build('waiting_for_opponent', 'Live', 'Waiting for an opponent to join.')
-          : build('joining_room', 'Joining', 'Joining the room…')
+          ? build(
+              'waiting_for_opponent',
+              tr('p2p.connection.live', 'Live'),
+              tr('p2p.connection.waitingOpponent', 'Waiting for an opponent to join.')
+            )
+          : build(
+              'joining_room',
+              tr('p2p.connection.joining', 'Joining'),
+              tr('p2p.connection.joiningRoom', 'Joining the room…')
+            )
       case 'ready':
         if (playersPresent < 2) {
-          return build('waiting_for_opponent', 'Live', 'Waiting for an opponent to join.')
+          return build(
+            'waiting_for_opponent',
+            tr('p2p.connection.live', 'Live'),
+            tr('p2p.connection.waitingOpponent', 'Waiting for an opponent to join.')
+          )
         }
         return allReady
-          ? build('starting', 'Starting…', 'Both players are ready — the match is starting.')
-          : build('ready', 'Live', 'Both players have joined. Ready up to begin.')
+          ? build(
+              'starting',
+              tr('p2p.connection.starting', 'Starting…'),
+              tr('p2p.connection.bothReadyStarting', 'Both players are ready — the match is starting.')
+            )
+          : build(
+              'ready',
+              tr('p2p.connection.live', 'Live'),
+              tr('p2p.connection.bothJoinedReadyUp', 'Both players have joined. Ready up to begin.')
+            )
       case 'in_progress':
-        return build('in_progress', 'Live', 'You are connected to the live match.', {
-          canPlay: isParticipant,
-          isReady: playersPresent >= 2,
-        })
+        return build(
+          'in_progress',
+          tr('p2p.connection.live', 'Live'),
+          tr('p2p.connection.connectedLive', 'You are connected to the live match.'),
+          {
+            canPlay: isParticipant,
+            isReady: playersPresent >= 2,
+          }
+        )
       default:
-        return build('ready', 'Live', 'Waiting for the match to start.')
+        return build(
+          'ready',
+          tr('p2p.connection.live', 'Live'),
+          tr('p2p.connection.bothJoinedReadyUp', 'Waiting for the match to start.')
+        )
     }
   }
 
   // 3. No live transport. Never claim the match is fine.
   if (transport === 'closed' && !hasState) {
-    return build('disconnected', 'Disconnected', 'No connection to the match.')
+    return build(
+      'disconnected',
+      tr('p2p.connection.disconnected', 'Disconnected'),
+      tr('p2p.connection.noConnection', 'No connection to the match.')
+    )
   }
 
   if (transport === 'failed') {
     return build(
       'failed',
-      'Connection failed',
-      'The live connection could not be established. Retry to resync the match.',
+      tr('p2p.connection.connectionFailed', 'Connection failed'),
+      tr('p2p.connection.failedDesc', 'The live connection could not be established. Retry to resync the match.')
     )
   }
 
   if (matchStatus === 'in_progress') {
     return build(
       'reconnecting',
-      'Reconnecting',
-      'Reconnecting to the live match. Moves are safe on the server.',
+      tr('p2p.connection.reconnecting', 'Reconnecting'),
+      tr('p2p.connection.reconnectingDesc', 'Reconnecting to the live match. Moves are safe on the server.')
     )
   }
 
   if (!hasState) {
-    return build('connecting', 'Connecting', 'Connecting to the match…')
+    return build(
+      'connecting',
+      tr('p2p.connection.connecting', 'Connecting'),
+      tr('p2p.connection.loadingMatch', 'Connecting to the match…')
+    )
   }
 
   return build(
     'reconnecting',
-    'Reconnecting',
-    'Restoring the connection to the match…',
+    tr('p2p.connection.reconnecting', 'Reconnecting'),
+    tr('p2p.connection.restoring', 'Restoring the connection to the match…')
   )
 }

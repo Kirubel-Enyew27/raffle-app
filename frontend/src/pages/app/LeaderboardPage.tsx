@@ -283,7 +283,7 @@ export function Component() {
             <AlertCircle className="h-10 w-10 mx-auto text-destructive" />
             <h3 className="font-bold text-base">{t('leaderboard.errorTitle', 'Unable to load leaderboard')}</h3>
             <p className="text-sm opacity-90 max-w-md mx-auto">
-              {(error as any)?.message || 'A network error occurred while connecting to the leaderboard service.'}
+              {(error as Error)?.message || t('errors.networkErrorDesc')}
             </p>
             <Button variant="outline" size="sm" onClick={() => refetch()} className="mt-2">
               <RefreshCw className="mr-2 h-4 w-4" />
@@ -426,7 +426,7 @@ export function Component() {
                               {p.display_name}
                               {isCurrent && (
                                 <Badge variant="outline" className="text-[10px] py-0 px-1 border-primary text-primary">
-                                  You
+                                  {t('leaderboard.you')}
                                 </Badge>
                               )}
                             </span>
@@ -551,6 +551,7 @@ function PodiumCard({
   orderClass: string
   isFirst?: boolean
 }) {
+  const { t } = useTranslation()
   return (
     <Card className={`border relative overflow-hidden transition-transform hover:-translate-y-1 ${bgColor} ${orderClass}`}>
       <CardContent className="p-5 flex flex-col items-center text-center space-y-3">
@@ -598,15 +599,15 @@ function PodiumCard({
         {/* Stats Grid */}
         <div className="grid grid-cols-3 gap-2 w-full pt-2 border-t border-border/40 text-xs">
           <div>
-            <p className="text-[10px] text-muted-foreground uppercase font-semibold">Wins</p>
+            <p className="text-[10px] text-muted-foreground uppercase font-semibold">{t('leaderboard.wins', 'Wins')}</p>
             <p className="font-extrabold text-success">{player.wins}</p>
           </div>
           <div>
-            <p className="text-[10px] text-muted-foreground uppercase font-semibold">Rate</p>
+            <p className="text-[10px] text-muted-foreground uppercase font-semibold">{t('leaderboard.rate', 'Rate')}</p>
             <p className="font-extrabold text-foreground">{player.win_rate}%</p>
           </div>
           <div>
-            <p className="text-[10px] text-muted-foreground uppercase font-semibold">Streak</p>
+            <p className="text-[10px] text-muted-foreground uppercase font-semibold">{t('leaderboard.streak', 'Streak')}</p>
             <p className="font-extrabold text-warning flex items-center justify-center gap-0.5">
               <Flame className="h-3 w-3 fill-amber-500" />
               {player.current_win_streak}

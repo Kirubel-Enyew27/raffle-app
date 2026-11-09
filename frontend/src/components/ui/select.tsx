@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { ChevronDown } from 'lucide-react'
 
@@ -10,6 +11,8 @@ interface SelectProps extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>
 
 const Select = React.forwardRef<HTMLDivElement, SelectProps>(
   ({ className, children, value, onChange, placeholder, disabled }, ref) => {
+    const { t } = useTranslation()
+    const noOptionsLabel = t('common.noOptions')
     const [open, setOpen] = React.useState(false)
     const containerRef = React.useRef<HTMLDivElement>(null)
     const triggerRef = React.useRef<HTMLButtonElement>(null)
@@ -128,7 +131,7 @@ const Select = React.forwardRef<HTMLDivElement, SelectProps>(
             style={{ maxHeight: '15rem' }}
           >
             {options.length === 0 && (
-              <li className="px-2 py-1.5 text-sm text-muted-foreground">No options</li>
+              <li className="px-2 py-1.5 text-sm text-muted-foreground">{noOptionsLabel}</li>
             )}
             {options.map((opt) => (
               <li

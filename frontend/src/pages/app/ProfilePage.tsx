@@ -146,7 +146,7 @@ export function Component() {
             <div className="relative shrink-0">
               <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-border bg-muted sm:h-24 sm:w-24">
                 {currentAvatar
-                  ? <img src={currentAvatar} alt="Avatar" className="h-full w-full object-cover" />
+                  ? <img src={currentAvatar} alt={t('profile.avatarAlt')} className="h-full w-full object-cover" />
                   : <UserIcon className="h-8 w-8 text-muted-foreground sm:h-10 sm:w-10" />}
               </div>
               <button type="button" onClick={() => fileInputRef.current?.click()}

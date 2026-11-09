@@ -578,7 +578,7 @@ export function Component() {
             <Users className="h-3 w-3" />
             {t('crash.players', { count: players })}
             {minParticipants > 1 && (
-              <span className="text-muted-foreground">/{minParticipants} min</span>
+              <span className="text-muted-foreground">/{minParticipants} {t('crash.minShort')}</span>
             )}
           </Badge>
           {p2pMode && (
@@ -606,10 +606,11 @@ export function Component() {
         <div className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/5 px-4 py-3 text-xs text-info">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
-            <strong>Peer-to-peer game.</strong> Your stake joins a shared prize pool.
-            Winners split the pool proportionally to their cash-out multiplier.
-            A <strong>{serviceFeePct.toFixed(2)}% service fee</strong> is deducted only from a winner's
-            positive profit — losers and break-even players pay no fee.
+            <strong>{t('crash.p2pGameTitle', 'Peer-to-peer game.')}</strong>{' '}
+            {t('crash.p2pGameDesc', {
+              fee: serviceFeePct.toFixed(2),
+              defaultValue: `Your stake joins a shared prize pool. Winners split the pool proportionally to their cash-out multiplier. A ${serviceFeePct.toFixed(2)}% service fee is deducted only from a winner's positive profit — losers and break-even players pay no fee.`
+            })}
           </span>
         </div>
       )}
@@ -685,7 +686,7 @@ export function Component() {
                 </span>
                 {p2pMode && prizePool > 0 && (
                   <span className="text-xs font-semibold text-success">
-                    Pool: {formatMoney(prizePool, currency)}
+                    {t('crash.prizePool')}: {formatMoney(prizePool, currency)}
                   </span>
                 )}
               </div>
@@ -738,7 +739,7 @@ export function Component() {
                                     +{bet.net_payout.toFixed(2)}
                                   </span>
                                 ) : p2pMode ? (
-                                  <span className="text-muted-foreground text-[10px]">settling…</span>
+                                  <span className="text-muted-foreground text-[10px]">{t('crash.settling', 'settling…')}</span>
                                 ) : (
                                   <span className="font-semibold text-success">
                                     +{bet.payout.toFixed(2)}
@@ -840,14 +841,14 @@ export function Component() {
                   {p2pMode ? (
                     <>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Prize pool</span>
+                        <span className="text-muted-foreground">{t('crash.prizePool', 'Prize pool')}</span>
                         <span className="font-mono font-semibold text-success">
                           {formatMoney(prizePool, currency)}
                         </span>
                       </div>
                       <div className="flex justify-between text-[10px] text-muted-foreground">
-                        <span>Fee on profit</span>
-                        <span>{serviceFeePct.toFixed(2)}% (winners only)</span>
+                        <span>{t('crash.feeOnProfit', 'Fee on profit')}</span>
+                        <span>{t('crash.winnersOnly', { fee: serviceFeePct.toFixed(2), defaultValue: `${serviceFeePct.toFixed(2)}% (winners only)` })}</span>
                       </div>
                     </>
                   ) : (
@@ -864,20 +865,20 @@ export function Component() {
               {/* Show P2P settlement breakdown once the round is settled */}
               {myBet?.status === 'cashed_out' && myBet.net_payout != null && myBet.net_payout > 0 && p2pMode && (
                 <div className="rounded-lg border border-success/40 bg-success/5 px-3 py-2 text-xs">
-                  <p className="mb-1 font-semibold text-success">Settlement</p>
+                  <p className="mb-1 font-semibold text-success">{t('crash.settlementTitle')}</p>
                   <div className="space-y-0.5">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Gross return</span>
+                      <span className="text-muted-foreground">{t('crash.grossReturn')}</span>
                       <span className="font-mono">{formatMoney(myBet.gross_return ?? 0, currency)}</span>
                     </div>
                     {(myBet.service_fee ?? 0) > 0 && (
                       <div className="flex justify-between text-destructive/80">
-                        <span>Service fee ({serviceFeePct.toFixed(2)}% of profit)</span>
+                        <span>{t('crash.serviceFeeOfProfit', { fee: serviceFeePct.toFixed(2) })}</span>
                         <span className="font-mono">−{formatMoney(myBet.service_fee ?? 0, currency)}</span>
                       </div>
                     )}
                     <div className="flex justify-between font-semibold text-success">
-                      <span>Net payout</span>
+                      <span>{t('crash.netPayout')}</span>
                       <span className="font-mono">+{formatMoney(myBet.net_payout, currency)}</span>
                     </div>
                   </div>

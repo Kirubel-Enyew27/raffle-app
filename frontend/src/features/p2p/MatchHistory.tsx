@@ -11,6 +11,8 @@ import {
   Users,
   X,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -51,6 +53,7 @@ export function PaidMetric({
 function settlementInfo(
   match: P2PMatch,
   myPlayer?: P2PMatchPlayer,
+  t?: TFunction,
 ): { label: string; className: string; isRefund: boolean } | null {
   if (match.competition_mode !== 'earn') return null
 
@@ -60,7 +63,7 @@ function settlementInfo(
 
   if (!isTerminal) {
     return {
-      label: 'Settlement pending',
+      label: t ? t('p2p.history.settlementPending', 'Settlement pending') : 'Settlement pending',
       className: 'border-warning/30 bg-warning/10 text-warning',
       isRefund,
     }
@@ -69,12 +72,12 @@ function settlementInfo(
   if (isRefund) {
     return hasLedger
       ? {
-          label: 'Refunded',
+          label: t ? t('p2p.history.refunded', 'Refunded') : 'Refunded',
           className: 'border-border bg-muted/60 text-muted-foreground',
           isRefund,
         }
       : {
-          label: 'Refund pending',
+          label: t ? t('p2p.history.refundPending', 'Refund pending') : 'Refund pending',
           className: 'border-warning/30 bg-warning/10 text-warning',
           isRefund,
         }
@@ -82,12 +85,12 @@ function settlementInfo(
 
   return hasLedger
     ? {
-        label: 'Settled',
+        label: t ? t('p2p.history.settled', 'Settled') : 'Settled',
         className: 'border-success/30 bg-success/10 text-success',
         isRefund,
       }
     : {
-        label: 'Settlement pending',
+        label: t ? t('p2p.history.settlementPending', 'Settlement pending') : 'Settlement pending',
         className: 'border-warning/30 bg-warning/10 text-warning',
         isRefund,
       }
@@ -179,9 +182,11 @@ export function MatchHistoryList({
   currentUserId?: string
   onSelect?: (match: P2PMatch) => void
 }) {
+  const { t, i18n } = useTranslation()
+
   if (isLoading) {
     return (
-      <div className="space-y-2" role="status" aria-label="Loading recent match history">
+      <div className="space-y-2" role="status" aria-label={t('p2p.history.title', 'Loading recent match history')}>
         {[0, 1, 2].map((item) => (
           <div
             key={item}
@@ -198,9 +203,11 @@ export function MatchHistoryList({
         role="alert"
         className="rounded-xl border border-destructive/30 bg-destructive/5 p-5 text-center"
       >
-        <p className="text-sm font-bold text-foreground">Could not load match history</p>
+        <p className="text-sm font-bold text-foreground">
+          {t('p2p.history.couldNotLoad', 'Could not load match history')}
+        </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Your match and wallet records are unchanged.
+          {t('p2p.history.recordsUnchanged', 'Your match and wallet records are unchanged.')}
         </p>
         <Button
           variant="outline"
@@ -209,7 +216,7 @@ export function MatchHistoryList({
           className="mt-3 h-8 gap-1.5 text-xs"
         >
           <RefreshCw className="h-3.5 w-3.5" />
-          Try again
+          {t('common.retry', 'Try again')}
         </Button>
       </div>
     )
@@ -219,9 +226,11 @@ export function MatchHistoryList({
     return (
       <div className="rounded-xl border border-dashed border-border bg-background/30 p-6 text-center">
         <Trophy className="mx-auto h-7 w-7 text-muted-foreground/50" />
-        <p className="mt-2 text-sm font-semibold text-foreground">No completed matches yet</p>
+        <p className="mt-2 text-sm font-semibold text-foreground">
+          {t('p2p.history.noCompletedMatches', 'No completed matches yet')}
+        </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Your finished duels and transaction details will appear here.
+          {t('p2p.history.finishedDuelsAppear', 'Your finished duels and transaction details will appear here.')}
         </p>
       </div>
     )
@@ -233,8 +242,8 @@ export function MatchHistoryList({
         const isPaid = match.competition_mode === 'earn'
         const myPlayer = match.players?.find((player) => player.user_id === currentUserId)
         const opponent = match.players?.find((player) => player.user_id !== currentUserId)
-        const outcome = matchOutcome(match, currentUserId)
-        const settlement = settlementInfo(match, myPlayer)
+        const outcome = matchOutcome(match, currentUserId, t)
+        const settlement = settlementInfo(match, myPlayer, t)
         const isRefund = settlement?.isRefund ?? false
         const payoutValue = isRefund
           ? formatCurrency(match.stake_amount)
@@ -244,8 +253,8 @@ export function MatchHistoryList({
         const opponentInitial = avatarInitial(opponent?.display_name)
 
         const openDetails = onSelect ? () => onSelect(match) : undefined
-        const detailsLabel = `View details for ${gameName(match.game_slug)} against ${
-          opponent?.display_name || 'opponent'
+        const detailsLabel = `View details for ${gameName(match.game_slug, t)} against ${
+          opponent?.display_name || t('p2p.rps.opponent', 'opponent')
         }`
 
         return (
@@ -289,7 +298,7 @@ export function MatchHistoryList({
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="truncate text-sm font-bold text-foreground">
-                    {gameName(match.game_slug)}
+                    {gameName(match.game_slug, t)}
                   </span>
                   <span
                     className={cn(
@@ -307,7 +316,7 @@ export function MatchHistoryList({
                         : 'border-border bg-muted/40 text-muted-foreground',
                     )}
                   >
-                    {isPaid ? 'Compete to Earn' : 'Compete for Fun'}
+                    {isPaid ? t('p2p.modeEarn', 'Compete to Earn') : t('p2p.modeFun', 'Compete for Fun')}
                   </span>
                 </div>
 
@@ -325,12 +334,12 @@ export function MatchHistoryList({
                       </span>
                     )}
                     <span className="truncate">
-                      vs {opponent?.display_name || 'Opponent'}
+                      vs {opponent?.display_name || t('p2p.rps.opponent', 'Opponent')}
                     </span>
                   </span>
                   <span className="inline-flex items-center gap-1">
                     <Clock className="h-3 w-3" />
-                    {formatMatchDate(match.completed_at ?? match.created_at)}
+                    {formatMatchDate(match.completed_at ?? match.created_at, i18n.language)}
                   </span>
                 </div>
               </div>
@@ -347,22 +356,22 @@ export function MatchHistoryList({
               <div className="mt-3 space-y-2">
                 <div className="grid grid-cols-2 gap-2 rounded-xl border border-[#fbbf24]/20 bg-[#fbbf24]/[0.04] p-2.5 sm:grid-cols-4">
                   <PaidMetric
-                    label="Stake reserved"
+                    label={t('p2p.history.stakeReserved', 'Stake reserved')}
                     value={formatCurrency(match.stake_amount)}
                   />
                   <PaidMetric
-                    label={isRefund ? 'Refund' : 'Payout'}
+                    label={isRefund ? t('p2p.history.refund', 'Refund') : t('p2p.history.payout', 'Payout')}
                     value={payoutValue}
                     highlight={payoutValue !== '—'}
                   />
                   <PaidMetric
-                    label={`Fee ${match.service_fee_percent.toFixed(2)}%`}
+                    label={`${t('p2p.history.fee', 'Fee')} ${match.service_fee_percent.toFixed(2)}%`}
                     value={formatCurrency(isRefund ? 0 : match.total_fee)}
                   />
                   {settlement && (
                     <div className="min-w-0 space-y-0.5">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                        Settlement
+                        {t('p2p.history.settlement', 'Settlement')}
                       </p>
                       <Badge
                         variant="outline"
@@ -377,25 +386,25 @@ export function MatchHistoryList({
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[#fbbf24]/15 pt-2 text-[10px] text-muted-foreground">
                   <span className="inline-flex items-center gap-1">
                     <ReceiptText className="h-3 w-3" />
-                    Match ref{' '}
+                    {t('p2p.history.matchRef', 'Match ref')}{' '}
                     <span className="font-mono" title={match.id}>
                       {compactReference(match.id)}
                     </span>
                   </span>
                   {myPlayer?.debit_tx_id && (
                     <span className="font-mono" title={myPlayer.debit_tx_id}>
-                      Stake {compactReference(myPlayer.debit_tx_id)}
+                      {t('p2p.history.stake', 'Stake')} {compactReference(myPlayer.debit_tx_id)}
                     </span>
                   )}
                   {myPlayer?.credit_tx_id && (
                     <span className="font-mono" title={myPlayer.credit_tx_id}>
-                      {isRefund ? 'Refund' : 'Payout'}{' '}
+                      {isRefund ? t('p2p.history.refund', 'Refund') : t('p2p.history.payout', 'Payout')}{' '}
                       {compactReference(myPlayer.credit_tx_id)}
                     </span>
                   )}
                   {myPlayer?.fee_tx_id && (
                     <span className="font-mono" title={myPlayer.fee_tx_id}>
-                      Fee {compactReference(myPlayer.fee_tx_id)}
+                      {t('p2p.history.fee', 'Fee')} {compactReference(myPlayer.fee_tx_id)}
                     </span>
                   )}
                 </div>
@@ -456,26 +465,29 @@ function DetailField({
   )
 }
 
-function modeLabel(match: P2PMatch): string {
-  return match.competition_mode === 'earn' ? 'Compete to Earn' : 'Compete for Fun'
+function modeLabel(match: P2PMatch, t?: TFunction): string {
+  if (match.competition_mode === 'earn') {
+    return t ? t('p2p.modeEarn', 'Compete to Earn') : 'Compete to Earn'
+  }
+  return t ? t('p2p.modeFun', 'Compete for Fun') : 'Compete for Fun'
 }
 
-function statusLabel(status: P2PMatch['status']): string {
+function statusLabel(status: P2PMatch['status'], t?: TFunction): string {
   switch (status) {
     case 'completed':
-      return 'Completed'
+      return t ? t('p2p.history.completed', 'Completed') : 'Completed'
     case 'tied':
-      return 'Draw'
+      return t ? t('p2p.history.draw', 'Draw') : 'Draw'
     case 'forfeited':
-      return 'Forfeit'
+      return t ? t('p2p.history.forfeit', 'Forfeit') : 'Forfeit'
     case 'cancelled':
-      return 'Cancelled'
+      return t ? t('p2p.history.cancelled', 'Cancelled') : 'Cancelled'
     case 'in_progress':
-      return 'In progress'
+      return t ? t('p2p.history.inProgress', 'In progress') : 'In progress'
     case 'ready':
-      return 'Ready'
+      return t ? t('p2p.history.ready', 'Ready') : 'Ready'
     default:
-      return 'Waiting'
+      return t ? t('p2p.history.waiting', 'Waiting') : 'Waiting'
   }
 }
 
@@ -492,10 +504,11 @@ function PlayerCard({
   currentUserId?: string
   viewer?: { full_name?: string; email?: string; avatar_url?: string }
 }) {
+  const { t } = useTranslation()
   const isViewer = Boolean(player && player.user_id === currentUserId)
   const name = isViewer
-    ? viewer?.full_name || player?.display_name || viewer?.email || 'You'
-    : player?.display_name || 'Waiting for opponent'
+    ? viewer?.full_name || player?.display_name || viewer?.email || t('p2p.rps.you', 'You')
+    : player?.display_name || t('p2p.history.waitingForOpponent', 'Waiting for opponent')
   const avatarUrl = (isViewer ? viewer?.avatar_url : undefined) || player?.avatar_url
   const isWinner = Boolean(player && match.winner_user_id === player.user_id)
   const score = playerScore(match, player, seat)
@@ -513,10 +526,10 @@ function PlayerCard({
             {playerLabel(player, seat)}
           </span>
           <span className="rounded-full border border-border px-2 py-0.5 text-muted-foreground">
-            {isViewer ? 'You' : player ? 'Opponent' : 'Open seat'}
+            {isViewer ? t('p2p.rps.you', 'You') : player ? t('p2p.rps.opponent', 'Opponent') : t('p2p.history.openSeat', 'Open seat')}
           </span>
           <span className="font-semibold tabular-nums text-foreground">
-            Score {player ? score : '—'}
+            {t('p2p.history.score', { score: player ? score : '—', defaultValue: `Score ${player ? score : '—'}` })}
           </span>
         </div>
       </div>
@@ -535,9 +548,10 @@ export function MatchDetailsModal({
   viewer?: { full_name?: string; email?: string; avatar_url?: string }
   onClose: () => void
 }) {
+  const { t, i18n } = useTranslation()
   const myPlayer = match.players?.find((player) => player.user_id === currentUserId)
-  const outcome = matchOutcome(match, currentUserId)
-  const settlement = settlementInfo(match, myPlayer)
+  const outcome = matchOutcome(match, currentUserId, t)
+  const settlement = settlementInfo(match, myPlayer, t)
   const isPaid = match.competition_mode === 'earn'
   const isRefund = settlement?.isRefund ?? false
   const winner = match.players?.find((player) => player.user_id === match.winner_user_id)
@@ -583,13 +597,13 @@ export function MatchDetailsModal({
             </div>
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                Match details
+                {t('p2p.history.title', 'Match details')}
               </p>
               <h2
                 id="match-details-title"
                 className="mt-0.5 truncate text-base font-bold text-foreground sm:text-lg"
               >
-                {gameName(match.game_slug)}
+                {gameName(match.game_slug, t)}
               </h2>
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 <span
@@ -608,7 +622,7 @@ export function MatchDetailsModal({
                       : 'border-border bg-muted/40 text-muted-foreground',
                   )}
                 >
-                  {modeLabel(match)}
+                  {modeLabel(match, t)}
                 </span>
               </div>
             </div>
@@ -619,7 +633,7 @@ export function MatchDetailsModal({
             size="icon"
             onClick={onClose}
             autoFocus
-            aria-label="Close match details"
+            aria-label={t('common.close', 'Close match details')}
             className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
           >
             <X className="h-4 w-4" />
@@ -627,33 +641,37 @@ export function MatchDetailsModal({
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-5">
-          <DetailSection title="Match information" icon={<Gamepad2 className="h-3.5 w-3.5" />}>
+          <DetailSection title={t('p2p.history.matchInformation', 'Match information')} icon={<Gamepad2 className="h-3.5 w-3.5" />}>
             <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <DetailField label="Game" value={gameName(match.game_slug)} />
-              <DetailField label="Match reference" value={match.id} mono />
-              <DetailField label="Match mode" value={modeLabel(match)} />
+              <DetailField label={t('p2p.history.game', 'Game')} value={gameName(match.game_slug, t)} />
+              <DetailField label={t('p2p.history.matchReference', 'Match reference')} value={match.id} mono />
+              <DetailField label={t('p2p.history.matchMode', 'Match mode')} value={modeLabel(match, t)} />
               <DetailField
-                label="Match type"
-                value={match.match_type === 'private_room' ? 'Private room' : 'Public queue'}
+                label={t('p2p.history.matchType', 'Match type')}
+                value={match.match_type === 'private_room' ? t('p2p.history.privateRoom', 'Private room') : t('p2p.history.publicQueue', 'Public queue')}
               />
-              <DetailField label="Match date" value={formatMatchDate(match.created_at)} />
+              <DetailField label={t('p2p.history.matchDate', 'Match date')} value={formatMatchDate(match.created_at, i18n.language)} />
               <DetailField
-                label="Started"
-                value={formatMatchDate(match.started_at)}
+                label={t('p2p.history.started', 'Started')}
+                value={formatMatchDate(match.started_at, i18n.language)}
               />
               <DetailField
-                label="Completed"
-                value={formatMatchDate(completedAt)}
+                label={t('p2p.history.completedDate', 'Completed')}
+                value={formatMatchDate(completedAt, i18n.language)}
               />
-              <DetailField label="Duration" value={duration} />
+              <DetailField label={t('p2p.history.duration', 'Duration')} value={duration} />
               <DetailField
-                label="Rounds"
-                value={match.max_rounds > 1 ? `Best of ${match.max_rounds}` : 'Single round'}
+                label={t('p2p.history.rounds', 'Rounds')}
+                value={
+                  match.max_rounds > 1
+                    ? t('p2p.history.bestOfRounds', { rounds: match.max_rounds, defaultValue: `Best of ${match.max_rounds}` })
+                    : t('p2p.history.singleRound', 'Single round')
+                }
               />
             </dl>
           </DetailSection>
 
-          <DetailSection title="Players" icon={<Users className="h-3.5 w-3.5" />}>
+          <DetailSection title={t('p2p.history.players', 'Players')} icon={<Users className="h-3.5 w-3.5" />}>
             <div className="grid gap-2 sm:grid-cols-2">
               {seats.map((player, seat) => (
                 <PlayerCard
@@ -668,22 +686,22 @@ export function MatchDetailsModal({
             </div>
           </DetailSection>
 
-          <DetailSection title="Result" icon={<Trophy className="h-3.5 w-3.5" />}>
+          <DetailSection title={t('p2p.history.result', 'Result')} icon={<Trophy className="h-3.5 w-3.5" />}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-lg font-black text-foreground">{outcome.label}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {match.status === 'tied'
-                    ? 'The match ended in a draw.'
+                    ? t('p2p.history.endedInDraw', 'The match ended in a draw.')
                     : match.status === 'cancelled'
-                      ? 'The match was cancelled before a result.'
+                      ? t('p2p.history.cancelledBeforeResult', 'The match was cancelled before a result.')
                       : match.winner_user_id
-                        ? `Winner: ${winnerName}`
-                        : 'No winner was recorded.'}
+                        ? t('p2p.history.winnerRecorded', { name: winnerName, defaultValue: `Winner: ${winnerName}` })
+                        : t('p2p.history.noWinnerRecorded', 'No winner was recorded.')}
                 </p>
               </div>
               <Badge variant="outline" className="text-[10px] font-bold">
-                {statusLabel(match.status)}
+                {statusLabel(match.status, t)}
               </Badge>
             </div>
 
@@ -710,32 +728,35 @@ export function MatchDetailsModal({
           </DetailSection>
 
           {isPaid && settlement && (
-            <DetailSection title="Financial information" icon={<Coins className="h-3.5 w-3.5" />}>
+            <DetailSection title={t('p2p.history.financialInformation', 'Financial information')} icon={<Coins className="h-3.5 w-3.5" />}>
               <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <DetailField
-                  label="Original stake"
+                  label={t('p2p.history.originalStake', 'Original stake')}
                   value={formatCurrency(match.stake_amount)}
                 />
-                <DetailField label="Prize pool" value={formatCurrency(match.prize_pool)} />
+                <DetailField label={t('p2p.history.prizePool', 'Prize pool')} value={formatCurrency(match.prize_pool)} />
                 <DetailField
-                  label={`Platform fee (${match.service_fee_percent.toFixed(2)}%)`}
+                  label={t('p2p.stakeSetup.platformFee', {
+                    percent: match.service_fee_percent.toFixed(2),
+                    defaultValue: `Platform fee (${match.service_fee_percent.toFixed(2)}%)`,
+                  })}
                   value={formatCurrency(match.total_fee)}
                 />
                 <DetailField
-                  label="Winner payout"
+                  label={t('p2p.history.winnerPayout', 'Winner payout')}
                   value={isRefund ? '—' : formatCurrency(match.potential_payout)}
                 />
                 <DetailField
-                  label="Refund amount"
+                  label={t('p2p.history.refundAmount', 'Refund amount')}
                   value={isRefund ? formatCurrency(match.stake_amount) : '—'}
                 />
                 <DetailField
-                  label="Your return"
+                  label={t('p2p.history.yourReturn', 'Your return')}
                   value={returnValue(match, currentUserId)}
                 />
                 <div className="min-w-0">
                   <dt className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                    Settlement
+                    {t('p2p.history.settlement', 'Settlement')}
                   </dt>
                   <dd className="mt-1">
                     <Badge
@@ -752,26 +773,26 @@ export function MatchDetailsModal({
               <div className="mt-3 space-y-2 border-t border-border/70 pt-3">
                 <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                   <ReceiptText className="h-3 w-3" />
-                  Wallet references
+                  {t('p2p.history.walletReferences', 'Wallet references')}
                 </p>
                 <dl className="space-y-1.5">
-                  <DetailField label="Match reference" value={match.id} mono />
+                  <DetailField label={t('p2p.history.matchReference', 'Match reference')} value={match.id} mono />
                   {myPlayer?.debit_tx_id && (
-                    <DetailField label="Stake transaction" value={myPlayer.debit_tx_id} mono />
+                    <DetailField label={t('p2p.history.stakeTransaction', 'Stake transaction')} value={myPlayer.debit_tx_id} mono />
                   )}
                   {myPlayer?.credit_tx_id && (
                     <DetailField
-                      label={isRefund ? 'Refund transaction' : 'Payout transaction'}
+                      label={isRefund ? t('p2p.history.refundTransaction', 'Refund transaction') : t('p2p.history.payoutTransaction', 'Payout transaction')}
                       value={myPlayer.credit_tx_id}
                       mono
                     />
                   )}
                   {myPlayer?.fee_tx_id && (
-                    <DetailField label="Fee transaction" value={myPlayer.fee_tx_id} mono />
+                    <DetailField label={t('p2p.history.feeTransaction', 'Fee transaction')} value={myPlayer.fee_tx_id} mono />
                   )}
                   {!myPlayer?.debit_tx_id && !myPlayer?.credit_tx_id && !myPlayer?.fee_tx_id && (
                     <p className="text-xs text-muted-foreground">
-                      No wallet transaction references are recorded for this match.
+                      {t('p2p.history.noWalletTransactions', 'No wallet transaction references are recorded for this match.')}
                     </p>
                   )}
                 </dl>

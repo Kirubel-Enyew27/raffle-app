@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Coins, Loader2, ShieldCheck, Swords, Users, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -8,16 +10,17 @@ import { Input } from '@/components/ui/input'
 import { p2pApi } from '@/features/p2p/api'
 import { GameIcon } from '@/features/p2p/GameIcon'
 import { formatCurrency } from '@/lib/utils'
+import { gameName } from '@/features/p2p/matchHistory'
 import type { P2PConfig, P2PGame } from '@/types/api'
 
-function apiErrorMessage(err: unknown): string {
+function apiErrorMessage(err: unknown, t: TFunction): string {
   if (typeof err === 'object' && err !== null) {
     const response = (err as { response?: { data?: { message?: string } } }).response
     if (response?.data?.message) return response.data.message
     const message = (err as { message?: string }).message
     if (message) return message
   }
-  return 'Could not calculate this stake.'
+  return t('p2p.stakeSetup.couldNotCalculate', 'Could not calculate this stake.')
 }
 
 interface StakeSetupModalProps {
@@ -47,6 +50,7 @@ export function StakeSetupModal({
   onClose,
   onCreate,
 }: StakeSetupModalProps) {
+  const { t } = useTranslation()
   const initialStake = useMemo(() => {
     if (!config) return '10'
     const step = config.stake_increment_cents / 100
@@ -56,7 +60,6 @@ export function StakeSetupModal({
   }, [config])
 
   const [stake, setStake] = useState(initialStake)
-
 
   const numericStake = Number(stake)
   const validNumber = Number.isFinite(numericStake) && numericStake > 0
@@ -100,16 +103,16 @@ export function StakeSetupModal({
             </div>
             <div>
               <h2 id="stake-modal-title" className="text-base font-bold text-foreground">
-                Compete to Earn
+                {t('p2p.stakeSetup.title', 'Compete to Earn')}
               </h2>
-              <p className="text-xs text-muted-foreground">Choose a stake for both players</p>
+              <p className="text-xs text-muted-foreground">{t('p2p.stakeSetup.subtitle', 'Choose a stake for both players')}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            aria-label="Close"
+            aria-label={t('common.close', 'Close')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -121,9 +124,11 @@ export function StakeSetupModal({
               <GameIcon slug={game.slug} size="lg" />
             </div>
             <div className="min-w-0">
-              <h3 className="truncate text-sm font-bold text-foreground">{game.title}</h3>
+              <h3 className="truncate text-sm font-bold text-foreground">
+                {gameName(game.slug, t) || game.title}
+              </h3>
               <p className="text-xs text-muted-foreground">
-                Winner takes the pool minus the platform fee
+                {t('p2p.stakeSetup.winnerTakesPool', 'Winner takes the pool minus the platform fee')}
               </p>
             </div>
           </div>
@@ -131,7 +136,7 @@ export function StakeSetupModal({
           <div className="flex items-center justify-between rounded-xl border border-border/70 bg-card px-3.5 py-2.5 text-sm">
             <span className="flex items-center gap-1.5 text-muted-foreground">
               <ShieldCheck className="h-4 w-4 text-success" />
-              Available balance
+              {t('p2p.stakeSetup.availableBalance', 'Available balance')}
             </span>
             <span className="font-bold tabular-nums text-foreground">
               {config ? formatCurrency(config.available_balance) : '—'}
@@ -140,7 +145,7 @@ export function StakeSetupModal({
 
           <div className="space-y-2">
             <label htmlFor="stake-amount" className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Your stake (ETB)
+              {t('p2p.stakeSetup.yourStake', 'Your stake (ETB)')}
             </label>
             <Input
               id="stake-amount"
@@ -173,9 +178,12 @@ export function StakeSetupModal({
             )}
             {config && (
               <p className="text-[11px] text-muted-foreground">
-                {formatCurrency(config.min_stake_cents / 100)} –{' '}
-                {formatCurrency(config.max_stake_cents / 100)} in{' '}
-                {formatCurrency(config.stake_increment_cents / 100)} steps
+                {t('p2p.stakeSetup.minMaxSteps', {
+                  min: formatCurrency(config.min_stake_cents / 100),
+                  max: formatCurrency(config.max_stake_cents / 100),
+                  step: formatCurrency(config.stake_increment_cents / 100),
+                  defaultValue: `${formatCurrency(config.min_stake_cents / 100)} – ${formatCurrency(config.max_stake_cents / 100)} in ${formatCurrency(config.stake_increment_cents / 100)} steps`,
+                })}
               </p>
             )}
           </div>
@@ -184,25 +192,28 @@ export function StakeSetupModal({
             {quoteLoading && !quote ? (
               <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Calculating your prize…
+                {t('p2p.stakeSetup.calculatingPrize', 'Calculating your prize…')}
               </div>
             ) : quoteError ? (
               <div className="flex items-start gap-2 text-xs text-destructive">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{apiErrorMessage(quoteError)}</span>
+                <span>{apiErrorMessage(quoteError, t)}</span>
               </div>
             ) : quote ? (
               <>
-                <Row label="Your stake" value={formatCurrency(quote.stake_amount)} />
-                <Row label="Opponent's matching stake" value={formatCurrency(quote.opponent_stake_amount)} />
-                <Row label="Total prize pool" value={formatCurrency(quote.prize_pool)} strong />
+                <Row label={t('p2p.stakeSetup.yourStakeRow', 'Your stake')} value={formatCurrency(quote.stake_amount)} />
+                <Row label={t('p2p.stakeSetup.opponentMatchingStake', "Opponent's matching stake")} value={formatCurrency(quote.opponent_stake_amount)} />
+                <Row label={t('p2p.stakeSetup.totalPrizePool', 'Total prize pool')} value={formatCurrency(quote.prize_pool)} strong />
                 <Row
-                  label={`Platform fee (${quote.service_fee_percent.toFixed(2)}%)`}
+                  label={t('p2p.stakeSetup.platformFee', {
+                    percent: quote.service_fee_percent.toFixed(2),
+                    defaultValue: `Platform fee (${quote.service_fee_percent.toFixed(2)}%)`,
+                  })}
                   value={formatCurrency(quote.fee)}
                 />
                 <div className="border-t border-[#fbbf24]/20 pt-2">
                   <Row
-                    label="Potential winner payout"
+                    label={t('p2p.stakeSetup.potentialWinnerPayout', 'Potential winner payout')}
                     value={formatCurrency(quote.potential_payout)}
                     strong
                     highlight
@@ -211,7 +222,7 @@ export function StakeSetupModal({
               </>
             ) : (
               <p className="py-4 text-center text-xs text-muted-foreground">
-                Enter a permitted stake to see the prize breakdown.
+                {t('p2p.stakeSetup.enterPermittedStake', 'Enter a permitted stake to see the prize breakdown.')}
               </p>
             )}
           </div>
@@ -219,7 +230,7 @@ export function StakeSetupModal({
           {insufficient && (
             <p className="flex items-center gap-1.5 text-xs font-medium text-destructive">
               <AlertTriangle className="h-3.5 w-3.5" />
-              Your available balance is too low for this stake.
+              {t('p2p.stakeSetup.balanceTooLow', 'Your available balance is too low for this stake.')}
             </p>
           )}
 
@@ -238,7 +249,7 @@ export function StakeSetupModal({
               }
             >
               {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Swords className="h-4 w-4" />}
-              Find Opponent
+              {t('p2p.stakeSetup.findOpponent', 'Find Opponent')}
             </Button>
             <Button
               variant="outline"
@@ -255,15 +266,14 @@ export function StakeSetupModal({
               }
             >
               <Users className="h-4 w-4" />
-              Challenge a Friend
+              {t('p2p.stakeSetup.challengeFriend', 'Challenge a Friend')}
             </Button>
           </div>
 
           <div className="flex items-start gap-2 rounded-xl border border-border/70 bg-muted/30 p-3 text-[11px] leading-relaxed text-muted-foreground">
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
             <p>
-              Your stake is reserved when you accept and settles only when the match ends. If the
-              match is drawn or cancelled both stakes are refunded in full.
+              {t('p2p.stakeSetup.stakeReservedNotice', 'Your stake is reserved when you accept and settles only when the match ends. If the match is drawn or cancelled both stakes are refunded in full.')}
             </p>
           </div>
         </CardContent>

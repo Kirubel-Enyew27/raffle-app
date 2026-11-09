@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { ConnectFourBall } from './GamePieces'
 import type { ConnectFourSeat } from './connectFour'
 
@@ -18,16 +19,12 @@ interface ConnectFourTokenProps {
   ghost?: boolean
 }
 
-const SEAT_LABEL: Record<ConnectFourSeat, string> = {
-  1: 'red token',
-  2: 'amber token',
-}
-
 export function ConnectFourToken({ seat, className, emphasis = 'none', ghost = false }: ConnectFourTokenProps) {
+  const { t } = useTranslation()
   return (
     <span
       role="img"
-      aria-label={SEAT_LABEL[seat]}
+      aria-label={seat === 1 ? t('p2p.board.redToken') : t('p2p.board.amberToken')}
       className={[
         'relative inline-block aspect-square rounded-full',
         emphasis === 'win' ? 'c4-token-win' : '',

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Lock } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { DamaPiece } from './DamaPiece'
 import {
@@ -46,9 +47,13 @@ interface DamaVisualMove {
 // unchanged — this is purely a light-theme color swap.
 const LIGHT_SQUARE_PLAYABLE = 'bg-[var(--art-board-alt)]'
 
-function pieceLabel(side: DamaSide, king: boolean): string {
-  const color = side === 0 ? 'ivory' : 'crimson'
-  return king ? `${color} king` : `${color} checker`
+function pieceLabel(
+  side: DamaSide,
+  king: boolean,
+  t: (key: string) => string,
+): string {
+  if (side === 0) return king ? t('p2p.board.ivoryKing') : t('p2p.board.ivoryChecker')
+  return king ? t('p2p.board.crimsonKing') : t('p2p.board.crimsonChecker')
 }
 
 export function DamaBoard({
@@ -60,6 +65,7 @@ export function DamaBoard({
   isGameOver = false,
   outcome = null,
 }: DamaBoardProps) {
+  const { t } = useTranslation()
   const [selected, setSelected] = useState<number | null>(null)
   const [movingPiece, setMovingPiece] = useState<DamaVisualMove | null>(null)
   const [moveQueue, setMoveQueue] = useState<DamaVisualMove[]>([])
@@ -185,15 +191,15 @@ export function DamaBoard({
         className="flex min-h-6 items-center justify-center px-2 text-center text-xs font-semibold text-muted-foreground"
       >
         { isMyTurn ? (
-          'Your turn — select a piece'
+          t('p2p.selectPiece', 'Your turn — select a piece')
         ) : (
-          'Opponent is thinking…'
+          t('p2p.opponentThinking', 'Opponent is thinking…')
         )}
       </div>
 
       {chainFrom !== null && (
         <div className="w-full rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-center text-[11px] font-semibold text-destructive">
-          Captures are mandatory: continue from {squareName(chainFrom)}
+          {t('p2p.capturesMandatory', { square: squareName(chainFrom), defaultValue: `Captures are mandatory: continue from ${squareName(chainFrom)}` })}
         </div>
       )}
 
@@ -201,12 +207,12 @@ export function DamaBoard({
       <div className="flex w-full items-center justify-between px-2 text-xs font-bold text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <DamaPiece side={0} className="h-3.5 w-3.5 shrink-0" />
-          <span>Ivory (P1): {lightCount}</span>
-          {lightCount === 0 && gameOver && <span className="text-destructive text-[10px] uppercase">(Eliminated)</span>}
+          <span>{t('p2p.ivoryPiece', { count: lightCount, defaultValue: `Ivory (P1): ${lightCount}` })}</span>
+          {lightCount === 0 && gameOver && <span className="text-destructive text-[10px] uppercase">{t('p2p.eliminatedTag', '(Eliminated)')}</span>}
         </span>
         <span className="flex items-center gap-1.5">
-          <span>Crimson (P2): {darkCount}</span>
-          {darkCount === 0 && gameOver && <span className="text-destructive text-[10px] uppercase">(Eliminated)</span>}
+          <span>{t('p2p.crimsonPiece', { count: darkCount, defaultValue: `Crimson (P2): ${darkCount}` })}</span>
+          {darkCount === 0 && gameOver && <span className="text-destructive text-[10px] uppercase">{t('p2p.eliminatedTag', '(Eliminated)')}</span>}
           <DamaPiece side={1} className="h-3.5 w-3.5 shrink-0" />
         </span>
       </div>
@@ -224,7 +230,7 @@ export function DamaBoard({
         <div
           className="grid grid-cols-8 overflow-hidden rounded-lg"
           role="grid"
-          aria-label="Ethiopian Dama board"
+          aria-label={t('p2p.dama.boardAria', 'Ethiopian Dama board')}
         >
           {displaySquares(cells, orientation).map(({ index, playable, value }) => {
             const side = pieceSide(value)
@@ -264,9 +270,9 @@ export function DamaBoard({
                 type="button"
                 onClick={() => handleSquare(index)}
                 disabled={!canInteract}
-                aria-label={`${squareName(index)}${value ? `, ${pieceLabel(side ?? 0, king)}` : ', empty'}${
-                  isTarget ? ', legal destination' : ''
-                }${isTrappedPiece ? ', immobilized piece' : ''}`}
+                aria-label={`${squareName(index)}, ${value ? pieceLabel(side ?? 0, king, t) : t('p2p.board.empty')}${
+                  isTarget ? ` · ${t('p2p.board.legalDestination')}` : ''
+                }${isTrappedPiece ? ` · ${t('p2p.board.immobilizedPiece')}` : ''}`}
                 aria-pressed={isSelected}
                 className={[
                   'group relative aspect-square w-full transition-colors duration-150',
@@ -424,18 +430,19 @@ export function DamaBoard({
       </div>
 
       <div className="flex w-full items-center justify-between px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-        <span>{orientation === 1 ? 'Light at top' : 'Light at bottom'}</span>
-        <span>Move {moveNumber}</span>
+        <span>{orientation === 1 ? t('p2p.board.lightAtTop') : t('p2p.board.lightAtBottom')}</span>
+        <span>{t('p2p.dama.move', { count: moveNumber })}</span>
       </div>
     </div>
   )
 }
 
 export function DamaMoveHistory({ history }: { history?: DamaHistoryEntry[] }) {
+  const { t } = useTranslation()
   if (!history || history.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border/80 p-3 text-center text-xs text-muted-foreground">
-        No moves yet — the board is waiting for the first move.
+        {t('p2p.dama.noMoves', 'No moves yet — the board is waiting for the first move.')}
       </div>
     )
   }
@@ -443,10 +450,10 @@ export function DamaMoveHistory({ history }: { history?: DamaHistoryEntry[] }) {
   return (
     <div className="rounded-xl border border-border/80 bg-card/60">
       <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
-        <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Move history</h3>
-        <span className="text-[10px] text-muted-foreground">{history.length} plies</span>
+        <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('p2p.dama.moveHistory', 'Move history')}</h3>
+        <span className="text-[10px] text-muted-foreground">{t('p2p.dama.plies', { count: history.length, defaultValue: `${history.length} plies` })}</span>
       </div>
-      <ol className="max-h-40 space-y-1 overflow-y-auto p-2 text-xs" aria-label="Dama move history">
+      <ol className="max-h-40 space-y-1 overflow-y-auto p-2 text-xs" aria-label={t('p2p.dama.moveHistoryAria', 'Dama move history')}>
         {history.map((entry) => (
           <li key={`${entry.seq}-${entry.from}-${entry.to}`} className="flex items-center gap-2 rounded-md px-1.5 py-1 hover:bg-accent/40">
             <span className="w-6 shrink-0 text-right font-mono text-[10px] text-muted-foreground">{entry.seq}</span>
@@ -455,7 +462,7 @@ export function DamaMoveHistory({ history }: { history?: DamaHistoryEntry[] }) {
             {entry.captures && entry.captures.length > 0 && (
               <span className="ml-auto text-[10px] font-semibold text-destructive">×{entry.captures.length}</span>
             )}
-            {entry.promotion && <span className="ml-auto text-[10px] font-bold text-warning">King</span>}
+            {entry.promotion && <span className="ml-auto text-[10px] font-bold text-warning">{t('p2p.dama.king', 'King')}</span>}
           </li>
         ))}
       </ol>

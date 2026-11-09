@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import {
   X,
   Swords,
@@ -21,6 +22,7 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/contexts/ToastContext'
 import { p2pApi } from '@/features/p2p/api'
 import { GameIcon } from '@/features/p2p/GameIcon'
+import { gameName } from '@/features/p2p/matchHistory'
 import {
   buildInviteUrl,
   buildWebInviteUrl,
@@ -54,6 +56,7 @@ export function ChallengeFriendModal({
   games,
   initialGameSlug,
 }: ChallengeFriendModalProps) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { toast } = useToast()
@@ -112,15 +115,15 @@ export function ChallengeFriendModal({
       setCreatedMatch(match)
       setStep('share')
       toast({
-        title: 'Challenge Created!',
-        description: 'Share your room link or code with your friend to begin.',
+        title: t('p2p.challenge.challengeCreated', 'Challenge Created!'),
+        description: t('p2p.challenge.challengeCreatedDesc', 'Share your room link or code with your friend to begin.'),
         type: 'success',
       })
     },
     onError: (err: unknown) => {
       toast({
-        title: 'Could not create challenge',
-        description: apiErrorMessage(err),
+        title: t('p2p.challenge.couldNotCreate', 'Could not create challenge'),
+        description: apiErrorMessage(err, t('errors.somethingWentWrong', 'Something went wrong')),
         type: 'error',
       })
     },
@@ -132,13 +135,13 @@ export function ChallengeFriendModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['p2p-lobby'] })
       queryClient.invalidateQueries({ queryKey: ['p2p-my-matches'] })
-      toast({ title: 'Challenge Cancelled', type: 'info' })
+      toast({ title: t('p2p.challenge.challengeCancelled', 'Challenge Cancelled'), type: 'info' })
       onClose()
     },
     onError: (err: unknown) => {
       toast({
-        title: 'Error cancelling match',
-        description: apiErrorMessage(err),
+        title: t('p2p.challenge.errorCancelling', 'Error cancelling match'),
+        description: apiErrorMessage(err, t('errors.somethingWentWrong', 'Something went wrong')),
         type: 'error',
       })
     },
@@ -152,9 +155,17 @@ export function ChallengeFriendModal({
     if (success) {
       setCopiedCode(true)
       setTimeout(() => setCopiedCode(false), 2000)
-      toast({ title: 'Code Copied!', description: '6-character room code copied to clipboard.', type: 'info' })
+      toast({
+        title: t('p2p.challenge.codeCopied', 'Code Copied!'),
+        description: t('p2p.challenge.codeCopiedDesc', '6-character room code copied to clipboard.'),
+        type: 'info',
+      })
     } else {
-      toast({ title: 'Copy Failed', description: 'Please copy the code manually.', type: 'error' })
+      toast({
+        title: t('p2p.challenge.copyFailed', 'Copy Failed'),
+        description: t('p2p.challenge.copyFailedDesc', 'Please copy the code manually.'),
+        type: 'error',
+      })
     }
   }
 
@@ -165,32 +176,46 @@ export function ChallengeFriendModal({
     if (success) {
       setCopiedLink(true)
       setTimeout(() => setCopiedLink(false), 2000)
-      toast({ title: 'Link Copied!', description: 'Challenge link copied to clipboard.', type: 'info' })
+      toast({
+        title: t('p2p.challenge.linkCopied', 'Link Copied!'),
+        description: t('p2p.challenge.linkCopiedDesc', 'Challenge link copied to clipboard.'),
+        type: 'info',
+      })
     } else {
-      toast({ title: 'Copy Failed', description: 'Please copy the link manually.', type: 'error' })
+      toast({
+        title: t('p2p.challenge.copyFailed', 'Copy Failed'),
+        description: t('p2p.challenge.copyLinkFailedDesc', 'Please copy the link manually.'),
+        type: 'error',
+      })
     }
   }
 
   const handleShareTelegram = () => {
     if (!createdMatch?.invite_code || !selectedGame) return
     const inviteUrl = buildInviteUrl(createdMatch.invite_code)
-    const message = buildInviteMessage(selectedGame.title, createdMatch.invite_code, inviteUrl)
+    const title = gameName(selectedGame.slug, t) || selectedGame.title
+    const message = buildInviteMessage(title, createdMatch.invite_code, inviteUrl, t)
     shareViaTelegram(inviteUrl, message)
   }
 
   const handleNativeShare = async () => {
     if (!createdMatch?.invite_code || !selectedGame) return
     const inviteUrl = buildWebInviteUrl(createdMatch.invite_code)
-    const message = buildInviteMessage(selectedGame.title, createdMatch.invite_code, inviteUrl)
+    const title = gameName(selectedGame.slug, t) || selectedGame.title
+    const message = buildInviteMessage(title, createdMatch.invite_code, inviteUrl, t)
     const result = await shareLinkOrCopy({
-      title: `Challenge: ${selectedGame.title}`,
+      title: `${t('p2p.challenge.title', 'Challenge')}: ${title}`,
       text: message,
       url: inviteUrl,
     })
     if (result === 'copied') {
       setCopiedLink(true)
       setTimeout(() => setCopiedLink(false), 2000)
-      toast({ title: 'Link Copied!', description: 'Challenge link copied to clipboard.', type: 'info' })
+      toast({
+        title: t('p2p.challenge.linkCopied', 'Link Copied!'),
+        description: t('p2p.challenge.linkCopiedDesc', 'Challenge link copied to clipboard.'),
+        type: 'info',
+      })
     }
   }
 
@@ -230,14 +255,16 @@ export function ChallengeFriendModal({
             </div>
             <div>
               <h2 id="challenge-modal-title" className="text-base font-bold text-foreground">
-                {step === 'share' ? 'Your Challenge is Ready' : 'Challenge a Friend'}
+                {step === 'share'
+                  ? t('p2p.challenge.readyTitle', 'Your Challenge is Ready')
+                  : t('p2p.challenge.title', 'Challenge a Friend')}
               </h2>
               <p className="text-xs text-muted-foreground">
                 {step === 'select'
-                  ? 'Choose a game to duel 1-on-1'
+                  ? t('p2p.challenge.selectGameSubtitle', 'Choose a game to duel 1-on-1')
                   : step === 'configure'
-                    ? 'Review rules and create private match'
-                    : 'Share the invitation link or code'}
+                    ? t('p2p.challenge.configureSubtitle', 'Review rules and create private match')
+                    : t('p2p.challenge.shareSubtitle', 'Share the invitation link or code')}
               </p>
             </div>
           </div>
@@ -252,7 +279,7 @@ export function ChallengeFriendModal({
               }
             }}
             className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            aria-label="Close"
+            aria-label={t('common.close', 'Close')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -283,7 +310,9 @@ export function ChallengeFriendModal({
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1">
-                          <span className="font-bold text-sm text-foreground truncate">{g.title}</span>
+                          <span className="font-bold text-sm text-foreground truncate">
+                            {gameName(g.slug, t) || g.title}
+                          </span>
                           {isSelected && <Check className="h-4 w-4 text-primary shrink-0" />}
                         </div>
                         <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
@@ -292,10 +321,10 @@ export function ChallengeFriendModal({
                         <div className="flex items-center gap-2 mt-2 text-[11px] text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <Clock className="h-3 w-3" />
-                            {g.default_turn_seconds}s
+                            {g.default_turn_seconds}{t('p2p.challenge.secSuffix', 's')}
                           </span>
                           <span>•</span>
-                          <span>1v1</span>
+                          <span>{t('p2p.challenge.oneOnOne', '1v1')}</span>
                         </div>
                       </div>
                     </button>
@@ -305,14 +334,14 @@ export function ChallengeFriendModal({
 
               <div className="flex justify-end gap-2 pt-2 border-t border-border/50">
                 <Button variant="ghost" size="sm" onClick={onClose}>
-                  Cancel
+                  {t('common.cancel', 'Cancel')}
                 </Button>
                 <Button
                   size="sm"
                   onClick={() => setStep('configure')}
                   className="gap-1.5 font-semibold"
                 >
-                  <span>Continue</span>
+                  <span>{t('common.continue', 'Continue')}</span>
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -329,7 +358,9 @@ export function ChallengeFriendModal({
                     <GameIcon slug={selectedGame.slug} size="lg" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-base text-foreground">{selectedGame.title}</h3>
+                    <h3 className="font-bold text-base text-foreground">
+                      {gameName(selectedGame.slug, t) || selectedGame.title}
+                    </h3>
                     <p className="text-xs text-muted-foreground mt-0.5">{selectedGame.description}</p>
                   </div>
                 </div>
@@ -341,7 +372,7 @@ export function ChallengeFriendModal({
                     onClick={() => setStep('select')}
                     className="text-xs text-primary hover:text-primary/90 h-8 shrink-0"
                   >
-                    Change
+                    {t('p2p.challenge.change', 'Change')}
                   </Button>
                 )}
               </div>
@@ -349,24 +380,29 @@ export function ChallengeFriendModal({
               {/* Match Settings Review */}
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="p-3 rounded-xl border border-border/60 bg-card/60 space-y-1">
-                  <span className="text-muted-foreground font-medium">Match Format</span>
+                  <span className="text-muted-foreground font-medium">{t('p2p.challenge.matchFormat', 'Match Format')}</span>
                   <p className="font-bold text-foreground">
                     {selectedGame.slug === 'tic-tac-toe' || selectedGame.slug === 'rock-paper-scissors'
-                      ? 'Best-of-3 Rounds'
-                      : 'Single Round (First Win)'}
+                      ? t('p2p.challenge.bestOfThree', 'Best-of-3 Rounds')
+                      : t('p2p.challenge.singleRound', 'Single Round (First Win)')}
                   </p>
                 </div>
                 <div className="p-3 rounded-xl border border-border/60 bg-card/60 space-y-1">
-                  <span className="text-muted-foreground font-medium">Turn Clock</span>
-                  <p className="font-bold text-foreground">{selectedGame.default_turn_seconds} seconds per move</p>
+                  <span className="text-muted-foreground font-medium">{t('p2p.challenge.turnClock', 'Turn Clock')}</span>
+                  <p className="font-bold text-foreground">
+                    {t('p2p.challenge.secondsPerMove', {
+                      seconds: selectedGame.default_turn_seconds,
+                      defaultValue: `${selectedGame.default_turn_seconds} seconds per move`,
+                    })}
+                  </p>
                 </div>
                 <div className="p-3 rounded-xl border border-border/60 bg-card/60 space-y-1">
-                  <span className="text-muted-foreground font-medium">Room Privacy</span>
-                  <p className="font-bold text-success">Private Friend Match</p>
+                  <span className="text-muted-foreground font-medium">{t('p2p.challenge.roomPrivacy', 'Room Privacy')}</span>
+                  <p className="font-bold text-success">{t('p2p.challenge.privateFriendMatch', 'Private Friend Match')}</p>
                 </div>
                 <div className="p-3 rounded-xl border border-border/60 bg-card/60 space-y-1">
-                  <span className="text-muted-foreground font-medium">Match Stake</span>
-                  <p className="font-bold text-foreground">Free Play Mode</p>
+                  <span className="text-muted-foreground font-medium">{t('p2p.challenge.matchStake', 'Match Stake')}</span>
+                  <p className="font-bold text-foreground">{t('p2p.challenge.freePlayMode', 'Free Play Mode')}</p>
                 </div>
               </div>
 
@@ -379,11 +415,11 @@ export function ChallengeFriendModal({
                     className="gap-1.5 text-xs text-muted-foreground"
                   >
                     <ArrowLeft className="h-4 w-4" />
-                    <span>Back</span>
+                    <span>{t('common.back', 'Back')}</span>
                   </Button>
                 ) : (
                   <Button variant="ghost" size="sm" onClick={onClose} className="text-xs">
-                    Cancel
+                    {t('common.cancel', 'Cancel')}
                   </Button>
                 )}
 
@@ -396,12 +432,12 @@ export function ChallengeFriendModal({
                   {createMatchMutation.isPending ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>Creating Room…</span>
+                      <span>{t('p2p.challenge.creatingRoom', 'Creating Room…')}</span>
                     </>
                   ) : (
                     <>
                       <Swords className="h-4 w-4" />
-                      <span>Create Challenge</span>
+                      <span>{t('p2p.challenge.createChallenge', 'Create Challenge')}</span>
                     </>
                   )}
                 </Button>
@@ -419,7 +455,7 @@ export function ChallengeFriendModal({
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500" />
                   </span>
-                  <span>Waiting for friend to join…</span>
+                  <span>{t('p2p.challenge.waitingForFriend', 'Waiting for friend to join…')}</span>
                 </div>
                 <Badge variant="outline" className="text-[11px] font-mono border-indigo-500/40 text-indigo-300">
                   <Clock className="w-3 h-3 mr-1" />
@@ -430,7 +466,7 @@ export function ChallengeFriendModal({
               {/* Room Code Card */}
               <div className="p-4 rounded-2xl border border-border/80 bg-muted/30 text-center space-y-2">
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Private Room Code
+                  {t('p2p.challenge.privateRoomCode', 'Private Room Code')}
                 </span>
                 <div className="flex items-center justify-center gap-3">
                   <span className="font-mono text-3xl sm:text-4xl font-black tracking-widest text-primary selection:bg-primary selection:text-primary-foreground">
@@ -445,12 +481,12 @@ export function ChallengeFriendModal({
                     {copiedCode ? (
                       <>
                         <Check className="h-4 w-4 text-success" />
-                        <span>Copied</span>
+                        <span>{t('p2p.challenge.copied', 'Copied')}</span>
                       </>
                     ) : (
                       <>
                         <Copy className="h-4 w-4" />
-                        <span>Copy</span>
+                        <span>{t('p2p.challenge.copy', 'Copy')}</span>
                       </>
                     )}
                   </Button>
@@ -464,7 +500,7 @@ export function ChallengeFriendModal({
                   className="w-full h-11 gap-2 font-bold text-sm bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-md shadow-sky-500/20"
                 >
                   <Send className="h-4 w-4" />
-                  <span>Invite via Telegram</span>
+                  <span>{t('p2p.challenge.inviteTelegram', 'Invite via Telegram')}</span>
                 </Button>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -476,12 +512,12 @@ export function ChallengeFriendModal({
                     {copiedLink ? (
                       <>
                         <Check className="h-3.5 w-3.5 text-success" />
-                        <span>Link Copied</span>
+                        <span>{t('p2p.challenge.linkCopied', 'Link Copied')}</span>
                       </>
                     ) : (
                       <>
                         <Copy className="h-3.5 w-3.5" />
-                        <span>Copy Link</span>
+                        <span>{t('p2p.challenge.copyLink', 'Copy Link')}</span>
                       </>
                     )}
                   </Button>
@@ -492,7 +528,7 @@ export function ChallengeFriendModal({
                     className="h-10 text-xs font-semibold gap-1.5"
                   >
                     <Share2 className="h-3.5 w-3.5" />
-                    <span>Share Options</span>
+                    <span>{t('p2p.challenge.shareOptions', 'Share Options')}</span>
                   </Button>
                 </div>
               </div>
@@ -506,7 +542,7 @@ export function ChallengeFriendModal({
                   disabled={cancelMatchMutation.isPending}
                   className="text-xs text-muted-foreground hover:text-destructive"
                 >
-                  Cancel Invitation
+                  {t('p2p.challenge.cancelInvitation', 'Cancel Invitation')}
                 </Button>
 
                 <Button
@@ -514,7 +550,7 @@ export function ChallengeFriendModal({
                   onClick={handleEnterArena}
                   className="font-bold gap-1.5"
                 >
-                  <span>Enter Waiting Room</span>
+                  <span>{t('p2p.challenge.enterWaitingRoom', 'Enter Waiting Room')}</span>
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -530,9 +566,11 @@ export function ChallengeFriendModal({
                 <AlertTriangle className="h-6 w-6" />
               </div>
               <div>
-                <h4 className="font-bold text-base text-foreground">Cancel this challenge?</h4>
+                <h4 className="font-bold text-base text-foreground">
+                  {t('p2p.challenge.cancelChallengeTitle', 'Cancel this challenge?')}
+                </h4>
                 <p className="text-xs text-muted-foreground mt-1">
-                  The room code will be invalidated and your friend will not be able to join.
+                  {t('p2p.challenge.cancelChallengeDesc', 'The room code will be invalidated and your friend will not be able to join.')}
                 </p>
               </div>
               <div className="flex justify-center gap-2 pt-2">
@@ -541,7 +579,7 @@ export function ChallengeFriendModal({
                   size="sm"
                   onClick={() => setShowCancelConfirm(false)}
                 >
-                  Keep Waiting
+                  {t('p2p.challenge.keepWaiting', 'Keep Waiting')}
                 </Button>
                 <Button
                   variant="destructive"
@@ -549,7 +587,9 @@ export function ChallengeFriendModal({
                   disabled={cancelMatchMutation.isPending}
                   onClick={handleCancelChallenge}
                 >
-                  {cancelMatchMutation.isPending ? 'Cancelling…' : 'Yes, Cancel'}
+                  {cancelMatchMutation.isPending
+                    ? t('p2p.challenge.cancelling', 'Cancelling…')
+                    : t('p2p.challenge.yesCancelBtn', 'Yes, Cancel')}
                 </Button>
               </div>
             </div>

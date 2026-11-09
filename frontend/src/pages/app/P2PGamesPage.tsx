@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   Gamepad2,
   Swords,
@@ -27,7 +29,7 @@ import { AcceptInviteModal } from '@/features/p2p/AcceptInviteModal'
 import { extractStartInviteCode } from '@/lib/telegram'
 import { StakeSetupModal } from '@/features/p2p/StakeSetupModal'
 import { MatchDetailsModal, MatchHistoryList } from '@/features/p2p/MatchHistory'
-import { isTerminalMatch } from '@/features/p2p/matchHistory'
+import { isTerminalMatch, gameName } from '@/features/p2p/matchHistory'
 import { cn, formatCurrency } from '@/lib/utils'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import type { P2PMatch } from '@/types/api'
@@ -43,19 +45,35 @@ function apiErrorMessage(err: unknown, fallback = 'Something went wrong'): strin
 }
 
 /** One-line pitch shown on the lobby cards, matching the product artwork. */
-const GAME_TAGLINES: Record<string, string> = {
-  'ethiopian-dama': 'Orthogonal strategy.',
-  'tic-tac-toe': 'Three in a row.',
-  'rock-paper-scissors': 'Read your rival.',
-  'connect-four': 'Outconnect them.',
+function getGameTagline(slug: string, t: TFunction): string {
+  switch (slug) {
+    case 'ethiopian-dama':
+      return t('p2p.damaTagline', 'Orthogonal strategy.')
+    case 'tic-tac-toe':
+      return t('p2p.tttTagline', 'Three in a row.')
+    case 'rock-paper-scissors':
+      return t('p2p.rpsTagline', 'Read your rival.')
+    case 'connect-four':
+      return t('p2p.c4Tagline', 'Outconnect them.')
+    default:
+      return ''
+  }
 }
 
 /** Match format chip: Dama is one decisive game, the others are best-of-three. */
-const GAME_FORMATS: Record<string, string> = {
-  'ethiopian-dama': 'SINGLE GAME',
-  'tic-tac-toe': 'BO3',
-  'rock-paper-scissors': 'BO3',
-  'connect-four': 'SINGLE GAME',
+function getGameFormat(slug: string, t: TFunction): string {
+  switch (slug) {
+    case 'ethiopian-dama':
+      return t('p2p.singleGame', 'SINGLE GAME')
+    case 'tic-tac-toe':
+      return t('p2p.bo3', 'BO3')
+    case 'rock-paper-scissors':
+      return t('p2p.bo3', 'BO3')
+    case 'connect-four':
+      return t('p2p.singleGame', 'SINGLE GAME')
+    default:
+      return '1V1'
+  }
 }
 
 /** Per-game accent used for the card's ambient light. */
@@ -69,7 +87,8 @@ const GAME_ACCENTS: Record<string, string> = {
 const CARD = 'rounded-2xl border border-border/80 bg-card'
 
 export function Component() {
-  usePageTitle('Games')
+  const { t } = useTranslation()
+  usePageTitle(t('p2p.games', 'Games'))
   const { user, token } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -207,8 +226,8 @@ export function Component() {
     },
     onError: (err: unknown) => {
       toast({
-        title: 'Could not create match',
-        description: apiErrorMessage(err),
+        title: t('p2p.lobby.couldNotCreate', 'Could not create match'),
+        description: apiErrorMessage(err, t('errors.somethingWentWrong', 'Something went wrong')),
         type: 'error',
       })
     },
@@ -223,8 +242,8 @@ export function Component() {
     },
     onError: (err: unknown) => {
       toast({
-        title: 'Failed to join match',
-        description: apiErrorMessage(err),
+        title: t('p2p.lobby.failedToJoin', 'Failed to join match'),
+        description: apiErrorMessage(err, t('errors.somethingWentWrong', 'Something went wrong')),
         type: 'error',
       })
     },
@@ -268,11 +287,10 @@ export function Component() {
     if (!trimmed) return
     if (trimmed.length < 4) {
       toast({
-        title: 'Invalid Code Format',
-        description: 'Challenge codes must be at least 4 characters long.',
+        title: t('p2p.lobby.invalidCodeTitle', 'Invalid Code Format'),
+        description: t('p2p.lobby.invalidCodeDesc', 'Challenge codes must be at least 4 characters long.'),
         type: 'error',
       })
-      return
     }
     setEnteredCode(trimmed)
     setInviteCodeInput('')
@@ -298,12 +316,14 @@ export function Component() {
           </span> */}
 
           <h1 className="text-3xl font-black tracking-tight text-foreground sm:text-4xl md:text-5xl">
-            Play Live Against Other Players
+            {t('p2p.lobby.heroTitle', 'Play Live Against Other Players')}
           </h1>
 
           <p className="max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-            Fast, server-authoritative duels. Jump into public matchmaking or send a private
-            challenge code to a friend.
+            {t(
+              'p2p.lobby.heroSubtitle',
+              'Fast, server-authoritative duels. Jump into public matchmaking or send a private challenge code to a friend.'
+            )}
           </p>
 
           <div className="flex flex-col gap-2.5 pt-2 sm:flex-row sm:items-center">
@@ -312,7 +332,7 @@ export function Component() {
               className="h-11 gap-2 px-5 text-sm shadow-lg shadow-[#ff5b55]/20"
             >
               <Swords className="h-4 w-4" />
-              {mode === 'earn' ? 'Start a Staked Match' : 'Challenge a Friend'}
+              {mode === 'earn' ? t('p2p.lobby.startStakedMatch', 'Start a Staked Match') : t('p2p.lobby.challengeFriend', 'Challenge a Friend')}
             </Button>
             <Button
               variant="outline"
@@ -320,14 +340,14 @@ export function Component() {
               className="h-11 gap-2 border-input bg-background px-5 text-sm font-semibold text-foreground hover:bg-accent hover:text-accent-foreground"
             >
               <PlusCircle className="h-4 w-4" />
-              {mode === 'earn' ? 'Choose Stake' : 'Host Custom Match'}
+              {mode === 'earn' ? t('p2p.lobby.chooseStake', 'Choose Stake') : t('p2p.lobby.hostCustomMatch', 'Host Custom Match')}
             </Button>
           </div>
         </div>
       </section>
 
       {/* Competition mode selection */}
-      <section className="grid gap-3 sm:grid-cols-2" aria-label="Competition mode">
+      <section className="grid gap-3 sm:grid-cols-2" aria-label={t('p2p.history.matchMode', 'Competition mode')}>
         <button
           type="button"
           onClick={() => selectMode('fun')}
@@ -345,7 +365,7 @@ export function Component() {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-bold text-foreground sm:text-base">Compete for Fun</h2>
+                <h2 className="text-sm font-bold text-foreground sm:text-base">{t('p2p.lobby.competeForFun', 'Compete for Fun')}</h2>
                 {mode === 'fun' && (
                   <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary px-1 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-primary-foreground">
                     <Check className="h-3 w-3" strokeWidth={3} />
@@ -353,11 +373,11 @@ export function Component() {
                 )}
               </div>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                Play your favorite games and challenge friends without financial risk.
+                {t('p2p.lobby.competeForFunDesc', 'Play your favorite games and challenge friends without financial risk.')}
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                <span className="rounded-full border border-border px-2 py-0.5">Free to play</span>
-                <span className="rounded-full border border-border px-2 py-0.5">No wallet needed</span>
+                <span className="rounded-full border border-border px-2 py-0.5">{t('p2p.lobby.freeToPlay', 'Free to play')}</span>
+                <span className="rounded-full border border-border px-2 py-0.5">{t('p2p.lobby.noWalletNeeded', 'No wallet needed')}</span>
               </div>
             </div>
           </div>
@@ -380,7 +400,7 @@ export function Component() {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-bold text-foreground sm:text-base">Compete to Earn</h2>
+                <h2 className="text-sm font-bold text-foreground sm:text-base">{t('p2p.lobby.competeToEarn', 'Compete to Earn')}</h2>
                 {mode === 'earn' && (
                   <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#fbbf24] px-1 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-black">
                     <Check className="h-3 w-3" strokeWidth={3} />
@@ -388,11 +408,14 @@ export function Component() {
                 )}
               </div>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                Stake your balance against an opponent at the same stake and compete for the prize pool.
+                {t(
+                  'p2p.lobby.competeToEarnDesc',
+                  'Stake your balance against an opponent at the same stake and compete for the prize pool.'
+                )}
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                <span className="rounded-full border border-border px-2 py-0.5">Wallet required</span>
-                <span className="rounded-full border border-border px-2 py-0.5">Prize payouts</span>
+                <span className="rounded-full border border-border px-2 py-0.5">{t('p2p.lobby.walletRequired', 'Wallet required')}</span>
+                <span className="rounded-full border border-border px-2 py-0.5">{t('p2p.lobby.prizePayouts', 'Prize payouts')}</span>
               </div>
             </div>
           </div>
@@ -404,11 +427,11 @@ export function Component() {
         <form onSubmit={handleJoinByCode} className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <p className="flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-foreground">
             <Gamepad2 className="h-4 w-4 shrink-0 text-primary" />
-            Have a Private Invite Code?
+            {t('p2p.lobby.haveInviteCode', 'Have a Private Invite Code?')}
           </p>
           <div className="flex w-full flex-1 items-center gap-2">
             <Input
-              placeholder="Enter 6-character code (e.g. ABC9X2)"
+              placeholder={t('p2p.lobby.codePlaceholder', 'Enter 6-character code (e.g. ABC9X2)')}
               value={inviteCodeInput}
               onChange={(e) => setInviteCodeInput(e.target.value.toUpperCase())}
               maxLength={8}
@@ -419,7 +442,7 @@ export function Component() {
               disabled={!inviteCodeInput.trim()}
               className="h-10 shrink-0 px-5"
             >
-              Preview & Join
+              {t('p2p.lobby.previewAndJoin', 'Preview & Join')}
             </Button>
           </div>
         </form>
@@ -430,7 +453,7 @@ export function Component() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight text-foreground">
             <Gamepad2 className="h-5 w-5 text-[#ff5b55]" />
-            Available Games
+            {t('p2p.availableGames', 'Available Games')}
           </h2>
           <div className="flex items-center gap-2">
             <Button
@@ -439,7 +462,7 @@ export function Component() {
               className="h-8 gap-1.5 text-xs"
             >
               <Swords className="h-3.5 w-3.5" />
-              {mode === 'earn' ? 'Set Stake' : 'Challenge Friend'}
+              {mode === 'earn' ? t('p2p.lobby.setStake', 'Set Stake') : t('p2p.challengeFriend', 'Challenge Friend')}
             </Button>
             <Button
               variant="outline"
@@ -448,91 +471,98 @@ export function Component() {
               className="h-8 gap-1.5 border-input bg-background text-xs text-foreground hover:bg-accent hover:text-accent-foreground"
             >
               <PlusCircle className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{mode === 'earn' ? 'Choose Stake' : 'Host Custom Match'}</span>
+              <span className="hidden sm:inline">{mode === 'earn' ? t('p2p.lobby.chooseStake', 'Choose Stake') : t('p2p.lobby.hostCustomMatch', 'Host Custom Match')}</span>
             </Button>
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {games.map((g) => (
-            <article
-              key={g.slug}
-              className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-[0_18px_44px_-24px_rgba(255,91,85,0.55)] active:translate-y-0 active:scale-[0.995]"
-            >
-              {/* Board artwork — custom per-game illustration with ambient light. */}
-              <div className="relative h-32 overflow-hidden border-b border-border bg-surface-2 dark:bg-[#0c0d10]">
-                <div
-                  aria-hidden="true"
-                  className="absolute inset-0"
-                  style={{
-                    background: `radial-gradient(85% 95% at 50% 115%, ${GAME_ACCENTS[g.slug] ?? '#ff5b55'}26, transparent 72%)`,
-                  }}
-                />
-                <div className="absolute inset-0 transition-transform duration-500 ease-out motion-safe:group-hover:scale-[1.04]">
-                  <GameArtwork slug={g.slug} />
-                </div>
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent dark:from-[#121317]"
-                />
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/5 to-transparent transition-transform duration-700 group-hover:translate-x-full"
-                />
-                <button
-                  type="button"
-                  onClick={() => (mode === 'earn' ? openStakeSetup(g.slug) : handleCreateMatch(g.slug, false, true))}
-                  disabled={createMutation.isPending}
-                  aria-label={mode === 'earn' ? `Set a stake for ${g.title}` : `Quick play ${g.title}`}
-                  className="absolute right-3 top-3 rounded-lg border border-border bg-background/80 p-1.5 text-primary backdrop-blur transition-all hover:border-primary/50 hover:text-primary hover:shadow-[0_0_18px_-4px_rgba(255,91,85,0.5)] dark:border-[#2c2f36] dark:bg-[#0c0d10]/70 dark:text-[#ff5b55] dark:hover:text-[#ff8a80]"
-                >
-                  <ArrowUpRight className="h-4 w-4" />
-                </button>
-                <span className="absolute bottom-3 left-3 rounded-full border border-border bg-background/80 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground backdrop-blur dark:border-[#2c2f36] dark:bg-[#0c0d10]/70 dark:text-[#9ca1a8]">
-                  {GAME_FORMATS[g.slug] ?? '1V1'}
-                </span>
-              </div>
-
-              <div className="flex flex-1 flex-col gap-3 p-4">
-                <div>
-                  <h3 className="text-[15px] font-bold leading-tight text-foreground">{g.title}</h3>
-                  <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-                    {GAME_TAGLINES[g.slug] ?? g.description}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    {g.default_turn_seconds}s turn
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Users className="h-3 w-3" />
-                    {g.max_players} players
-                  </span>
-                </div>
-
-                <div className="mt-auto grid grid-cols-2 gap-2">
-                  <Button
+          {games.map((g) => {
+            const displayName = gameName(g.slug, t) || g.title
+            return (
+              <article
+                key={g.slug}
+                className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-[0_18px_44px_-24px_rgba(255,91,85,0.55)] active:translate-y-0 active:scale-[0.995]"
+              >
+                {/* Board artwork — custom per-game illustration with ambient light. */}
+                <div className="relative h-32 overflow-hidden border-b border-border bg-surface-2 dark:bg-[#0c0d10]">
+                  <div
+                    aria-hidden="true"
+                    className="absolute inset-0"
+                    style={{
+                      background: `radial-gradient(85% 95% at 50% 115%, ${GAME_ACCENTS[g.slug] ?? '#ff5b55'}26, transparent 72%)`,
+                    }}
+                  />
+                  <div className="absolute inset-0 transition-transform duration-500 ease-out motion-safe:group-hover:scale-[1.04]">
+                    <GameArtwork slug={g.slug} />
+                  </div>
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent dark:from-[#121317]"
+                  />
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/5 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+                  />
+                  <button
+                    type="button"
                     onClick={() => (mode === 'earn' ? openStakeSetup(g.slug) : handleCreateMatch(g.slug, false, true))}
                     disabled={createMutation.isPending}
-                    className="h-9 gap-1.5 px-2 text-[11px]"
+                    aria-label={
+                      mode === 'earn'
+                        ? t('p2p.lobby.setStakeAria', { title: displayName, defaultValue: `Set a stake for ${displayName}` })
+                        : t('p2p.lobby.quickPlayAria', { title: displayName, defaultValue: `Quick play ${displayName}` })
+                    }
+                    className="absolute right-3 top-3 rounded-lg border border-border bg-background/80 p-1.5 text-primary backdrop-blur transition-all hover:border-primary/50 hover:text-primary hover:shadow-[0_0_18px_-4px_rgba(255,91,85,0.5)] dark:border-[#2c2f36] dark:bg-[#0c0d10]/70 dark:text-[#ff5b55] dark:hover:text-[#ff8a80]"
                   >
-                    <Swords className="h-3.5 w-3.5" />
-                    {mode === 'earn' ? 'Set Stake' : 'Quick Play'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => (mode === 'earn' ? openStakeSetup(g.slug) : openChallenge(g.slug))}
-                    className="h-9 gap-1.5 border-input bg-background px-2 text-[11px] text-foreground hover:bg-accent hover:text-accent-foreground"
-                  >
-                    <Users className="h-3.5 w-3.5" />
-                    Challenge
-                  </Button>
+                    <ArrowUpRight className="h-4 w-4" />
+                  </button>
+                  <span className="absolute bottom-3 left-3 rounded-full border border-border bg-background/80 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground backdrop-blur dark:border-[#2c2f36] dark:bg-[#0c0d10]/70 dark:text-[#9ca1a8]">
+                    {getGameFormat(g.slug, t)}
+                  </span>
                 </div>
-              </div>
-            </article>
-          ))}
+
+                <div className="flex flex-1 flex-col gap-3 p-4">
+                  <div>
+                    <h3 className="text-[15px] font-bold leading-tight text-foreground">{displayName}</h3>
+                    <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
+                      {getGameTagline(g.slug, t) || g.description}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {t('p2p.lobby.turnSeconds', { seconds: g.default_turn_seconds, defaultValue: `${g.default_turn_seconds}s turn` })}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Users className="h-3 w-3" />
+                      {t('p2p.lobby.playersCount', { count: g.max_players, defaultValue: `${g.max_players} players` })}
+                    </span>
+                  </div>
+
+                  <div className="mt-auto grid grid-cols-2 gap-2">
+                    <Button
+                      onClick={() => (mode === 'earn' ? openStakeSetup(g.slug) : handleCreateMatch(g.slug, false, true))}
+                      disabled={createMutation.isPending}
+                      className="h-9 gap-1.5 px-2 text-[11px]"
+                    >
+                      <Swords className="h-3.5 w-3.5" />
+                      {mode === 'earn' ? t('p2p.lobby.setStake', 'Set Stake') : t('p2p.lobby.quickPlay', 'Quick Play')}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => (mode === 'earn' ? openStakeSetup(g.slug) : openChallenge(g.slug))}
+                      className="h-9 gap-1.5 border-input bg-background px-2 text-[11px] text-foreground hover:bg-accent hover:text-accent-foreground"
+                    >
+                      <Users className="h-3.5 w-3.5" />
+                      {t('p2p.lobby.challenge', 'Challenge')}
+                    </Button>
+                  </div>
+                </div>
+              </article>
+            )
+          })}
         </div>
       </section>
 
@@ -575,9 +605,18 @@ export function Component() {
             {([
               {
                 key: 'lobby',
-                label: `Live ${mode === 'earn' ? 'Stake' : 'Free'} Lobby (${lobbyMatches.length})`,
+                label:
+                  mode === 'earn'
+                    ? t('p2p.lobby.liveStakeLobby', {
+                        count: lobbyMatches.length,
+                        defaultValue: `Live Stake Lobby (${lobbyMatches.length})`,
+                      })
+                    : t('p2p.lobby.liveFreeLobby', {
+                        count: lobbyMatches.length,
+                        defaultValue: `Live Free Lobby (${lobbyMatches.length})`,
+                      }),
               },
-              { key: 'history', label: 'My Match History' },
+              { key: 'history', label: t('p2p.lobby.myMatchHistory', 'My Match History') },
             ] as const).map(({ key, label }) => (
               <button
                 key={key}
@@ -603,7 +642,7 @@ export function Component() {
               className="h-8 gap-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
             >
               <Trophy className="h-3.5 w-3.5 text-[#fbbf24]" />
-              Leaderboard
+              {t('p2p.lobby.leaderboard', 'Leaderboard')}
             </Button>
             {activeTab === 'lobby' && (
               <Button
@@ -613,7 +652,7 @@ export function Component() {
                 className="h-8 gap-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
-                Refresh
+                {t('p2p.lobby.refresh', 'Refresh')}
               </Button>
             )}
           </div>
@@ -623,16 +662,21 @@ export function Component() {
           <div>
             {lobbyLoading ? (
               <div className="py-12 text-center text-sm text-muted-foreground">
-                Loading open matches…
+                {t('p2p.lobby.loadingMatches', 'Loading open matches…')}
               </div>
             ) : lobbyMatches.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center">
                 <Users className="mx-auto mb-2 h-8 w-8 text-muted-foreground/50" />
-                <p className="font-semibold text-foreground">No open {mode === 'earn' ? 'stake' : 'free'} matches right now</p>
+                <p className="font-semibold text-foreground">
+                  {t('p2p.lobby.noOpenMatches', {
+                    type: mode === 'earn' ? t('p2p.lobby.openStakeMatches', 'stake') : t('p2p.lobby.openFreeMatches', 'free'),
+                    defaultValue: `No open ${mode === 'earn' ? 'stake' : 'free'} matches right now`,
+                  })}
+                </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {mode === 'earn'
-                    ? 'Set a stake to open a room. Only a player at the same stake can join.'
-                    : 'Be the first to create an open room or start a quick match!'}
+                    ? t('p2p.lobby.setStakeToOpen', 'Set a stake to open a room. Only a player at the same stake can join.')
+                    : t('p2p.lobby.beFirstToCreate', 'Be the first to create an open room or start a quick match!')}
                 </p>
               </div>
             ) : (
@@ -640,6 +684,7 @@ export function Component() {
                 {lobbyMatches.map((m) => {
                   const isMine = user && m.created_by === user.id
                   const hostPlayer = m.players?.[0]
+                  const displayName = gameName(m.game_slug, t) || m.game_slug.replace(/-/g, ' ')
 
                   return (
                     <div
@@ -650,10 +695,12 @@ export function Component() {
                         <div className="flex flex-wrap items-center gap-2">
                           <GameIcon slug={m.game_slug} />
                           <span className="text-sm font-bold capitalize text-foreground">
-                            {m.game_slug.replace(/-/g, ' ')}
+                            {displayName}
                           </span>
                           <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                            {m.max_rounds > 1 ? `Best of ${m.max_rounds}` : 'Single Round'}
+                            {m.max_rounds > 1
+                              ? t('p2p.lobby.bestOfRounds', { rounds: m.max_rounds, defaultValue: `Best of ${m.max_rounds}` })
+                              : t('p2p.lobby.singleRound', 'Single Round')}
                           </span>
                           <span
                             className={cn(
@@ -664,15 +711,15 @@ export function Component() {
                             )}
                           >
                             {m.competition_mode === 'earn'
-                              ? `${formatCurrency(m.stake_amount)} stake`
-                              : 'Free play'}
+                              ? t('p2p.lobby.stakeBadge', { amount: formatCurrency(m.stake_amount), defaultValue: `${formatCurrency(m.stake_amount)} stake` })
+                              : t('p2p.lobby.freePlayBadge', 'Free play')}
                           </span>
                         </div>
                         <p className="truncate text-xs text-muted-foreground">
-                          Host:{' '}
-                          <span className="font-medium text-foreground">
-                            {hostPlayer?.display_name || 'Player 1'}
-                          </span>
+                          {t('p2p.lobby.hostLabel', {
+                            name: hostPlayer?.display_name || 'Player 1',
+                            defaultValue: `Host: ${hostPlayer?.display_name || 'Player 1'}`,
+                          })}
                         </p>
                       </div>
 
@@ -683,7 +730,7 @@ export function Component() {
                           onClick={() => navigate(`/games/match/${m.id}`)}
                           className="h-8 shrink-0 text-xs"
                         >
-                          Re-enter Room
+                          {t('p2p.lobby.reenterRoom', 'Re-enter Room')}
                         </Button>
                       ) : (
                         <Button
@@ -697,8 +744,8 @@ export function Component() {
                           className="h-8 shrink-0 text-xs"
                         >
                           {m.competition_mode === 'earn'
-                            ? `Join ${formatCurrency(m.stake_amount)}`
-                            : 'Join Duel'}
+                            ? t('p2p.lobby.joinStake', { amount: formatCurrency(m.stake_amount), defaultValue: `Join ${formatCurrency(m.stake_amount)}` })
+                            : t('p2p.lobby.joinDuel', 'Join Duel')}
                         </Button>
                       )}
                     </div>
@@ -727,13 +774,13 @@ export function Component() {
           <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-2xl">
             <div className="flex items-center gap-2 text-lg font-bold text-foreground">
               <PlusCircle className="h-5 w-5 text-[#ff5b55]" />
-              Host Custom P2P Match
+              {t('p2p.customMatch.title', 'Host Custom P2P Match')}
             </div>
 
             <div className="mt-4 space-y-4">
               <div className="space-y-1.5">
                 <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Select Game
+                  {t('p2p.customMatch.selectGame', 'Select Game')}
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {games.map((g) => (
@@ -749,7 +796,7 @@ export function Component() {
                       )}
                     >
                       <GameIcon slug={g.slug} />
-                      <span className="w-full truncate">{g.title.split(' ')[0]}</span>
+                      <span className="w-full truncate">{gameName(g.slug, t) || g.title.split(' ')[0]}</span>
                     </button>
                   ))}
                 </div>
@@ -757,7 +804,7 @@ export function Component() {
 
               <div className="space-y-1.5">
                 <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Match Privacy
+                  {t('p2p.customMatch.matchPrivacy', 'Match Privacy')}
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -770,7 +817,7 @@ export function Component() {
                         : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
                     )}
                   >
-                    Public Queue (Anyone)
+                    {t('p2p.customMatch.publicQueue', 'Public Queue (Anyone)')}
                   </button>
                   <button
                     type="button"
@@ -782,20 +829,20 @@ export function Component() {
                         : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
                     )}
                   >
-                    Private Code (Friends)
+                    {t('p2p.customMatch.privateCode', 'Private Code (Friends)')}
                   </button>
                 </div>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <Button variant="ghost" onClick={() => setCreateModalOpen(false)}>
-                  Cancel
+                  {t('common.cancel', 'Cancel')}
                 </Button>
                 <Button
                   disabled={createMutation.isPending}
                   onClick={() => handleCreateMatch(selectedGameSlug, matchType === 'private_room')}
                 >
-                  {createMutation.isPending ? 'Creating…' : 'Create Room'}
+                  {createMutation.isPending ? t('p2p.customMatch.creating', 'Creating…') : t('p2p.customMatch.createRoom', 'Create Room')}
                 </Button>
               </div>
             </div>

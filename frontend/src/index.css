@@ -118,7 +118,14 @@
 }
 
 * { border-color: var(--color-border); }
-body { background-color: var(--color-background); color: var(--color-foreground); }
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  /* System stack first, then Ethiopic-capable faces so Amharic never falls
+     back to a missing-glyph font. No web font is downloaded. */
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Noto Sans Ethiopic', 'Nyala', 'Ebrima', 'Abyssinica SIL', sans-serif;
+}
 button { cursor: pointer; }
 
 /* Native select dropdown options — ensure all items are visible and clickable */

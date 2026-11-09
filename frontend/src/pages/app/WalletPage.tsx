@@ -55,8 +55,9 @@ function BalanceCard() {
             <p className="mt-1 text-xs text-muted-foreground">{t('wallet.ethiopianBirr')}</p>
             {(data?.reserved_balance ?? 0) > 0 && (
               <p className="mt-2 text-[11px] font-medium text-warning">
-                {formatCurrency(data?.reserved_balance ?? 0, data?.currency)} reserved for active
-                matches and pending withdrawals
+                {t('wallet.reservedBalanceNote', {
+                  amount: formatCurrency(data?.reserved_balance ?? 0, data?.currency),
+                })}
               </p>
             )}
           </>
@@ -209,7 +210,7 @@ function DepositCard() {
             </div>
             <div className="flex flex-wrap justify-center gap-2 pt-2 text-xs">
               <Badge variant="outline" className="font-mono">
-                Ref: {depositResult.receipt.transaction_ref}
+                {t('wallet.reference')}: {depositResult.receipt.transaction_ref}
               </Badge>
               {depositResult.receipt.transfer_date && (
                 <Badge variant="outline">
@@ -327,14 +328,14 @@ function DepositCard() {
                     <div>
                       <p className="text-xs font-medium text-foreground">{t('wallet.uploadScreenshotPrompt')}</p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {method === 'cbe' ? 'Screenshot of the CBE transfer confirmation with QR code (PNG, JPG, WEBP)' : 'Screenshot of the Telebirr payment confirmation (PNG, JPG, JPEG, WEBP)'}
+                        {method === 'cbe' ? t('wallet.cbeScreenshotTip') : t('wallet.telebirrScreenshotTip')}
                       </p>
                     </div>
                   </div>
                 ) : (
                   <div className="flex items-center gap-3 rounded-lg border bg-muted/20 p-2.5">
                     {previewUrl ? (
-                      <img src={previewUrl} alt="Receipt preview" className="h-14 w-14 rounded-md object-cover border" />
+                      <img src={previewUrl} alt={t('wallet.receiptPreview')} className="h-14 w-14 rounded-md object-cover border" />
                     ) : (
                       <ImageIcon className="h-10 w-10 text-muted-foreground" />
                     )}
@@ -379,14 +380,14 @@ function DepositCard() {
               {/* Transaction Number Input */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-foreground" htmlFor="tx-number-input">
-                  {method === 'cbe' ? 'Receipt Token / QR Link / Reference' : t('wallet.transactionNumber')}
+                  {method === 'cbe' ? t('wallet.cbeReceiptTokenLabel') : t('wallet.transactionNumber')}
                 </label>
                 <div className="relative">
                   <Input
                     id="tx-number-input"
                     value={transactionId}
                     onChange={(e) => setTransactionId(e.target.value)}
-                    placeholder={method === 'telebirr' ? 'e.g. DGP88F2T36 or CJL1LJ4ROB' : 'e.g. v2-hfHCx... or https://mbreciept.cbe.com.et/...'}
+                    placeholder={method === 'telebirr' ? t('wallet.telebirrTokenPlaceholder') : t('wallet.cbeTokenPlaceholder')}
                     className="font-mono text-sm"
                   />
                   {extractSuccess && transactionId === extractSuccess && (
@@ -396,13 +397,9 @@ function DepositCard() {
                   )}
                 </div>
                 {method === 'cbe' ? (
-                  <p className="text-[11px] text-muted-foreground">
-                    Tip: Uploading your CBE receipt image (with QR code) automatically extracts the verification token! You can also paste the receipt link (e.g. https://mbreciept.cbe.com.et/v2-...).
-                  </p>
+                  <p className="text-[11px] text-muted-foreground">{t('wallet.cbeTip')}</p>
                 ) : (
-                  <p className="text-[11px] text-muted-foreground">
-                    Tip: Uploading your Telebirr screenshot automatically extracts the transaction number (e.g. DGP88F2T36). You can also type or paste it directly.
-                  </p>
+                  <p className="text-[11px] text-muted-foreground">{t('wallet.telebirrTip')}</p>
                 )}
               </div>
 
@@ -570,13 +567,13 @@ function TransactionHistory() {
   const txLabel = (tx: typeof txs[0]) => {
     switch (tx.type) {
       case 'p2p_match_stake':
-        return tx.status === 'reserved' ? 'Stake reserved' : 'Stake settled'
+        return tx.status === 'reserved' ? t('wallet.stakeReserved') : t('wallet.stakeSettled')
       case 'p2p_stake_refund':
-        return 'Stake refund'
+        return t('wallet.stakeRefund')
       case 'p2p_payout':
-        return 'Match prize'
+        return t('wallet.matchPrize')
       case 'p2p_platform_fee':
-        return 'Platform fee'
+        return t('wallet.platformFee')
     }
     if (tx.status === 'completed') return tx.type === 'deposit' ? t('wallet.credit') : t('wallet.debit')
     if (tx.status === 'pending') return t('wallet.pending')
@@ -592,7 +589,7 @@ function TransactionHistory() {
           <option value="all">{t('wallet.allTypes')}</option>
           <option value="deposit">{t('wallet.deposits')}</option>
           <option value="withdraw">{t('wallet.withdrawals')}</option>
-          <option value="p2p_match_stake">Match stakes</option>
+          <option value="p2p_match_stake">{t('wallet.matchStakes', 'Match stakes')}</option>
         </Select>
       </CardHeader>
       <CardContent>

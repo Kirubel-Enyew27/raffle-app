@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { AuthCard } from '@/features/auth/AuthCard'
 import { authInputClass, authLinkClass, authPrimaryButtonClass } from '@/features/auth/authStyles'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -11,13 +12,14 @@ import { FormField } from '@/components/forms/FormField'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
-const schema = z.object({
-  email: z.string().email('Enter a valid email'),
+const makeSchema = (t: TFunction) => z.object({
+  email: z.string().email(t('validation.validEmail')),
 })
-type Fields = z.infer<typeof schema>
+type Fields = z.infer<ReturnType<typeof makeSchema>>
 
 export function Component() {
   const { t } = useTranslation()
+  const schema = useMemo(() => makeSchema(t), [t])
   usePageTitle(t('auth.forgotPasswordTitle'))
   const [submitted, setSubmitted] = useState(false)
 

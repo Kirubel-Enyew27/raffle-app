@@ -28,7 +28,7 @@ export function WalletCard() {
             <p className="text-3xl font-bold">
               {formatCurrency(data.balance, data.currency)}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">ETB &bull; Ethiopian Birr</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t('wallet.etbCurrencyName', 'ETB • Ethiopian Birr')}</p>
           </>
         )}
       </CardContent>

@@ -21,26 +21,26 @@ function useAdminNav(): NavGroup[] {
       items: [
         { to: '/admin/dashboard', icon: LayoutDashboard, label: t('admin.dashboard', 'Overview') },
         { to: '/admin/users', icon: Users, label: t('admin.users', 'Users') },
-        { to: '/admin/live', icon: Activity, label: 'Live Activity' },
-        { to: '/admin/players', icon: Trophy, label: 'Top Players' },
+        { to: '/admin/live', icon: Activity, label: t('admin.liveActivity', 'Live Activity') },
+        { to: '/admin/players', icon: Trophy, label: t('admin.topPlayers', 'Top Players') },
       ],
     },
     {
-      label: 'Competition',
+      label: t('admin.competition', 'Competition'),
       items: [
-        { to: '/admin/matches', icon: Swords, label: 'Matches' },
-        { to: '/admin/games', icon: Gamepad2, label: 'Games Analytics' },
+        { to: '/admin/matches', icon: Swords, label: t('admin.matches', 'Matches') },
+        { to: '/admin/games', icon: Gamepad2, label: t('admin.gameAnalytics', 'Games Analytics') },
       ],
     },
     {
-      label: 'Finance',
+      label: t('admin.finance', 'Finance'),
       items: [
-        { to: '/admin/deposits', icon: WalletCards, label: 'Deposits' },
+        { to: '/admin/deposits', icon: WalletCards, label: t('admin.deposits', 'Deposits') },
         { to: '/admin/withdrawals', icon: Coins, label: t('admin.withdrawals', 'Withdrawals') },
       ],
     },
     {
-      label: 'Platform',
+      label: t('admin.platform', 'Platform'),
       items: [
         { to: '/admin/raffles', icon: Ticket, label: t('admin.raffles', 'Raffles') },
         { to: '/admin/winners', icon: Trophy, label: t('admin.winners', 'Winners') },
@@ -49,10 +49,10 @@ function useAdminNav(): NavGroup[] {
       ],
     },
     {
-      label: 'Configuration',
+      label: t('admin.configuration', 'Configuration'),
       items: [
-        { to: '/admin/crash-settings', icon: Settings2, label: 'Crash Settings' },
-        { to: '/admin/p2p-settings', icon: Coins, label: 'P2P Earnings' },
+        { to: '/admin/crash-settings', icon: Settings2, label: t('admin.crashSettings', 'Crash Settings') },
+        { to: '/admin/p2p-settings', icon: Coins, label: t('admin.p2pEarnings', 'P2P Earnings') },
       ],
     },
   ]
@@ -159,6 +159,7 @@ function SidebarContent({
 }
 
 function Breadcrumb() {
+  const { t } = useTranslation()
   const { pathname } = useLocation()
   const nav = useAdminNav()
   const item = nav.flatMap(group => group.items)
@@ -168,12 +169,13 @@ function Breadcrumb() {
     <div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
       <span className="hidden sm:inline">KWIK Admin</span>
       <span className="hidden sm:inline">/</span>
-      <span className="truncate font-semibold text-foreground">{item?.label ?? 'Overview'}</span>
+      <span className="truncate font-semibold text-foreground">{item?.label ?? t('admin.overview')}</span>
     </div>
   )
 }
 
 export function AdminLayout() {
+  const { t } = useTranslation()
   const { isAuthenticated, isAdmin, isLoading } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
@@ -222,7 +224,7 @@ export function AdminLayout() {
       {menuOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <button
-            aria-label="Close admin menu"
+            aria-label={t('nav.closeMenu', 'Close navigation')}
             className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
             onClick={() => setMenuOpen(false)}
           />
@@ -234,7 +236,7 @@ export function AdminLayout() {
             />
             <button
               onClick={() => setMenuOpen(false)}
-              aria-label="Close menu"
+              aria-label={t('common.close', 'Close')}
               className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-lg bg-background/80 text-muted-foreground"
             >
               <X className="h-4 w-4" />
@@ -251,7 +253,7 @@ export function AdminLayout() {
           <div className="flex min-w-0 items-center gap-2">
             <button
               onClick={() => setMenuOpen(true)}
-              aria-label="Open admin menu"
+              aria-label={t('nav.openMenu', 'Open navigation')}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-foreground lg:hidden"
             >
               <Menu className="h-4 w-4" />
@@ -261,10 +263,10 @@ export function AdminLayout() {
           <div className="flex items-center gap-2">
             <span className="hidden items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-success sm:inline-flex">
               <span className="h-1.5 w-1.5 rounded-full bg-success" />
-              Admin access
+              {t('admin.roleAdmin', 'Admin')}
             </span>
             <span className="hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground md:inline">
-              Play. Compete. Earn.
+              {t('app.tagline', 'Play. Compete. Earn.')}
             </span>
             <UserMenu />
           </div>

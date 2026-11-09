@@ -141,15 +141,24 @@ export function buildWebInviteUrl(inviteCode: string): string {
 /**
  * Generate formatted challenge message.
  */
-export function buildInviteMessage(gameTitle: string, inviteCode: string, inviteUrl: string): string {
+export function buildInviteMessage(
+  gameTitle: string,
+  inviteCode: string,
+  inviteUrl: string,
+  t?: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  const tr = (key: string, fallback: string, vars?: Record<string, unknown>) =>
+    t ? t(key, { ...vars, defaultValue: fallback }) : fallback
   return [
-    `🎮 Let's play ${gameTitle} together!`,
+    tr('invite.shareTitle', `🎮 Let's play ${gameTitle} together!`, { game: gameTitle }),
     '',
-    `I've challenged you to a match on RaffleApp.`,
-    `Join me here: ${inviteUrl}`,
+    tr('invite.shareBody', "I've challenged you to a match on RaffleApp."),
+    tr('invite.joinHere', `Join me here: ${inviteUrl}`, { url: inviteUrl }),
     '',
-    `Room Code: ${inviteCode.trim().toUpperCase()}`,
-    `Ready to play? ⚔️`,
+    tr('invite.roomCode', `Room Code: ${inviteCode.trim().toUpperCase()}`, {
+      code: inviteCode.trim().toUpperCase(),
+    }),
+    tr('invite.ready', 'Ready to play? ⚔️'),
   ].join('\n')
 }
 

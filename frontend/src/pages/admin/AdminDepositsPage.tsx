@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { ExternalLink, Search, WalletCards, X } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -14,35 +15,36 @@ import { formatDate, formatMoney, formatNumber, shortId } from '@/features/admin
 const PAGE_SIZE = 25
 
 function DepositDrawer({ deposit, onClose }: { deposit: AdminDeposit; onClose: () => void }) {
+  const { t } = useTranslation()
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <button className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" aria-label="Close deposit details" onClick={onClose} />
+      <button className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" aria-label={t('admin.closeDepositDetails', 'Close deposit details')} onClick={onClose} />
       <aside className="relative h-full w-full max-w-md overflow-y-auto border-l border-border bg-card shadow-2xl">
         <div className="sticky top-0 flex items-center justify-between border-b border-border/70 bg-card/95 px-4 py-4 backdrop-blur">
-          <div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Deposit detail</p><h2 className="text-lg font-black">{formatMoney(deposit.amount, deposit.currency)}</h2></div>
-          <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-accent" aria-label="Close"><X className="h-4 w-4" /></button>
+          <div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">{t('admin.depositDetail', 'Deposit detail')}</p><h2 className="text-lg font-black">{formatMoney(deposit.amount, deposit.currency)}</h2></div>
+          <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-accent" aria-label={t('admin.close', 'Close')}><X className="h-4 w-4" /></button>
         </div>
         <div className="space-y-4 p-4">
           <StatusBadge status={deposit.status} />
           <div className="rounded-xl border border-border/60 p-3">
             <div className="flex items-center gap-2.5">
               <Avatar name={deposit.user_name || deposit.user_email} />
-              <div className="min-w-0"><p className="truncate text-sm font-semibold">{deposit.user_name || 'Unnamed player'}</p><p className="truncate text-[10px] text-muted-foreground">{deposit.user_email}</p></div>
+              <div className="min-w-0"><p className="truncate text-sm font-semibold">{deposit.user_name || t('admin.unnamedPlayer', 'Unnamed player')}</p><p className="truncate text-[10px] text-muted-foreground">{deposit.user_email}</p></div>
             </div>
           </div>
           <div className="space-y-2 rounded-xl border border-border/60 p-3 text-xs">
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Transaction</span><span className="break-all text-right font-mono text-[10px]">{deposit.id}</span></div>
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Payment method</span><span className="font-semibold capitalize">{deposit.payment_method.replaceAll('_', ' ')}</span></div>
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Reference</span><span className="break-all text-right font-mono text-[10px]">{deposit.external_reference || '—'}</span></div>
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Created</span><span>{formatDate(deposit.created_at, true)}</span></div>
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Credited</span><span>{formatDate(deposit.credited_at, true)}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-muted-foreground">{t('admin.transaction', 'Transaction')}</span><span className="break-all text-right font-mono text-[10px]">{deposit.id}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-muted-foreground">{t('admin.paymentMethod', 'Payment method')}</span><span className="font-semibold capitalize">{deposit.payment_method.replaceAll('_', ' ')}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-muted-foreground">{t('admin.reference', 'Reference')}</span><span className="break-all text-right font-mono text-[10px]">{deposit.external_reference || '—'}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-muted-foreground">{t('admin.created', 'Created')}</span><span>{formatDate(deposit.created_at, true)}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-muted-foreground">{t('admin.credited', 'Credited')}</span><span>{formatDate(deposit.credited_at, true)}</span></div>
           </div>
           {deposit.receipt_url && (
             <a href={deposit.receipt_url} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-accent">
-              Open payment receipt <ExternalLink className="h-3.5 w-3.5" />
+              {t('admin.openReceipt', 'Open payment receipt')} <ExternalLink className="h-3.5 w-3.5" />
             </a>
           )}
-          <p className="text-[10px] leading-relaxed text-muted-foreground">The persisted deposit record is the source of truth. No status is inferred or changed from this screen.</p>
+          <p className="text-[10px] leading-relaxed text-muted-foreground">{t('admin.depositTruthNote', 'The persisted deposit record is the source of truth. No status is inferred or changed from this screen.')}</p>
         </div>
       </aside>
     </div>
@@ -50,7 +52,8 @@ function DepositDrawer({ deposit, onClose }: { deposit: AdminDeposit; onClose: (
 }
 
 export function Component() {
-  usePageTitle('Deposits · KWIK Admin')
+  const { t } = useTranslation()
+  usePageTitle(`${t('admin.deposits', 'Deposits')} · KWIK Admin`)
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
@@ -65,23 +68,23 @@ export function Component() {
   return (
     <div className="mx-auto w-full max-w-[1450px] space-y-5 p-3 sm:p-5 lg:p-7">
       <PageHeader
-        eyebrow="Money in"
-        title="Deposits"
-        description="Monitor incoming wallet funding, payment references, and processing status from persisted deposit records."
-        actions={<span className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold">{formatNumber(data?.total ?? 0)} deposits</span>}
+        eyebrow={t('admin.moneyIn', 'Money in')}
+        title={t('admin.deposits', 'Deposits')}
+        description={t('admin.depositsDesc', 'Monitor incoming wallet funding, payment references, and processing status from persisted deposit records.')}
+        actions={<span className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold">{t('admin.depositsCount', { count: formatNumber(data?.total ?? 0), defaultValue: `${formatNumber(data?.total ?? 0)} deposits` })}</span>}
       />
       <Card className="border-border/70 p-3 sm:p-4">
         <form onSubmit={event => { event.preventDefault(); setOffset(0); setQuery(search.trim()) }} className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search by transaction ID, reference, name, or email" className="h-10 pl-9" />
+          <Input value={search} onChange={event => setSearch(event.target.value)} placeholder={t('admin.searchDepositsPlaceholder', 'Search by transaction ID, reference, name, or email')} className="h-10 pl-9" />
         </form>
         <div className="mt-2 flex flex-wrap gap-2">
           <Select value={status} onChange={event => { setStatus(event.target.value); setOffset(0) }} className="h-9 w-[155px] text-xs">
-            <option value="">All statuses</option>
+            <option value="">{t('admin.allStatuses', 'All statuses')}</option>
             {['pending', 'credited', 'completed', 'failed', 'rejected', 'verifying', 'manual_review', 'expired'].map(item => <option key={item} value={item}>{item.replaceAll('_', ' ')}</option>)}
           </Select>
           <DateRangeBar from={range.from} to={range.to} onChange={(from, to) => { setRange({ from, to }); setOffset(0) }} />
-          {(query || status || range.from || range.to) && <Button variant="ghost" size="sm" onClick={() => { setSearch(''); setQuery(''); setStatus(''); setRange({ from: '', to: '' }); setOffset(0) }}>Clear</Button>}
+          {(query || status || range.from || range.to) && <Button variant="ghost" size="sm" onClick={() => { setSearch(''); setQuery(''); setStatus(''); setRange({ from: '', to: '' }); setOffset(0) }}>{t('admin.clear', 'Clear')}</Button>}
         </div>
       </Card>
 
@@ -91,15 +94,15 @@ export function Component() {
             <div className="hidden overflow-x-auto md:block">
               <table className="w-full min-w-[900px] text-left text-sm">
                 <thead className="border-b border-border/60 bg-muted/30 text-[10px] uppercase tracking-wider text-muted-foreground">
-                  <tr><th className="px-4 py-3 font-semibold">Reference</th><th className="px-4 py-3 font-semibold">Player</th><th className="px-4 py-3 text-right font-semibold">Amount</th><th className="px-4 py-3 font-semibold">Method</th><th className="px-4 py-3 font-semibold">Status</th><th className="px-4 py-3 font-semibold">Created</th><th className="px-4 py-3 font-semibold">Credited</th></tr>
+                  <tr><th className="px-4 py-3 font-semibold">{t('admin.reference', 'Reference')}</th><th className="px-4 py-3 font-semibold">{t('admin.player', 'Player')}</th><th className="px-4 py-3 text-right font-semibold">{t('admin.amount', 'Amount')}</th><th className="px-4 py-3 font-semibold">{t('admin.method', 'Method')}</th><th className="px-4 py-3 font-semibold">{t('admin.status', 'Status')}</th><th className="px-4 py-3 font-semibold">{t('admin.created', 'Created')}</th><th className="px-4 py-3 font-semibold">{t('admin.credited', 'Credited')}</th></tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {isLoading && Array.from({ length: 8 }).map((_, index) => <tr key={index}>{Array.from({ length: 7 }).map((__, cell) => <td key={cell} className="px-4 py-3"><Skeleton className="h-4 w-full" /></td>)}</tr>)}
-                  {!isLoading && data?.items.length === 0 && <tr><td colSpan={7}><EmptyState title="No deposits found" description="Try a different status, date range, or search term." /></td></tr>}
+                  {!isLoading && data?.items.length === 0 && <tr><td colSpan={7}><EmptyState title={t('admin.noDepositsFound', 'No deposits found')} description={t('admin.noDepositsFoundDesc', 'Try a different status, date range, or search term.')} /></td></tr>}
                   {data?.items.map(deposit => (
                     <tr key={deposit.id} className="cursor-pointer transition-colors hover:bg-muted/25" onClick={() => setSelected(deposit)}>
-                      <td className="px-4 py-3"><p className="font-mono text-[10px] text-muted-foreground">{shortId(deposit.id)}</p><p className="text-[10px] text-muted-foreground">{deposit.external_reference || 'No external ref'}</p></td>
-                      <td className="px-4 py-3"><p className="max-w-[190px] truncate text-xs font-semibold">{deposit.user_name || 'Unnamed player'}</p><p className="max-w-[190px] truncate text-[10px] text-muted-foreground">{deposit.user_email}</p></td>
+                      <td className="px-4 py-3"><p className="font-mono text-[10px] text-muted-foreground">{shortId(deposit.id)}</p><p className="text-[10px] text-muted-foreground">{deposit.external_reference || t('admin.noExternalRef', 'No external ref')}</p></td>
+                      <td className="px-4 py-3"><p className="max-w-[190px] truncate text-xs font-semibold">{deposit.user_name || t('admin.unnamedPlayer', 'Unnamed player')}</p><p className="max-w-[190px] truncate text-[10px] text-muted-foreground">{deposit.user_email}</p></td>
                       <td className="px-4 py-3 text-right font-bold tabular-nums">{formatMoney(deposit.amount, deposit.currency)}</td>
                       <td className="px-4 py-3 text-xs capitalize text-muted-foreground">{deposit.payment_method.replaceAll('_', ' ')}</td>
                       <td className="px-4 py-3"><StatusBadge status={deposit.status} /></td>
@@ -112,7 +115,7 @@ export function Component() {
             </div>
             <div className="divide-y divide-border/60 md:hidden">
               {isLoading && Array.from({ length: 4 }).map((_, i) => <div key={i} className="p-4"><Skeleton className="h-20 w-full" /></div>)}
-              {!isLoading && data?.items.length === 0 && <EmptyState title="No deposits found" />}
+              {!isLoading && data?.items.length === 0 && <EmptyState title={t('admin.noDepositsFound', 'No deposits found')} />}
               {data?.items.map(deposit => (
                 <button key={deposit.id} onClick={() => setSelected(deposit)} className="block w-full p-4 text-left hover:bg-muted/30">
                   <div className="flex items-start justify-between gap-2"><div><p className="text-sm font-bold">{formatMoney(deposit.amount, deposit.currency)}</p><p className="text-[10px] text-muted-foreground">{deposit.user_name || deposit.user_email}</p></div><StatusBadge status={deposit.status} /></div>
@@ -124,7 +127,7 @@ export function Component() {
           </>
         )}
       </Card>
-      <p className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><WalletCards className="h-3 w-3" /> Select a row to inspect its payment reference and credited timestamp.</p>
+      <p className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><WalletCards className="h-3 w-3" /> {t('admin.selectRowDepositHint', 'Select a row to inspect its payment reference and credited timestamp.')}</p>
       {selected && <DepositDrawer deposit={selected} onClose={() => setSelected(null)} />}
     </div>
   )

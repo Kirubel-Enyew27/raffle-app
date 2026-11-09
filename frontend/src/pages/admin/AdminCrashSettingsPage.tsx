@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { Save, Settings2, Info } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -7,12 +8,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { crashApi } from '@/features/crash/api'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 interface SettingRow {
   key: string
-  label: string
-  description: string
-  unit: string
+  labelKey: string
+  descKey: string
+  unitKey: string
   /** If set, the stored integer (e.g. basis points) is divided by this to show a human value */
   displayDivisor?: number
   min: number
@@ -23,9 +25,9 @@ interface SettingRow {
 const SETTINGS: SettingRow[] = [
   {
     key: 'service_fee_bp',
-    label: 'Service Fee',
-    description: 'Platform fee deducted only from a winner\'s positive profit.',
-    unit: '%',
+    labelKey: 'admin.crashSettingsRows.service_fee_bp_label',
+    descKey: 'admin.crashSettingsRows.service_fee_bp_desc',
+    unitKey: 'admin.crashSettingsRows.service_fee_bp_unit',
     displayDivisor: 100,
     min: 0,
     max: 50,
@@ -33,63 +35,63 @@ const SETTINGS: SettingRow[] = [
   },
   {
     key: 'min_participants',
-    label: 'Minimum Participants',
-    description: 'Minimum number of players required before a round can start.',
-    unit: 'players',
+    labelKey: 'admin.crashSettingsRows.min_participants_label',
+    descKey: 'admin.crashSettingsRows.min_participants_desc',
+    unitKey: 'admin.crashSettingsRows.min_participants_unit',
     min: 1,
     max: 100,
     step: 1,
   },
   {
     key: 'max_participants',
-    label: 'Maximum Participants',
-    description: 'Maximum number of players allowed per round.',
-    unit: 'players',
+    labelKey: 'admin.crashSettingsRows.max_participants_label',
+    descKey: 'admin.crashSettingsRows.max_participants_desc',
+    unitKey: 'admin.crashSettingsRows.max_participants_unit',
     min: 2,
     max: 1000,
     step: 1,
   },
   {
     key: 'min_bet_cents',
-    label: 'Minimum Stake',
-    description: 'Minimum stake in minor units (100 = 1.00 ETB).',
-    unit: 'ETB (×100)',
+    labelKey: 'admin.crashSettingsRows.min_bet_cents_label',
+    descKey: 'admin.crashSettingsRows.min_bet_cents_desc',
+    unitKey: 'admin.crashSettingsRows.min_bet_cents_unit',
     min: 100,
     max: 1_000_000,
     step: 100,
   },
   {
     key: 'max_bet_cents',
-    label: 'Maximum Stake',
-    description: 'Maximum stake in minor units (100 = 1.00 ETB).',
-    unit: 'ETB (×100)',
+    labelKey: 'admin.crashSettingsRows.max_bet_cents_label',
+    descKey: 'admin.crashSettingsRows.max_bet_cents_desc',
+    unitKey: 'admin.crashSettingsRows.max_bet_cents_unit',
     min: 1000,
     max: 100_000_000,
     step: 100,
   },
   {
     key: 'betting_seconds',
-    label: 'Betting Window',
-    description: 'Duration of the betting window per round.',
-    unit: 'seconds',
+    labelKey: 'admin.crashSettingsRows.betting_seconds_label',
+    descKey: 'admin.crashSettingsRows.betting_seconds_desc',
+    unitKey: 'admin.crashSettingsRows.betting_seconds_unit',
     min: 5,
     max: 120,
     step: 1,
   },
   {
     key: 'waiting_seconds',
-    label: 'Waiting Window',
-    description: 'Pre-betting countdown displayed to players.',
-    unit: 'seconds',
+    labelKey: 'admin.crashSettingsRows.waiting_seconds_label',
+    descKey: 'admin.crashSettingsRows.waiting_seconds_desc',
+    unitKey: 'admin.crashSettingsRows.waiting_seconds_unit',
     min: 0,
     max: 60,
     step: 1,
   },
   {
     key: 'crashed_seconds',
-    label: 'Crash Display Window',
-    description: 'How long the crash result is shown before settlement.',
-    unit: 'seconds',
+    labelKey: 'admin.crashSettingsRows.crashed_seconds_label',
+    descKey: 'admin.crashSettingsRows.crashed_seconds_desc',
+    unitKey: 'admin.crashSettingsRows.crashed_seconds_unit',
     min: 0,
     max: 30,
     step: 1,
@@ -111,6 +113,8 @@ function storageValue(row: SettingRow, display: string): string {
 }
 
 export function Component() {
+  const { t } = useTranslation()
+  usePageTitle(`${t('admin.crashGameSettings')} · KWIK Admin`)
   const queryClient = useQueryClient()
 
   const { data: settings, isLoading, isError } = useQuery({
@@ -153,10 +157,9 @@ export function Component() {
       <div className="flex items-center gap-3">
         <Settings2 className="h-6 w-6" />
         <div>
-          <h1 className="text-2xl font-bold">Crash Game Settings</h1>
+          <h1 className="text-2xl font-bold">{t('admin.crashGameSettings')}</h1>
           <p className="text-sm text-muted-foreground">
-            Configure the P2P crash game. Changes apply to new rounds; in-flight rounds
-            are never affected.
+            {t('admin.crashSettingsDesc')}
           </p>
         </div>
       </div>
@@ -166,21 +169,24 @@ export function Component() {
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <div className="space-y-1">
           <p>
-            <strong>P2P Revenue Model:</strong> The platform charges a service fee only on a winner's
-            positive profit (gross return − original stake). Losers and break-even players are never charged.
+            <strong>{t('admin.p2pRevenueModel')}</strong> {t('admin.p2pRevenueModelDesc')}
           </p>
           <p>
-            Example: stake 100, gross return 1000, profit 900 → fee = {feePct.toFixed(2)}% × 900 = {(900 * feePct / 100).toFixed(2)} ETB. Net payout = {(1000 - 900 * feePct / 100).toFixed(2)} ETB.
+            {t('admin.crashFeeExample', {
+              feePct: feePct.toFixed(2),
+              fee: (900 * feePct / 100).toFixed(2),
+              payout: (1000 - 900 * feePct / 100).toFixed(2),
+            })}
           </p>
         </div>
       </div>
 
       {isLoading && (
-        <p className="text-sm text-muted-foreground">Loading settings…</p>
+        <p className="text-sm text-muted-foreground">{t('admin.loadingSettings')}</p>
       )}
 
       {isError && (
-        <p className="text-sm text-destructive">Failed to load settings. Ensure you have admin access.</p>
+        <p className="text-sm text-destructive">{t('admin.failedToLoadSettings')}</p>
       )}
 
       {settings && (
@@ -189,21 +195,21 @@ export function Component() {
             <Card key={row.key}>
               <CardHeader className="flex-row items-center justify-between space-y-0 py-3">
                 <CardTitle className="flex items-center gap-2 text-sm">
-                  {row.label}
+                  {t(row.labelKey)}
                   <Badge variant="outline" className="text-[10px]">
                     {row.key}
                   </Badge>
                 </CardTitle>
                 {saved === row.key && (
-                  <Badge variant="success" className="text-xs">Saved</Badge>
+                  <Badge variant="success" className="text-xs">{t('admin.saved')}</Badge>
                 )}
               </CardHeader>
               <CardContent className="space-y-2 pb-4">
-                <p className="text-xs text-muted-foreground">{row.description}</p>
+                <p className="text-xs text-muted-foreground">{t(row.descKey)}</p>
                 <div className="flex items-center gap-2">
                   <div className="flex-1">
                     <Label htmlFor={`setting-${row.key}`} className="sr-only">
-                      {row.label}
+                      {t(row.labelKey)}
                     </Label>
                     <Input
                       id={`setting-${row.key}`}
@@ -215,18 +221,18 @@ export function Component() {
                       onChange={(e) => handleChange(row, e.target.value)}
                     />
                   </div>
-                  <span className="min-w-[4rem] text-xs text-muted-foreground">{row.unit}</span>
+                  <span className="min-w-[4rem] text-xs text-muted-foreground">{t(row.unitKey)}</span>
                   <Button
                     size="sm"
                     onClick={() => handleSave(row)}
                     disabled={update.isPending || !(row.key in edits)}
                   >
                     <Save className="h-3.5 w-3.5" />
-                    Save
+                    {t('admin.save')}
                   </Button>
                 </div>
                 <p className="text-[10px] text-muted-foreground">
-                  Current: {displayValue(row, settings[row.key] ?? '—')} {row.unit}
+                  {t('admin.currentSetting', { value: displayValue(row, settings[row.key] ?? '—'), unit: t(row.unitKey) })}
                 </p>
               </CardContent>
             </Card>

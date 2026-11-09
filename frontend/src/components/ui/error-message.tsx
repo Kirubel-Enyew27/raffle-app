@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -10,8 +11,10 @@ interface ErrorMessageProps {
  * Consistent error message banner used across the app.
  * Replaces ad-hoc `bg-destructive/10 px-3 py-2 text-sm text-destructive` patterns.
  */
-export function ErrorMessage({ message = 'Something went wrong', className }: ErrorMessageProps) {
-  if (!message) return null
+export function ErrorMessage({ message, className }: ErrorMessageProps) {
+  const { t } = useTranslation()
+  const text = message ?? t('errors.somethingWentWrong')
+  if (!text) return null
   return (
     <div
       className={cn(
@@ -21,7 +24,7 @@ export function ErrorMessage({ message = 'Something went wrong', className }: Er
       role="alert"
     >
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-      <span>{message}</span>
+      <span>{text}</span>
     </div>
   )
 }

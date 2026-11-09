@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from './button';
 
 export function LanguageSwitcher() {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const toggleLanguage = () => {
     const newLang = i18n.language.startsWith('en') ? 'am' : 'en';
@@ -10,7 +10,7 @@ export function LanguageSwitcher() {
   };
 
   return (
-    <Button variant="ghost" size="sm" onClick={toggleLanguage} aria-label="Toggle language">
+    <Button variant="ghost" size="sm" onClick={toggleLanguage} aria-label={t('common.toggleLanguage')}>
       {i18n.language.startsWith('en') ? 'አማ' : 'EN'}
     </Button>
   );

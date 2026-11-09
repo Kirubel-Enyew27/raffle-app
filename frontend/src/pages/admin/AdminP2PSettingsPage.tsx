@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import {
   AlertTriangle,
   Coins,
@@ -20,14 +21,14 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { cn, formatCurrency } from '@/lib/utils'
 import type { P2PAdminMatch } from '@/types/api'
 
-function apiErrorMessage(err: unknown): string {
+function apiErrorMessage(err: unknown, fallback: string): string {
   if (typeof err === 'object' && err !== null) {
     const response = (err as { response?: { data?: { message?: string } } }).response
     if (response?.data?.message) return response.data.message
     const message = (err as { message?: string }).message
     if (message) return message
   }
-  return 'Something went wrong'
+  return fallback
 }
 
 const financialBadge: Record<P2PAdminMatch['financial_status'], string> = {
@@ -38,18 +39,19 @@ const financialBadge: Record<P2PAdminMatch['financial_status'], string> = {
   needs_attention: 'border-destructive/40 bg-destructive/10 text-destructive',
 }
 
-const financialLabel: Record<P2PAdminMatch['financial_status'], string> = {
-  settled: 'settlement recorded (derived)',
-  refunded: 'refund unverified',
-  reserved: 'stake reserved',
-  pending: 'pending',
-  needs_attention: 'needs review',
+const financialLabelKeys: Record<P2PAdminMatch['financial_status'], string> = {
+  settled: 'financialSettled',
+  refunded: 'financialRefunded',
+  reserved: 'statusReserved',
+  pending: 'statusPending',
+  needs_attention: 'statusNeedsAttention',
 }
 
 type MatchFilter = 'all' | 'reserved' | 'settled' | 'refunded' | 'needs_attention'
 
 export function Component() {
-  usePageTitle('P2P Earnings')
+  const { t } = useTranslation()
+  usePageTitle(`${t('admin.p2pCompetitionSettings')} · KWIK Admin`)
   const queryClient = useQueryClient()
 
   const { data, isLoading, isError, error } = useQuery({
@@ -123,11 +125,10 @@ export function Component() {
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold">
             <Coins className="h-6 w-6 text-[#d99a06] dark:text-[#fbbf24]" />
-            P2P Competition Settings
+            {t('admin.p2pCompetitionSettings')}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Control Compete to Earn, stakes and the platform commission. Every change is
-            permission-protected and audited.
+            {t('admin.p2pCompetitionSettingsDesc')}
           </p>
         </div>
         <Badge
@@ -144,14 +145,14 @@ export function Component() {
           ) : (
             <ShieldAlert className="h-3.5 w-3.5" />
           )}
-          {data?.config.paid_matches_enabled ? 'Paid play enabled' : 'Paid play disabled'}
+          {data?.config.paid_matches_enabled ? t('admin.paidPlayEnabled') : t('admin.paidPlayDisabled')}
         </Badge>
       </div>
 
       {isError && (
         <Card className="border-destructive/40 bg-destructive/5">
           <CardContent className="p-4 text-sm text-destructive">
-            {apiErrorMessage(error)}
+            {apiErrorMessage(error, t('errors.somethingWentWrong'))}
           </CardContent>
         </Card>
       )}
@@ -161,9 +162,7 @@ export function Component() {
           <CardContent className="flex items-start gap-2 p-4 text-xs text-warning">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <p>
-              The deployment gate <code>PAID_MATCHES_ENABLED</code> is closed. Compete to Earn
-              cannot be switched on from the admin panel until the operator clears it for this
-              environment.
+              {t('admin.deploymentGateClosed')}
             </p>
           </CardContent>
         </Card>
@@ -171,7 +170,7 @@ export function Component() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Configuration</CardTitle>
+          <CardTitle className="text-base">{t('admin.configuration')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {isLoading ? (
@@ -195,9 +194,9 @@ export function Component() {
                 )}
               >
                 <div>
-                  <p className="text-sm font-bold text-foreground">Compete to Earn</p>
+                  <p className="text-sm font-bold text-foreground">{t('admin.competeToEarn')}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    Allow players to reserve wallet stakes and compete for prize pools.
+                    {t('admin.competeToEarnDesc')}
                   </p>
                 </div>
                 <span
@@ -217,26 +216,26 @@ export function Component() {
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field
-                  label="Platform commission"
+                  label={t('admin.platformCommission')}
                   unit="%"
                   value={value('default_service_fee_bp', '5.00')}
                   onChange={(v) => setEdits((prev) => ({ ...prev, default_service_fee_bp: v }))}
-                  hint="Deducted from the winner payout."
+                  hint={t('admin.platformCommissionHint')}
                 />
                 <Field
-                  label="Stake increment"
+                  label={t('admin.stakeIncrement')}
                   unit="ETB"
                   value={value('stake_increment_cents', '10')}
                   onChange={(v) => setEdits((prev) => ({ ...prev, stake_increment_cents: v }))}
                 />
                 <Field
-                  label="Minimum stake"
+                  label={t('admin.minStake')}
                   unit="ETB"
                   value={value('min_stake_cents', '10')}
                   onChange={(v) => setEdits((prev) => ({ ...prev, min_stake_cents: v }))}
                 />
                 <Field
-                  label="Maximum stake"
+                  label={t('admin.maxStake')}
                   unit="ETB"
                   value={value('max_stake_cents', '5000')}
                   onChange={(v) => setEdits((prev) => ({ ...prev, max_stake_cents: v }))}
@@ -245,12 +244,14 @@ export function Component() {
 
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3">
                 <p className="text-[11px] text-muted-foreground">
-                  Free play is always available and never requires a wallet balance.
+                  {t('admin.freePlayNote')}
                 </p>
                 <div className="flex items-center gap-2">
-                  {saved && <span className="text-xs font-semibold text-success">Saved</span>}
+                  {saved && <span className="text-xs font-semibold text-success">{t('admin.saved')}</span>}
                   {update.isError && (
-                    <span className="text-xs text-destructive">{apiErrorMessage(update.error)}</span>
+                    <span className="text-xs text-destructive">
+                      {apiErrorMessage(update.error, t('errors.somethingWentWrong'))}
+                    </span>
                   )}
                   <Button
                     onClick={() => update.mutate()}
@@ -262,7 +263,7 @@ export function Component() {
                     ) : (
                       <Save className="h-3.5 w-3.5" />
                     )}
-                    Save settings
+                    {t('admin.saveSettings')}
                   </Button>
                 </div>
               </div>
@@ -274,10 +275,10 @@ export function Component() {
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 pb-3">
           <div className="flex items-center gap-2">
-            <CardTitle className="text-base">Paid matches</CardTitle>
+            <CardTitle className="text-base">{t('admin.paidMatches')}</CardTitle>
             {attentionCount > 0 && (
               <Badge variant="destructive" className="text-[10px]">
-                {attentionCount} need attention
+                {t('admin.needAttention', { count: attentionCount })}
               </Badge>
             )}
           </div>
@@ -287,11 +288,11 @@ export function Component() {
               onChange={(event) => setFilter(event.target.value as MatchFilter)}
               className="h-8 rounded-lg border border-input bg-background px-2 text-xs"
             >
-              <option value="all">All paid matches</option>
-              <option value="reserved">Reserved / pending</option>
-              <option value="settled">Settlement recorded (derived)</option>
-              <option value="refunded">Refund unverified</option>
-              <option value="needs_attention">Needs attention</option>
+              <option value="all">{t('admin.allPaidMatches')}</option>
+              <option value="reserved">{t('admin.reservedPending')}</option>
+              <option value="settled">{t('admin.settlementRecorded')}</option>
+              <option value="refunded">{t('admin.refundUnverified')}</option>
+              <option value="needs_attention">{t('admin.needsAttention')}</option>
             </select>
             <Button
               variant="ghost"
@@ -300,7 +301,7 @@ export function Component() {
               className="h-8 gap-1.5 text-xs"
             >
               <RefreshCw className="h-3.5 w-3.5" />
-              Refresh
+              {t('admin.refresh')}
             </Button>
           </div>
         </CardHeader>
@@ -313,20 +314,20 @@ export function Component() {
             </div>
           ) : matches.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
-              No matches in this view.
+              {t('admin.noMatchesInView')}
             </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-                    <th className="pb-2 pr-3 font-semibold">Match</th>
-                    <th className="pb-2 pr-3 font-semibold">Status</th>
-                    <th className="pb-2 pr-3 font-semibold">Stake</th>
-                    <th className="pb-2 pr-3 font-semibold">Pool</th>
-                    <th className="pb-2 pr-3 font-semibold">Fee</th>
-                    <th className="pb-2 pr-3 font-semibold">Ledger</th>
-                    <th className="pb-2 font-semibold">Settlement</th>
+                    <th className="pb-2 pr-3 font-semibold">{t('admin.match')}</th>
+                    <th className="pb-2 pr-3 font-semibold">{t('admin.status')}</th>
+                    <th className="pb-2 pr-3 font-semibold">{t('admin.stake')}</th>
+                    <th className="pb-2 pr-3 font-semibold">{t('admin.pool')}</th>
+                    <th className="pb-2 pr-3 font-semibold">{t('admin.fee')}</th>
+                    <th className="pb-2 pr-3 font-semibold">{t('admin.ledger')}</th>
+                    <th className="pb-2 font-semibold">{t('admin.settlement')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -355,7 +356,7 @@ export function Component() {
                         <td className="py-3 pr-3 tabular-nums">{formatCurrency(match.prize_pool)}</td>
                         <td className="py-3 pr-3 tabular-nums">{formatCurrency(match.total_fee)}</td>
                         <td className="py-3 pr-3 text-[10px] text-muted-foreground">
-                          {reserved} reserved · {refunds} refunds · {payouts} payouts
+                          {t('admin.ledgerSummary', { reserved, refunds, payouts })}
                         </td>
                         <td className="py-3">
                           <span
@@ -364,7 +365,7 @@ export function Component() {
                               financialBadge[entry.financial_status]
                             )}
                           >
-                            {financialLabel[entry.financial_status]}
+                            {t(`admin.${financialLabelKeys[entry.financial_status]}`)}
                           </span>
                         </td>
                       </tr>
@@ -375,7 +376,7 @@ export function Component() {
             </div>
           )}
           <p className="mt-3 text-[10px] text-muted-foreground">
-            Settlement is derived from match state. The ledger column is the source of truth for reserved stakes, refunds, and payouts.
+            {t('admin.settlementDerivedNote')}
           </p>
         </CardContent>
       </Card>

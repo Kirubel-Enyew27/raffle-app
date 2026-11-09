@@ -123,7 +123,7 @@ export function UserMenu() {
       {open && (
         <div
           role="menu"
-          aria-label="Account menu"
+          aria-label={t('nav.accountMenu', 'Account menu')}
           className="absolute right-0 top-full mt-1.5 z-50 w-60 max-w-[calc(100vw-1.5rem)] rounded-lg border border-border bg-popover text-popover-foreground shadow-lg"
         >
           {/* Profile */}

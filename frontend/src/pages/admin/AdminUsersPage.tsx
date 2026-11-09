@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Search, Users, UserCheck, Ban, Gamepad2 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -15,7 +16,8 @@ import { cn } from '@/lib/utils'
 const PAGE_SIZE = 25
 
 export function Component() {
-  usePageTitle('Users · KWIK Admin')
+  const { t } = useTranslation()
+  usePageTitle(`${t('admin.users', 'Users')} · KWIK Admin`)
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
@@ -36,10 +38,10 @@ export function Component() {
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-5 p-3 sm:p-5 lg:p-7">
       <PageHeader
-        eyebrow="Player operations"
-        title="Users"
-        description="Search registered players and inspect their wallet, match record, and recent activity."
-        actions={<span className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold">{formatNumber(data?.total ?? 0)} players</span>}
+        eyebrow={t('admin.playerOperations', 'Player operations')}
+        title={t('admin.users', 'Users')}
+        description={t('admin.usersDescription', 'Search registered players and inspect their wallet, match record, and recent activity.')}
+        actions={<span className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold">{t('admin.playersCount', { count: formatNumber(data?.total ?? 0), defaultValue: `${formatNumber(data?.total ?? 0)} players` })}</span>}
       />
 
       <Card className="border-border/70 p-3 sm:p-4">
@@ -49,32 +51,32 @@ export function Component() {
             <Input
               value={search}
               onChange={event => setSearch(event.target.value)}
-              placeholder="Search by name, email, phone, or user ID"
+              placeholder={t('admin.searchUsersPlaceholder', 'Search by name, email, phone, or user ID')}
               className="h-10 pl-9"
             />
           </form>
           <div className="flex flex-wrap gap-2">
             <Select value={status} onChange={event => { setStatus(event.target.value); setOffset(0) }} className="h-10 w-[150px]">
-              <option value="">All accounts</option>
-              <option value="active">Active</option>
-              <option value="playing">Playing now</option>
-              <option value="banned">Banned</option>
-              <option value="admin">Administrators</option>
+              <option value="">{t('admin.allAccounts', 'All accounts')}</option>
+              <option value="active">{t('admin.statusActive', 'Active')}</option>
+              <option value="playing">{t('admin.playingNow', 'Playing now')}</option>
+              <option value="banned">{t('admin.statusBanned', 'Banned')}</option>
+              <option value="admin">{t('admin.administrators', 'Administrators')}</option>
             </Select>
             <Select value={sort} onChange={event => { setSort(event.target.value); setOffset(0) }} className="h-10 w-[165px]">
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-              <option value="matches">Most matches</option>
-              <option value="wins">Most wins</option>
-              <option value="balance">Highest balance</option>
+              <option value="newest">{t('admin.newestFirst', 'Newest first')}</option>
+              <option value="oldest">{t('admin.oldestFirst', 'Oldest first')}</option>
+              <option value="matches">{t('admin.mostMatches', 'Most matches')}</option>
+              <option value="wins">{t('admin.mostWins', 'Most wins')}</option>
+              <option value="balance">{t('admin.highestBalance', 'Highest balance')}</option>
             </Select>
           </div>
         </div>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
-          <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" /> Registered</span>
-          <span className="inline-flex items-center gap-1"><UserCheck className="h-3 w-3 text-success" /> Active account</span>
-          <span className="inline-flex items-center gap-1"><Gamepad2 className="h-3 w-3 text-primary" /> Playing now</span>
-          <span className="inline-flex items-center gap-1"><Ban className="h-3 w-3 text-destructive" /> Banned</span>
+          <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" /> {t('admin.registered', 'Registered')}</span>
+          <span className="inline-flex items-center gap-1"><UserCheck className="h-3 w-3 text-success" /> {t('admin.activeAccount', 'Active account')}</span>
+          <span className="inline-flex items-center gap-1"><Gamepad2 className="h-3 w-3 text-primary" /> {t('admin.playingNow', 'Playing now')}</span>
+          <span className="inline-flex items-center gap-1"><Ban className="h-3 w-3 text-destructive" /> {t('admin.statusBanned', 'Banned')}</span>
         </div>
       </Card>
 
@@ -85,13 +87,13 @@ export function Component() {
               <table className="w-full min-w-[900px] text-left text-sm">
                 <thead className="border-b border-border/60 bg-muted/30 text-[10px] uppercase tracking-wider text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-3 font-semibold">Player</th>
-                    <th className="px-4 py-3 font-semibold">Status</th>
-                    <th className="px-4 py-3 text-right font-semibold">Wallet</th>
-                    <th className="px-4 py-3 text-right font-semibold">Record</th>
-                    <th className="px-4 py-3 text-right font-semibold">Win rate</th>
-                    <th className="px-4 py-3 font-semibold">Registered</th>
-                    <th className="px-4 py-3 font-semibold">Last active</th>
+                    <th className="px-4 py-3 font-semibold">{t('admin.player', 'Player')}</th>
+                    <th className="px-4 py-3 font-semibold">{t('admin.status', 'Status')}</th>
+                    <th className="px-4 py-3 text-right font-semibold">{t('admin.wallet', 'Wallet')}</th>
+                    <th className="px-4 py-3 text-right font-semibold">{t('admin.record', 'Record')}</th>
+                    <th className="px-4 py-3 text-right font-semibold">{t('admin.winRate', 'Win rate')}</th>
+                    <th className="px-4 py-3 font-semibold">{t('admin.registered', 'Registered')}</th>
+                    <th className="px-4 py-3 font-semibold">{t('admin.lastActive', 'Last active')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
@@ -99,7 +101,7 @@ export function Component() {
                     <tr key={index}>{Array.from({ length: 7 }).map((__, cell) => <td key={cell} className="px-4 py-3"><Skeleton className="h-4 w-full" /></td>)}</tr>
                   ))}
                   {!isLoading && data?.items.length === 0 && (
-                    <tr><td colSpan={7}><EmptyState title="No users match this search" description="Try a different name, account status, or sort order." /></td></tr>
+                    <tr><td colSpan={7}><EmptyState title={t('admin.noUsersFound', 'No users match this search')} description={t('admin.noUsersFoundDesc', 'Try a different name, account status, or sort order.')} /></td></tr>
                   )}
                   {data?.items.map(user => (
                     <tr key={user.id} className="transition-colors hover:bg-muted/25">
@@ -107,7 +109,7 @@ export function Component() {
                         <Link to={`/admin/users/${user.id}`} className="flex items-center gap-3">
                           <Avatar name={user.full_name || user.email} src={user.avatar_url} />
                           <span className="min-w-0">
-                            <span className="block truncate font-semibold hover:text-primary">{user.full_name || 'Unnamed player'}</span>
+                            <span className="block truncate font-semibold hover:text-primary">{user.full_name || t('admin.unnamedPlayer', 'Unnamed player')}</span>
                             <span className="block truncate text-xs text-muted-foreground">{user.email}</span>
                           </span>
                         </Link>
@@ -115,17 +117,17 @@ export function Component() {
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1.5">
                           {user.is_banned ? <StatusBadge status="banned" /> : <StatusBadge status="active" />}
-                          {user.role === 'admin' && <span className="rounded-full bg-info/10 px-2 py-0.5 text-[10px] font-bold text-info">Admin</span>}
-                          {user.is_playing && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">Playing</span>}
+                          {user.role === 'admin' && <span className="rounded-full bg-info/10 px-2 py-0.5 text-[10px] font-bold text-info">{t('admin.administrator', 'Admin')}</span>}
+                          {user.is_playing && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">{t('admin.playing', 'Playing')}</span>}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <p className="font-semibold tabular-nums">{formatMoney(user.wallet_balance)}</p>
-                        <p className="text-[10px] text-muted-foreground">{formatMoney(user.reserved_balance)} reserved</p>
+                        <p className="text-[10px] text-muted-foreground">{formatMoney(user.reserved_balance)} {t('admin.reserved', 'reserved')}</p>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <p className="text-xs font-semibold"><span className="text-success">{user.wins}W</span> <span className="text-destructive">{user.losses}L</span></p>
-                        <p className="text-[10px] text-muted-foreground">{user.matches_played} played</p>
+                        <p className="text-[10px] text-muted-foreground">{user.matches_played} {t('admin.played', 'played')}</p>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="ml-auto w-16">
@@ -143,7 +145,7 @@ export function Component() {
 
             <div className="divide-y divide-border/60 md:hidden">
               {isLoading && Array.from({ length: 4 }).map((_, index) => <div key={index} className="p-4"><Skeleton className="h-20 w-full" /></div>)}
-              {!isLoading && data?.items.length === 0 && <EmptyState title="No users match this search" />}
+              {!isLoading && data?.items.length === 0 && <EmptyState title={t('admin.noUsersFound', 'No users match this search')} />}
               {data?.items.map(user => (
                 <Link key={user.id} to={`/admin/users/${user.id}`} className="block p-4 transition-colors hover:bg-muted/30">
                   <div className="flex items-start gap-3">
@@ -151,17 +153,17 @@ export function Component() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold">{user.full_name || 'Unnamed player'}</p>
+                          <p className="truncate text-sm font-semibold">{user.full_name || t('admin.unnamedPlayer', 'Unnamed player')}</p>
                           <p className="truncate text-xs text-muted-foreground">{user.email}</p>
                         </div>
                         {user.is_banned ? <StatusBadge status="banned" /> : user.is_playing ? <StatusBadge status="in_progress" /> : <StatusBadge status="active" />}
                       </div>
                       <div className="mt-2 grid grid-cols-3 gap-2 rounded-lg bg-muted/40 p-2 text-center">
-                        <div><p className="text-[9px] uppercase text-muted-foreground">Balance</p><p className="truncate text-xs font-bold">{formatMoney(user.wallet_balance)}</p></div>
-                        <div><p className="text-[9px] uppercase text-muted-foreground">Matches</p><p className="text-xs font-bold">{user.matches_played}</p></div>
-                        <div><p className="text-[9px] uppercase text-muted-foreground">Win rate</p><p className="text-xs font-bold">{user.win_rate.toFixed(0)}%</p></div>
+                        <div><p className="text-[9px] uppercase text-muted-foreground">{t('admin.balance', 'Balance')}</p><p className="truncate text-xs font-bold">{formatMoney(user.wallet_balance)}</p></div>
+                        <div><p className="text-[9px] uppercase text-muted-foreground">{t('admin.matches', 'Matches')}</p><p className="text-xs font-bold">{user.matches_played}</p></div>
+                        <div><p className="text-[9px] uppercase text-muted-foreground">{t('admin.winRate', 'Win rate')}</p><p className="text-xs font-bold">{user.win_rate.toFixed(0)}%</p></div>
                       </div>
-                      <p className="mt-2 text-[10px] text-muted-foreground">Joined {formatDate(user.created_at)} · Active {relativeTime(user.last_active_at)}</p>
+                      <p className="mt-2 text-[10px] text-muted-foreground">{t('admin.joined', 'Joined')} {formatDate(user.created_at)} · {t('admin.lastActive', 'Active')} {relativeTime(user.last_active_at)}</p>
                     </div>
                   </div>
                 </Link>
@@ -173,7 +175,7 @@ export function Component() {
         )}
       </Card>
       <p className={cn('text-[10px] text-muted-foreground', !data && 'opacity-0')}>
-        “Playing now” is derived from active P2P match participation, not a browser-presence signal.
+        {t('admin.playingNowNote', '“Playing now” is derived from active P2P match participation, not a browser-presence signal.')}
       </p>
     </div>
   )

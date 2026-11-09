@@ -149,7 +149,7 @@ function Navbar() {
             {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
 
-          <nav className="hidden gap-4 text-sm sm:flex" aria-label="Main navigation">
+          <nav className="hidden gap-4 text-sm sm:flex" aria-label={t('nav.mainNavigation')}>
             {sections.map(section => (
               <NavGroup key={section.key} label={section.label} items={section.items} />
             ))}
@@ -211,7 +211,7 @@ function Navbar() {
             </div>
           )}
 
-          <nav className="space-y-1 px-4 py-3" aria-label="Mobile navigation">
+          <nav className="space-y-1 px-4 py-3" aria-label={t('nav.mobileNavigation')}>
             {sections.map(section => (
               <div key={section.key} className="space-y-1">
                 <NavLink
@@ -283,7 +283,7 @@ function MobileTabBar() {
 
   return (
     <nav
-      aria-label="Primary"
+      aria-label={t('nav.primaryNavigation')}
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
     >
       <div className="mx-auto flex max-w-md items-stretch justify-between px-2">

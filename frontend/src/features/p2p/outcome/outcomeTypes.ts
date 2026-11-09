@@ -42,6 +42,11 @@ export interface GameOutcome {
   title: string
   subtitle: string
   detail: string
+  titleKey?: string
+  subtitleKey?: string
+  subtitleParams?: Record<string, unknown>
+  detailKey?: string
+  detailParams?: Record<string, unknown>
   winnerUserId: string | null
   winnerPlayerIndex: number | null
   opponentName: string

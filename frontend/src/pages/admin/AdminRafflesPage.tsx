@@ -3,11 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, Pencil, XCircle, Users, BarChart2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+
 import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { adminApi } from '@/features/admin/api'
+import { StatusBadge } from '@/features/admin/AdminUi'
 import { RaffleFormModal } from '@/features/admin/RaffleFormModal'
 import { RaffleParticipantsModal } from '@/features/admin/RaffleParticipantsModal'
 import { RaffleTicketSalesPanel } from '@/features/admin/RaffleTicketSalesPanel'
@@ -16,11 +17,6 @@ import type { Raffle } from '@/types/api'
 
 const PAGE_SIZE = 10
 const usd = (n: number) => formatCurrency(n)
-
-const statusVariant: Record<string, 'default' | 'success' | 'warning' | 'destructive' | 'secondary'> = {
-  active: 'success', scheduled: 'warning', draft: 'secondary',
-  completed: 'default', closed: 'destructive', cancelled: 'destructive',
-}
 
 type Modal = { type: 'create' } | { type: 'edit'; raffle: Raffle }
   | { type: 'participants'; raffle: Raffle } | { type: 'sales'; raffle: Raffle } | null
@@ -98,7 +94,7 @@ export function Component() {
                   <p className="font-medium">{r.title}</p>
                   <p className="text-xs text-muted-foreground line-clamp-1">{r.description}</p>
                 </td>
-                <td className="px-4 py-3"><Badge variant={statusVariant[r.status] ?? 'secondary'}>{r.status}</Badge></td>
+                <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
                 <td className="px-4 py-3 text-right">{usd(r.ticket_price)}</td>
                 <td className="px-4 py-3 text-right">
                   <span>{r.sold_tickets}</span><span className="text-muted-foreground">/{r.total_tickets}</span>

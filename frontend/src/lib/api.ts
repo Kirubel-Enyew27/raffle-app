@@ -1,4 +1,5 @@
 import axios, { type AxiosError } from 'axios'
+import i18n from '@/lib/i18n'
 import { AUTH_TOKEN_REFRESHED_EVENT, authStorage } from '@/lib/authStorage'
 import { installAuthInterceptors, type RefreshedTokens } from '@/lib/authInterceptor'
 import { setSseTokenRefresher } from '@/lib/sseClient'
@@ -117,14 +118,16 @@ api.interceptors.response.use(
         ? rawData.code || rawData.error?.code
         : undefined
 
+    // Server messages (including database-provided text) pass through untouched;
+    // only the client-side fallbacks are localized.
     let message = serverMessage
     if (!message) {
       if (status === 404) {
-        message = 'The requested resource was not found'
+        message = i18n.t('errors.notFound')
       } else if (err.code === 'ERR_NETWORK' || !err.response) {
-        message = 'Unable to connect to the server. Please check your internet connection.'
+        message = i18n.t('errors.networkErrorDesc')
       } else {
-        message = err.message || 'An unexpected error occurred'
+        message = err.message || i18n.t('errors.unexpectedError')
       }
     }
 

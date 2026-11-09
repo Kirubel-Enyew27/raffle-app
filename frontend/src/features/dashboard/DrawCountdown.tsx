@@ -32,13 +32,13 @@ function LiveCountdown({ drawDate, title }: { drawDate: string; title: string })
     <div>
       <p className="mb-3 text-sm font-medium line-clamp-1">{title}</p>
       <div className="flex items-end gap-1">
-        <CountdownUnit value={days} label={t('common.loading') === t('common.loading') ? 'days' : 'ቀናት'} />
+        <CountdownUnit value={days} label={t('time.daysShort')} />
         <Divider />
-        <CountdownUnit value={hours} label="hrs" />
+        <CountdownUnit value={hours} label={t('time.hoursShort')} />
         <Divider />
-        <CountdownUnit value={minutes} label="min" />
+        <CountdownUnit value={minutes} label={t('time.minutesShort')} />
         <Divider />
-        <CountdownUnit value={seconds} label="sec" />
+        <CountdownUnit value={seconds} label={t('time.secondsShort')} />
       </div>
     </div>
   )

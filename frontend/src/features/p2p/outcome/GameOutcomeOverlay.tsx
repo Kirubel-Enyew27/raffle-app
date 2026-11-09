@@ -1,8 +1,10 @@
 import { createPortal } from 'react-dom'
 import { Trophy, Frown, Handshake, Eye, ArrowLeft, Loader2, RotateCcw } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { GameOutcome } from './outcomeTypes'
+import { getOutcomeTitle, getOutcomeSubtitle, getOutcomeDetail } from './outcomeExtractor'
 
 interface GameOutcomeOverlayProps {
   outcome: GameOutcome
@@ -27,25 +29,27 @@ export function GameOutcomeOverlay({
   iRequestedRematch,
   opponentRequestedRematch,
 }: GameOutcomeOverlayProps) {
+  const { t } = useTranslation()
   const isWin = outcome.type === 'win'
   const isLoss = outcome.type === 'loss'
 
+  const title = getOutcomeTitle(outcome, t)
+  const subtitle = getOutcomeSubtitle(outcome, t)
+  const detail = getOutcomeDetail(outcome, t)
+
   // ── Review mode: touch-friendly floating bar that doesn't obstruct the board ─
-  // Portalled to document.body so it reliably renders above mobile tab navigation
-  // and any parent stacking contexts. Positioned above mobile safe-areas and
-  // the bottom tab bar on mobile, and neatly centered at the bottom on desktop.
   if (isReviewingBoard) {
     const reviewBarContent = (
       <aside
-        aria-label="Match outcome controls"
+        aria-label={t('p2p.outcome.matchOutcomeControls', 'Match outcome controls')}
         className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+4.25rem)] sm:bottom-6 left-1/2 z-50 -translate-x-1/2 flex items-center justify-between sm:justify-center gap-2 sm:gap-3 rounded-full border border-border/80 bg-background/95 px-3 py-1.5 sm:px-5 sm:py-2.5 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-3 w-[calc(100%-1.5rem)] max-w-md sm:w-auto"
       >
         <div className="flex items-center gap-1.5 sm:gap-2 font-bold text-xs shrink-0">
           <span className="text-sm sm:text-base">{isWin ? '🏆' : isLoss ? '💀' : '🤝'}</span>
           <span className={isWin ? 'text-success' : isLoss ? 'text-destructive' : 'text-warning'}>
-            {outcome.title}
+            {title}
           </span>
-          <span className="text-muted-foreground hidden md:inline">· {outcome.subtitle}</span>
+          <span className="text-muted-foreground hidden md:inline">· {subtitle}</span>
         </div>
 
         <div className="h-5 w-px bg-border/80 shrink-0 hidden sm:block" />
@@ -55,11 +59,11 @@ export function GameOutcomeOverlay({
             size="sm"
             variant="secondary"
             onClick={onToggleReviewBoard}
-            aria-label="View game results"
+            aria-label={t('p2p.outcome.viewResults', 'View Results')}
             className="h-11 min-h-[44px] min-w-[44px] text-xs font-semibold gap-1.5 rounded-full px-3.5 sm:px-4 shadow-sm active:scale-95 transition-transform"
           >
             <Trophy className="h-4 w-4 text-primary" />
-            <span>View Results</span>
+            <span>{t('p2p.outcome.viewResults', 'View Results')}</span>
           </Button>
 
           {canRematch && (
@@ -67,23 +71,23 @@ export function GameOutcomeOverlay({
               size="sm"
               onClick={onRematch}
               disabled={isRematchPending || iRequestedRematch}
-              aria-label="Request rematch"
+              aria-label={t('p2p.outcome.rematch', 'Rematch')}
               className="h-11 min-h-[44px] min-w-[44px] text-xs font-bold rounded-full gap-1.5 px-3.5 sm:px-4 shadow-md shadow-primary/20 active:scale-95 transition-transform"
             >
               {iRequestedRematch ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <span className="hidden sm:inline">Waiting…</span>
+                  <span className="hidden sm:inline">{t('p2p.outcome.waitingForRematch', 'Waiting…')}</span>
                 </>
               ) : opponentRequestedRematch ? (
                 <>
                   <RotateCcw className="h-3.5 w-3.5" />
-                  <span>Accept</span>
+                  <span>{t('p2p.outcome.acceptRematch', 'Accept')}</span>
                 </>
               ) : (
                 <>
                   <RotateCcw className="h-3.5 w-3.5" />
-                  <span>Rematch</span>
+                  <span>{t('p2p.outcome.rematch', 'Rematch')}</span>
                 </>
               )}
             </Button>
@@ -99,14 +103,6 @@ export function GameOutcomeOverlay({
   }
 
   // ── Full result card — absolutely positioned over the board ────────────────
-  //
-  // The parent in P2PMatchPage has `position: relative` (via the
-  // `relative w-full flex flex-col items-center` wrapper), so this element
-  // sits on top of the board while the board itself remains fully visible
-  // through the semi-transparent backdrop.
-  //
-  // pointer-events on the backdrop are none so clicks pass through to the
-  // board for board review; the card itself restores pointer-events.
   return (
     <>
       {/* Translucent backdrop — covers the board but lets it show through */}
@@ -171,24 +167,30 @@ export function GameOutcomeOverlay({
                       : 'border-warning/40 text-warning bg-warning/10',
                 ].join(' ')}
               >
-                {isWin ? 'Match Won' : isLoss ? 'Match Lost' : 'Match Tied'}
+                {isWin
+                  ? t('p2p.outcome.matchWon', 'Match Won')
+                  : isLoss
+                    ? t('p2p.outcome.matchLost', 'Match Lost')
+                    : t('p2p.outcome.matchTied', 'Match Tied')}
               </Badge>
               <h2 id="outcome-title" className="text-xl sm:text-2xl font-black tracking-tight">
-                {outcome.title}
+                {title}
               </h2>
               <p className="text-xs font-semibold text-foreground/90 max-w-[220px] mx-auto">
-                {outcome.subtitle}
+                {subtitle}
               </p>
               <p className="text-[11px] text-muted-foreground">
-                {outcome.detail} · vs{' '}
-                <span className="font-semibold text-foreground">{outcome.opponentName}</span>
+                {detail} ·{' '}
+                <span className="font-semibold text-foreground">
+                  {t('p2p.outcome.vsOpponent', { name: outcome.opponentName, defaultValue: `vs ${outcome.opponentName}` })}
+                </span>
               </p>
             </div>
 
             {/* Opponent Rematch Notice */}
             {opponentRequestedRematch && (
               <div className="w-full rounded-xl border border-success/30 bg-success/10 p-2 text-[11px] font-semibold text-success animate-pulse">
-                Your opponent wants a rematch! Accept to play immediately.
+                {t('p2p.outcome.opponentRematchPrompt', 'Your opponent wants a rematch! Accept to play immediately.')}
               </div>
             )}
 
@@ -202,7 +204,7 @@ export function GameOutcomeOverlay({
                   className="flex-1 text-xs font-semibold min-h-[44px] h-10 gap-1.5 active:scale-95 transition-transform"
                 >
                   <Eye className="h-4 w-4" />
-                  <span>Review Board</span>
+                  <span>{t('p2p.outcome.reviewBoard', 'Review Board')}</span>
                 </Button>
 
                 {canRematch ? (
@@ -215,17 +217,17 @@ export function GameOutcomeOverlay({
                     {iRequestedRematch ? (
                       <>
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        <span>Waiting…</span>
+                        <span>{t('p2p.outcome.waitingForRematch', 'Waiting…')}</span>
                       </>
                     ) : opponentRequestedRematch ? (
                       <>
                         <RotateCcw className="h-3.5 w-3.5" />
-                        <span>Accept</span>
+                        <span>{t('p2p.outcome.acceptRematch', 'Accept')}</span>
                       </>
                     ) : (
                       <>
                         <RotateCcw className="h-3.5 w-3.5" />
-                        <span>Play Again</span>
+                        <span>{t('p2p.outcome.playAgain', 'Play Again')}</span>
                       </>
                     )}
                   </Button>
@@ -239,7 +241,7 @@ export function GameOutcomeOverlay({
                 className="text-xs text-muted-foreground hover:text-foreground min-h-[44px] h-10 gap-1.5 active:scale-95 transition-transform"
               >
                 <ArrowLeft className="h-4 w-4" />
-                <span>Return to Lobby</span>
+                <span>{t('p2p.outcome.returnToLobby', 'Return to Lobby')}</span>
               </Button>
             </div>
           </div>

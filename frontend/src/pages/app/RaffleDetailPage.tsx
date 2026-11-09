@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { ChevronLeft, Minus, Plus, Ticket, Trophy, Calendar, Users } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,8 +19,9 @@ const statusVariant: Record<string, 'success' | 'secondary' | 'outline' | 'warni
 }
 
 function CountdownBadge({ drawDate }: { drawDate: string }) {
+  const { t } = useTranslation()
   const { days, hours, minutes, expired } = useCountdown(drawDate)
-  if (expired) return <span className="text-sm text-muted-foreground">Draw completed</span>
+  if (expired) return <span className="text-sm text-muted-foreground">{t('raffles.drawCompleted', 'Draw completed')}</span>
   return (
     <span className="text-sm font-medium tabular-nums">
       {days > 0 ? `${days}d ` : ''}{String(hours).padStart(2, '0')}h {String(minutes).padStart(2, '0')}m
@@ -33,30 +35,32 @@ function PurchaseSuccess({ tickets, totalSpent, onDismiss }: {
   totalSpent: number
   onDismiss: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <div className="rounded-lg border border-success/30 bg-success/10 p-4">
       <div className="mb-3 flex items-center gap-2 text-success">
         <Ticket className="h-5 w-5" />
-        <p className="font-semibold">Tickets purchased!</p>
+        <p className="font-semibold">{t('raffles.ticketsPurchased', 'Tickets purchased!')}</p>
       </div>
       <div className="mb-3 flex flex-wrap gap-2">
-        {tickets.map(t => (
-          <span key={t.ticket_number}
+        {tickets.map(tItem => (
+          <span key={tItem.ticket_number}
             className="rounded-md border border-success/30 bg-surface px-2 py-1 text-sm font-mono font-medium">
-            #{t.ticket_number}
+            #{tItem.ticket_number}
           </span>
         ))}
       </div>
       <p className="mb-3 text-sm text-success">
-        Total charged: <strong>{formatCurrency(totalSpent)}</strong>
+        {t('raffles.totalCharged', 'Total charged:')} <strong>{formatCurrency(totalSpent)}</strong>
       </p>
-      <Button variant="outline" size="sm" onClick={onDismiss}>Buy more</Button>
+      <Button variant="outline" size="sm" onClick={onDismiss}>{t('raffles.buyMore', 'Buy more')}</Button>
     </div>
   )
 }
 
 export function Component() {
-  usePageTitle('Raffle detail')
+  const { t } = useTranslation()
+  usePageTitle(t('raffles.raffleDetail', 'Raffle detail'))
   const { id } = useParams<{ id: string }>()
   const qc = useQueryClient()
   const [quantity, setQuantity] = useState(1)
@@ -106,9 +110,9 @@ export function Component() {
   if (error || !raffle) {
     return (
       <div className="mx-auto max-w-3xl p-4 sm:p-6">
-        <p className="text-destructive">Raffle not found.</p>
+        <p className="text-destructive">{t('raffles.raffleNotFound', 'Raffle not found.')}</p>
         <Link to="/raffles" className="mt-2 inline-block text-sm text-primary hover:underline">
-          ← Back to raffles
+          ← {t('raffles.backToRaffles', 'Back to raffles')}
         </Link>
       </div>
     )
@@ -117,7 +121,7 @@ export function Component() {
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">
       <Link to="/raffles" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ChevronLeft className="h-4 w-4" /> Back to raffles
+        <ChevronLeft className="h-4 w-4" /> {t('raffles.backToRaffles', 'Back to raffles')}
       </Link>
 
       {/* header */}
@@ -127,17 +131,17 @@ export function Component() {
           <p className="mt-1 text-muted-foreground">{raffle.description}</p>
         </div>
         <Badge variant={statusVariant[raffle.status] ?? 'outline'} className="text-sm">
-          {raffle.status}
+          {t(`raffles.status.${raffle.status}`, raffle.status)}
         </Badge>
       </div>
 
       {/* stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { icon: Trophy, label: 'Prize Pool', value: formatCurrency(raffle.prize_pool) },
-          { icon: Ticket, label: 'Ticket Price', value: formatCurrency(raffle.ticket_price) },
-          { icon: Users, label: 'Tickets Left', value: remaining.toLocaleString() },
-          { icon: Calendar, label: 'Draw In', value: <CountdownBadge drawDate={raffle.draw_date} /> },
+          { icon: Trophy, label: t('raffles.prizePoolLabel', 'Prize Pool'), value: formatCurrency(raffle.prize_pool) },
+          { icon: Ticket, label: t('raffles.ticketPriceLabel', 'Ticket Price'), value: formatCurrency(raffle.ticket_price) },
+          { icon: Users, label: t('raffles.ticketsLeft', 'Tickets Left'), value: remaining.toLocaleString() },
+          { icon: Calendar, label: t('raffles.drawIn', 'Draw In'), value: <CountdownBadge drawDate={raffle.draw_date} /> },
         ].map(({ icon: Icon, label, value }) => (
           <Card key={label}>
             <CardContent className="flex flex-col gap-1 p-4">
@@ -153,8 +157,8 @@ export function Component() {
       <Card>
         <CardContent className="p-4">
           <div className="mb-1.5 flex justify-between text-sm">
-            <span className="text-muted-foreground">{raffle.sold_tickets.toLocaleString()} sold</span>
-            <span className="font-medium">{pct}% full</span>
+            <span className="text-muted-foreground">{raffle.sold_tickets.toLocaleString()} {t('raffles.soldTickets', 'sold')}</span>
+            <span className="font-medium">{pct}{t('raffles.percentFull', '% full')}</span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
             <div
@@ -164,7 +168,7 @@ export function Component() {
             />
           </div>
           <p className="mt-1.5 text-xs text-muted-foreground">
-            {remaining.toLocaleString()} of {raffle.total_tickets.toLocaleString()} tickets remaining
+            {t('raffles.ticketsRemaining', { remaining: remaining.toLocaleString(), total: raffle.total_tickets.toLocaleString() })}
           </p>
         </CardContent>
       </Card>
@@ -173,7 +177,7 @@ export function Component() {
       {isActive && remaining > 0 ? (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Purchase Tickets</CardTitle>
+            <CardTitle className="text-base">{t('raffles.purchaseTickets', 'Purchase Tickets')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {purchaseResult ? (
@@ -188,8 +192,8 @@ export function Component() {
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium">Quantity</p>
-                    <p className="text-xs text-muted-foreground">Max 10 per purchase</p>
+                    <p className="text-sm font-medium">{t('raffles.quantity', 'Quantity')}</p>
+                    <p className="text-xs text-muted-foreground">{t('raffles.maxPerPurchase', 'Max 10 per purchase')}</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <Button variant="outline" size="icon" className="h-8 w-8"
@@ -214,7 +218,7 @@ export function Component() {
                   </div>
                   {wallet && (
                     <div className="flex justify-between border-t pt-1.5">
-                      <span className="text-muted-foreground">Your balance</span>
+                      <span className="text-muted-foreground">{t('raffles.yourBalance', 'Your balance')}</span>
                       <span className={cn('font-medium', !canAfford && 'text-destructive')}>
                         {formatCurrency(wallet.balance)}
                       </span>
@@ -224,8 +228,8 @@ export function Component() {
 
                 {wallet && !canAfford && (
                   <p className="text-sm text-destructive">
-                    Insufficient balance.{' '}
-                    <Link to="/wallet" className="underline">Top up your wallet</Link>
+                    {t('raffles.insufficientBalance', 'Insufficient balance.')}{' '}
+                    <Link to="/wallet" className="underline">{t('raffles.topUpWallet', 'Top up your wallet')}</Link>
                   </p>
                 )}
 
@@ -234,7 +238,7 @@ export function Component() {
                   disabled={isPending || !canAfford || quantity < 1}
                   onClick={() => purchase()}
                 >
-                  {isPending ? 'Processing…' : `Buy ${quantity} ticket${quantity > 1 ? 's' : ''} — ${formatCurrency(cost)}`}
+                  {isPending ? t('raffles.processing', 'Processing…') : t('raffles.buyButton', { n: quantity, plural: quantity > 1 ? 's' : '', cost: formatCurrency(cost) })}
                 </Button>
               </>
             )}
@@ -244,12 +248,12 @@ export function Component() {
         <Card>
           <CardContent className="p-6 text-center text-muted-foreground">
             {raffle.status === 'completed'
-              ? 'This raffle has ended.'
+              ? t('raffles.raffleEnded', 'This raffle has ended.')
               : raffle.status === 'cancelled'
-                ? 'This raffle was cancelled.'
+                ? t('raffles.raffleCancelled', 'This raffle was cancelled.')
                 : remaining === 0
-                  ? 'This raffle is sold out.'
-                  : 'Ticket sales have not started yet.'}
+                  ? t('raffles.raffleSoldOut', 'This raffle is sold out.')
+                  : t('raffles.ticketSalesNotStarted', 'Ticket sales have not started yet.')}
           </CardContent>
         </Card>
       )}

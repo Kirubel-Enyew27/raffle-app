@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "node --test \"src/**/*.test.ts\"",
     "typecheck:test": "tsc -p tsconfig.test.json",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "i18n:check": "node scripts/check-i18n.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

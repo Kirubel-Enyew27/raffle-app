@@ -5,6 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { ChevronDown } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { ConnectFourToken } from './ConnectFourToken'
 import {
@@ -41,6 +42,7 @@ export function ConnectFourBoard({
   isGameOver = false,
   isTie = false,
 }: ConnectFourBoardProps) {
+  const { t } = useTranslation()
   const cols = boardState?.columns || 7
   const rows = boardState?.rows || 6
   const cells = boardState?.cells || new Array(cols * rows).fill(0)
@@ -154,7 +156,7 @@ export function ConnectFourBoard({
                 'flex items-center justify-center rounded-lg transition-colors',
                 canDrop ? 'cursor-pointer text-muted-foreground hover:bg-accent/40' : 'cursor-default opacity-0',
               ].join(' ')}
-              aria-label={`Drop token into column ${column + 1}`}
+              aria-label={t('p2p.dropTokenAria', { column: column + 1, defaultValue: `Drop token into column ${column + 1}` })}
             >
               {isPreviewed && mySeat ? (
                 <span aria-hidden="true">
@@ -214,9 +216,9 @@ export function ConnectFourBoard({
                       : '',
                     isDraw ? 'ring-1 ring-amber-400/40' : '',
                   ].join(' ')}
-                  aria-label={`Row ${row + 1}, column ${column + 1}: ${
-                    seat ? (seat === 1 ? 'red token' : 'amber token') : 'empty'
-                  }${isWin ? ', part of the winning 4-in-a-row connection' : ''}`}
+                  aria-label={`${t('p2p.board.rowColumn', { row: row + 1, column: column + 1 })}, ${
+                    seat ? (seat === 1 ? t('p2p.board.redToken') : t('p2p.board.amberToken')) : t('p2p.board.empty')
+                  }${isWin ? ` · ${t('p2p.board.winningConnection')}` : ''}`}
                 >
                   {seat && (
                     <span
@@ -255,25 +257,29 @@ export function ConnectFourBoard({
       <div className="mt-3 flex w-full max-w-md items-center justify-between gap-2 px-1 text-[11px] font-semibold text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <ConnectFourToken seat={1} className="h-4 w-4" />
-          <span className={mySeat === 1 ? 'text-foreground font-bold' : ''}>{mySeat === 1 ? 'You' : 'Opponent'}</span>
+          <span className={mySeat === 1 ? 'text-foreground font-bold' : ''}>
+            {mySeat === 1 ? t('p2p.rps.you', 'You') : t('p2p.rps.opponent', 'Opponent')}
+          </span>
         </span>
 
         {winningLine ? (
           <span className="font-extrabold text-success animate-pulse text-xs">
-            4-in-a-Row Connected!
+            {t('p2p.c4Connected', '4-in-a-Row Connected!')}
           </span>
         ) : isDraw ? (
           <span className="font-extrabold text-warning text-xs">
-            Full Grid — Draw!
+            {t('p2p.c4FullGrid', 'Full Grid — Draw!')}
           </span>
         ) : (
           <span className={isMyTurn ? 'text-success' : ''}>
-            {isMyTurn ? 'Your turn' : 'Opponent’s turn'}
+            {isMyTurn ? t('p2p.yourTurn', 'Your turn') : t('p2p.opponentTurn', 'Opponent’s turn')}
           </span>
         )}
 
         <span className="flex items-center gap-1.5">
-          <span className={mySeat === 2 ? 'text-foreground font-bold' : ''}>{mySeat === 2 ? 'You' : 'Opponent'}</span>
+          <span className={mySeat === 2 ? 'text-foreground font-bold' : ''}>
+            {mySeat === 2 ? t('p2p.rps.you', 'You') : t('p2p.rps.opponent', 'Opponent')}
+          </span>
           <ConnectFourToken seat={2} className="h-4 w-4" />
         </span>
       </div>

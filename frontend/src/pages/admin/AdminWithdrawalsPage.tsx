@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { CheckCircle, Search, X, XCircle } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -26,32 +27,33 @@ function WithdrawalDrawer({
   onReject: () => void
   busy: boolean
 }) {
+  const { t } = useTranslation()
   const pending = withdrawal.status === 'pending'
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <button className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" aria-label="Close withdrawal details" onClick={onClose} />
+      <button className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" aria-label={t('admin.closeWithdrawalDetails', 'Close withdrawal details')} onClick={onClose} />
       <aside className="relative h-full w-full max-w-md overflow-y-auto border-l border-border bg-card shadow-2xl">
         <div className="sticky top-0 flex items-center justify-between border-b border-border/70 bg-card/95 px-4 py-4 backdrop-blur">
-          <div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Withdrawal detail</p><h2 className="text-lg font-black">{formatMoney(withdrawal.amount, withdrawal.currency)}</h2></div>
-          <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-accent" aria-label="Close"><X className="h-4 w-4" /></button>
+          <div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">{t('admin.withdrawalDetail', 'Withdrawal detail')}</p><h2 className="text-lg font-black">{formatMoney(withdrawal.amount, withdrawal.currency)}</h2></div>
+          <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-accent" aria-label={t('admin.close', 'Close')}><X className="h-4 w-4" /></button>
         </div>
         <div className="space-y-4 p-4">
           <StatusBadge status={withdrawal.status} />
-          <div className="flex items-center gap-2.5 rounded-xl border border-border/60 p-3"><Avatar name={withdrawal.user_name || withdrawal.user_email} /><div className="min-w-0"><p className="truncate text-sm font-semibold">{withdrawal.user_name || 'Unnamed player'}</p><p className="truncate text-[10px] text-muted-foreground">{withdrawal.user_email}</p></div></div>
+          <div className="flex items-center gap-2.5 rounded-xl border border-border/60 p-3"><Avatar name={withdrawal.user_name || withdrawal.user_email} /><div className="min-w-0"><p className="truncate text-sm font-semibold">{withdrawal.user_name || t('admin.unnamedPlayer', 'Unnamed player')}</p><p className="truncate text-[10px] text-muted-foreground">{withdrawal.user_email}</p></div></div>
           <div className="space-y-2 rounded-xl border border-border/60 p-3 text-xs">
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Transaction</span><span className="break-all text-right font-mono text-[10px]">{withdrawal.id}</span></div>
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Reference</span><span className="break-all text-right font-mono text-[10px]">{withdrawal.reference || '—'}</span></div>
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Description</span><span className="max-w-[220px] text-right">{withdrawal.description || '—'}</span></div>
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Requested</span><span>{formatDate(withdrawal.created_at, true)}</span></div>
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Updated</span><span>{formatDate(withdrawal.updated_at, true)}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-muted-foreground">{t('admin.transaction', 'Transaction')}</span><span className="break-all text-right font-mono text-[10px]">{withdrawal.id}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-muted-foreground">{t('admin.reference', 'Reference')}</span><span className="break-all text-right font-mono text-[10px]">{withdrawal.reference || '—'}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-muted-foreground">{t('raffles.description', 'Description')}</span><span className="max-w-[220px] text-right">{withdrawal.description || '—'}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-muted-foreground">{t('admin.requested', 'Requested')}</span><span>{formatDate(withdrawal.created_at, true)}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-muted-foreground">{t('admin.updated', 'Updated')}</span><span>{formatDate(withdrawal.updated_at, true)}</span></div>
           </div>
           {pending && (
             <div className="rounded-xl border border-warning/30 bg-warning/5 p-3">
-              <p className="text-xs font-semibold">Financial action</p>
-              <p className="mt-0.5 text-[10px] text-muted-foreground">Approval atomically debits the wallet and marks the request completed. Rejection only closes the request: pending withdrawals do not reserve or hold funds.</p>
+              <p className="text-xs font-semibold">{t('admin.financialAction', 'Financial action')}</p>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">{t('admin.withdrawalActionNote', 'Approval atomically debits the wallet and marks the request completed. Rejection only closes the request: pending withdrawals do not reserve or hold funds.')}</p>
               <div className="mt-3 flex gap-2">
-                <Button size="sm" className="flex-1 gap-1" disabled={busy} onClick={onApprove}><CheckCircle className="h-3.5 w-3.5" /> Approve</Button>
-                <Button size="sm" variant="outline" className="flex-1 gap-1 text-destructive hover:text-destructive" disabled={busy} onClick={onReject}><XCircle className="h-3.5 w-3.5" /> Reject</Button>
+                <Button size="sm" className="flex-1 gap-1" disabled={busy} onClick={onApprove}><CheckCircle className="h-3.5 w-3.5" /> {t('admin.approve', 'Approve')}</Button>
+                <Button size="sm" variant="outline" className="flex-1 gap-1 text-destructive hover:text-destructive" disabled={busy} onClick={onReject}><XCircle className="h-3.5 w-3.5" /> {t('admin.reject', 'Reject')}</Button>
               </div>
             </div>
           )}
@@ -62,7 +64,8 @@ function WithdrawalDrawer({
 }
 
 export function Component() {
-  usePageTitle('Withdrawals · KWIK Admin')
+  const { t } = useTranslation()
+  usePageTitle(`${t('admin.withdrawals', 'Withdrawals')} · KWIK Admin`)
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
@@ -84,23 +87,23 @@ export function Component() {
   }
   const approve = useMutation({
     mutationFn: (id: string) => adminApi.approveWithdrawal(id),
-    onSuccess: () => { refresh(); setNotice('Withdrawal approved.'); setSelectedId(null) },
-    onError: () => setNotice('Could not approve this withdrawal.'),
+    onSuccess: () => { refresh(); setNotice(t('admin.withdrawalApprovedNotice', 'Withdrawal approved.')); setSelectedId(null) },
+    onError: () => setNotice(t('admin.approveErrorNotice', 'Could not approve this withdrawal.')),
   })
   const reject = useMutation({
     mutationFn: (id: string) => adminApi.rejectWithdrawal(id),
-    onSuccess: () => { refresh(); setNotice('Withdrawal rejected.'); setSelectedId(null) },
-    onError: () => setNotice('Could not reject this withdrawal.'),
+    onSuccess: () => { refresh(); setNotice(t('admin.withdrawalRejectedNotice', 'Withdrawal rejected.')); setSelectedId(null) },
+    onError: () => setNotice(t('admin.rejectErrorNotice', 'Could not reject this withdrawal.')),
   })
   const busy = approve.isPending || reject.isPending
 
   return (
     <div className="mx-auto w-full max-w-[1450px] space-y-5 p-3 sm:p-5 lg:p-7">
       <PageHeader
-        eyebrow="Money out"
-        title="Withdrawals"
-        description="Review the full withdrawal history and act on requests that still need an authorized decision."
-        actions={<span className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold">{formatNumber(data?.total ?? 0)} requests</span>}
+        eyebrow={t('admin.moneyOut', 'Money out')}
+        title={t('admin.withdrawals', 'Withdrawals')}
+        description={t('admin.withdrawalsDesc', 'Review the full withdrawal history and act on requests that still need an authorized decision.')}
+        actions={<span className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold">{t('admin.withdrawalsCount', { count: formatNumber(data?.total ?? 0), defaultValue: `${formatNumber(data?.total ?? 0)} requests` })}</span>}
       />
       {notice && (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 text-xs font-medium">
@@ -111,15 +114,15 @@ export function Component() {
       <Card className="border-border/70 p-3 sm:p-4">
         <form onSubmit={event => { event.preventDefault(); setOffset(0); setQuery(search.trim()) }} className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search by transaction ID, reference, name, or email" className="h-10 pl-9" />
+          <Input value={search} onChange={event => setSearch(event.target.value)} placeholder={t('admin.searchWithdrawalsPlaceholder', 'Search by transaction ID, reference, description, name, or email')} className="h-10 pl-9" />
         </form>
         <div className="mt-2 flex flex-wrap gap-2">
           <Select value={status} onChange={event => { setStatus(event.target.value); setOffset(0) }} className="h-9 w-[155px] text-xs">
-            <option value="">All statuses</option>
+            <option value="">{t('admin.allStatuses', 'All statuses')}</option>
             {['pending', 'completed', 'failed', 'rejected', 'cancelled'].map(item => <option key={item} value={item}>{item}</option>)}
           </Select>
           <DateRangeBar from={range.from} to={range.to} onChange={(from, to) => { setRange({ from, to }); setOffset(0) }} />
-          {(query || status || range.from || range.to) && <Button variant="ghost" size="sm" onClick={() => { setSearch(''); setQuery(''); setStatus(''); setRange({ from: '', to: '' }); setOffset(0) }}>Clear</Button>}
+          {(query || status || range.from || range.to) && <Button variant="ghost" size="sm" onClick={() => { setSearch(''); setQuery(''); setStatus(''); setRange({ from: '', to: '' }); setOffset(0) }}>{t('admin.clear', 'Clear')}</Button>}
         </div>
       </Card>
 
@@ -129,15 +132,15 @@ export function Component() {
             <div className="hidden overflow-x-auto md:block">
               <table className="w-full min-w-[900px] text-left text-sm">
                 <thead className="border-b border-border/60 bg-muted/30 text-[10px] uppercase tracking-wider text-muted-foreground">
-                  <tr><th className="px-4 py-3 font-semibold">Reference</th><th className="px-4 py-3 font-semibold">Player</th><th className="px-4 py-3 text-right font-semibold">Amount</th><th className="px-4 py-3 font-semibold">Status</th><th className="px-4 py-3 font-semibold">Requested</th><th className="px-4 py-3 font-semibold">Updated</th><th className="px-4 py-3 text-right font-semibold">Action</th></tr>
+                  <tr><th className="px-4 py-3 font-semibold">{t('admin.reference', 'Reference')}</th><th className="px-4 py-3 font-semibold">{t('admin.player', 'Player')}</th><th className="px-4 py-3 text-right font-semibold">{t('admin.amount', 'Amount')}</th><th className="px-4 py-3 font-semibold">{t('admin.status', 'Status')}</th><th className="px-4 py-3 font-semibold">{t('admin.requested', 'Requested')}</th><th className="px-4 py-3 font-semibold">{t('admin.updated', 'Updated')}</th><th className="px-4 py-3 text-right font-semibold">{t('admin.actions', 'Action')}</th></tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {isLoading && Array.from({ length: 8 }).map((_, index) => <tr key={index}>{Array.from({ length: 7 }).map((__, cell) => <td key={cell} className="px-4 py-3"><Skeleton className="h-4 w-full" /></td>)}</tr>)}
-                  {!isLoading && data?.items.length === 0 && <tr><td colSpan={7}><EmptyState title="No withdrawals found" description="Try a different status, date range, or search term." /></td></tr>}
+                  {!isLoading && data?.items.length === 0 && <tr><td colSpan={7}><EmptyState title={t('admin.noWithdrawalsFound', 'No withdrawals found')} description={t('admin.noWithdrawalsFoundDesc', 'Try a different status, date range, or search term.')} /></td></tr>}
                   {data?.items.map(withdrawal => (
                     <tr key={withdrawal.id} className="cursor-pointer transition-colors hover:bg-muted/25" onClick={() => setSelectedId(withdrawal.id)}>
                       <td className="px-4 py-3"><p className="font-mono text-[10px] text-muted-foreground">{shortId(withdrawal.id)}</p><p className="text-[10px] text-muted-foreground">{withdrawal.reference || '—'}</p></td>
-                      <td className="px-4 py-3"><p className="max-w-[190px] truncate text-xs font-semibold">{withdrawal.user_name || 'Unnamed player'}</p><p className="max-w-[190px] truncate text-[10px] text-muted-foreground">{withdrawal.user_email}</p></td>
+                      <td className="px-4 py-3"><p className="max-w-[190px] truncate text-xs font-semibold">{withdrawal.user_name || t('admin.unnamedPlayer', 'Unnamed player')}</p><p className="max-w-[190px] truncate text-[10px] text-muted-foreground">{withdrawal.user_email}</p></td>
                       <td className="px-4 py-3 text-right font-bold tabular-nums">{formatMoney(withdrawal.amount, withdrawal.currency)}</td>
                       <td className="px-4 py-3"><StatusBadge status={withdrawal.status} /></td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">{formatDate(withdrawal.created_at)}</td>
@@ -145,10 +148,10 @@ export function Component() {
                       <td className="px-4 py-3 text-right">
                         {withdrawal.status === 'pending' ? (
                           <div className="flex justify-end gap-1.5" onClick={event => event.stopPropagation()}>
-                            <Button size="sm" className="h-7 gap-1 px-2" disabled={busy} onClick={() => approve.mutate(withdrawal.id)}><CheckCircle className="h-3 w-3" /> Approve</Button>
-                            <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-destructive hover:text-destructive" disabled={busy} onClick={() => reject.mutate(withdrawal.id)}><XCircle className="h-3 w-3" /> Reject</Button>
+                            <Button size="sm" className="h-7 gap-1 px-2" disabled={busy} onClick={() => approve.mutate(withdrawal.id)}><CheckCircle className="h-3 w-3" /> {t('admin.approve', 'Approve')}</Button>
+                            <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-destructive hover:text-destructive" disabled={busy} onClick={() => reject.mutate(withdrawal.id)}><XCircle className="h-3 w-3" /> {t('admin.reject', 'Reject')}</Button>
                           </div>
-                        ) : <span className="text-[10px] text-muted-foreground">Processed</span>}
+                        ) : <span className="text-[10px] text-muted-foreground">{t('admin.allProcessed', 'Processed')}</span>}
                       </td>
                     </tr>
                   ))}
@@ -157,7 +160,7 @@ export function Component() {
             </div>
             <div className="divide-y divide-border/60 md:hidden">
               {isLoading && Array.from({ length: 4 }).map((_, i) => <div key={i} className="p-4"><Skeleton className="h-20 w-full" /></div>)}
-              {!isLoading && data?.items.length === 0 && <EmptyState title="No withdrawals found" />}
+              {!isLoading && data?.items.length === 0 && <EmptyState title={t('admin.noWithdrawalsFound', 'No withdrawals found')} />}
               {data?.items.map(withdrawal => (
                 <button key={withdrawal.id} onClick={() => setSelectedId(withdrawal.id)} className="block w-full p-4 text-left hover:bg-muted/30">
                   <div className="flex items-start justify-between gap-2"><div><p className="text-sm font-bold">{formatMoney(withdrawal.amount, withdrawal.currency)}</p><p className="text-[10px] text-muted-foreground">{withdrawal.user_name || withdrawal.user_email}</p></div><StatusBadge status={withdrawal.status} /></div>
@@ -169,7 +172,7 @@ export function Component() {
           </>
         )}
       </Card>
-      <p className="text-[10px] text-muted-foreground">Approval checks available funds at the moment an administrator acts. Pending requests are not reserved, so the wallet balance is the final authority.</p>
+      <p className="text-[10px] text-muted-foreground">{t('admin.withdrawalAuthNote', 'Approval checks available funds at the moment an administrator acts. Pending requests are not reserved, so the wallet balance is the final authority.')}</p>
       {selected && (
         <WithdrawalDrawer
           withdrawal={selected}

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { KwikWordmark } from '@/components/brand/KwikWordmark'
 
 interface KwikSplashProps {
@@ -5,7 +6,9 @@ interface KwikSplashProps {
 }
 
 /** Branded first-paint screen shown while the local session is hydrated. */
-export function KwikSplash({ message = 'Loading the arena…' }: KwikSplashProps) {
+export function KwikSplash({ message }: KwikSplashProps) {
+  const { t } = useTranslation()
+  const label = message ?? t('common.loadingArena')
   return (
     <div
       role="status"
@@ -20,7 +23,7 @@ export function KwikSplash({ message = 'Loading the arena…' }: KwikSplashProps
           <span className="block h-full w-1/2 animate-pulse rounded-full bg-primary motion-reduce:animate-none" />
         </div>
         <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-          {message}
+          {label}
         </p>
       </div>
     </div>

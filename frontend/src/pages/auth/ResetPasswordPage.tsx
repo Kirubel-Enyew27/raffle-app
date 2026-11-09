@@ -1,9 +1,11 @@
+import { useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { AuthCard } from '@/features/auth/AuthCard'
 import { authApi } from '@/features/auth/api'
 import {
@@ -17,18 +19,19 @@ import { FormField } from '@/components/forms/FormField'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
-const schema = z.object({
-  old_password: z.string().min(1, 'Current password is required'),
-  new_password: z.string().min(6, 'At least 6 characters'),
+const makeSchema = (t: TFunction) => z.object({
+  old_password: z.string().min(1, t('validation.currentPasswordRequired')),
+  new_password: z.string().min(6, t('validation.atLeastCharacters', { count: 6 })),
   confirm: z.string(),
 }).refine(d => d.new_password === d.confirm, {
-  message: 'Passwords do not match',
+  message: t('validation.passwordsDoNotMatch'),
   path: ['confirm'],
 })
-type Fields = z.infer<typeof schema>
+type Fields = z.infer<ReturnType<typeof makeSchema>>
 
 export function Component() {
   const { t } = useTranslation()
+  const schema = useMemo(() => makeSchema(t), [t])
   usePageTitle(t('auth.resetPasswordTitle'))
   const navigate = useNavigate()
 

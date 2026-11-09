@@ -1,31 +1,51 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight, Inbox, RefreshCw } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { STATUS_VARIANT, formatNumber } from './AdminUtils'
 
+const STATUS_I18N_MAP: Record<string, string> = {
+  active: 'admin.statusActive',
+  banned: 'admin.statusBanned',
+  completed: 'admin.statusCompleted',
+  cancelled: 'admin.statusCancelled',
+  tied: 'admin.statusTied',
+  in_progress: 'admin.statusInProgress',
+  approved: 'admin.statusApproved',
+  rejected: 'admin.statusRejected',
+  pending: 'admin.statusPending',
+  settled: 'admin.statusSettled',
+  refunded: 'admin.statusRefunded',
+}
+
 export function StatusBadge({ status }: { status: string }) {
-  const label = status.replaceAll('_', ' ')
+  const { t } = useTranslation()
+  const key = STATUS_I18N_MAP[status] ?? `admin.status${status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')}`
+  const label = t(key, status.replaceAll('_', ' '))
   return <Badge variant={STATUS_VARIANT[status] ?? 'outline'} className="capitalize">{label}</Badge>
 }
 
-const FINANCIAL_LABEL: Record<string, string> = {
-  settled: 'settled',
-  refunded: 'refunded',
-  reserved: 'stake reserved',
-  pending: 'pending',
-  needs_attention: 'needs review',
-  not_applicable: 'not applicable',
+const FINANCIAL_KEY: Record<string, string> = {
+  settled: 'admin.statusSettled',
+  refunded: 'admin.statusRefunded',
+  reserved: 'admin.statusReserved',
+  pending: 'admin.statusPending',
+  needs_attention: 'admin.statusNeedsAttention',
+  not_applicable: 'admin.statusNotApplicable',
 }
 
 /** Financial status cross-referenced with wallet transactions. */
 export function FinancialStatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation()
+  const key = FINANCIAL_KEY[status]
+  const label = key ? t(key, status.replaceAll('_', ' ')) : status.replaceAll('_', ' ')
   return (
     <Badge variant={STATUS_VARIANT[status] ?? 'outline'} className="capitalize">
-      {FINANCIAL_LABEL[status] ?? status.replaceAll('_', ' ')}
+      {label}
     </Badge>
   )
 }
@@ -137,26 +157,29 @@ export function Panel({
   )
 }
 
-export function EmptyState({ title = 'Nothing to show yet', description }: { title?: string; description?: string }) {
+export function EmptyState({ title, description }: { title?: string; description?: string }) {
+  const { t } = useTranslation()
+  const displayTitle = title ?? t('admin.nothingToShow', 'Nothing to show yet')
   return (
     <div className="flex flex-col items-center justify-center px-4 py-14 text-center">
       <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-muted text-muted-foreground">
         <Inbox className="h-5 w-5" />
       </span>
-      <p className="text-sm font-semibold">{title}</p>
+      <p className="text-sm font-semibold">{displayTitle}</p>
       {description && <p className="mt-1 max-w-sm text-xs text-muted-foreground">{description}</p>}
     </div>
   )
 }
 
 export function ErrorState({ message, onRetry }: { message?: string; onRetry?: () => void }) {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
-      <p className="text-sm font-semibold text-destructive">Unable to load this data</p>
-      <p className="mt-1 max-w-md text-xs text-muted-foreground">{message || 'The server did not respond. Try again.'}</p>
+      <p className="text-sm font-semibold text-destructive">{t('admin.unableToLoad', 'Unable to load this data')}</p>
+      <p className="mt-1 max-w-md text-xs text-muted-foreground">{message || t('admin.serverDidNotRespond', 'The server did not respond. Try again.')}</p>
       {onRetry && (
         <Button variant="outline" size="sm" className="mt-3 gap-1.5" onClick={onRetry}>
-          <RefreshCw className="h-3.5 w-3.5" /> Retry
+          <RefreshCw className="h-3.5 w-3.5" /> {t('admin.retry', 'Retry')}
         </Button>
       )}
     </div>
@@ -185,20 +208,28 @@ export function Pagination({
   onChange: (offset: number) => void
   loading?: boolean
 }) {
+  const { t } = useTranslation()
   if (total <= limit) return null
   const page = Math.floor(offset / limit) + 1
   const pages = Math.max(1, Math.ceil(total / limit))
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 px-4 py-3 text-xs sm:px-5">
       <span className="text-muted-foreground">
-        {offset + 1}–{Math.min(offset + limit, total)} of {formatNumber(total)} · Page {page} of {pages}
+        {t('admin.showingRange', {
+          from: offset + 1,
+          to: Math.min(offset + limit, total),
+          total: formatNumber(total),
+          page,
+          pages,
+          defaultValue: `${offset + 1}–${Math.min(offset + limit, total)} of ${formatNumber(total)} · Page ${page} of ${pages}`
+        })}
       </span>
       <div className="flex gap-2">
         <Button variant="outline" size="sm" className="gap-1" disabled={offset <= 0 || loading} onClick={() => onChange(Math.max(0, offset - limit))}>
-          <ChevronLeft className="h-3.5 w-3.5" /> Previous
+          <ChevronLeft className="h-3.5 w-3.5" /> {t('admin.previous', 'Previous')}
         </Button>
         <Button variant="outline" size="sm" className="gap-1" disabled={offset + limit >= total || loading} onClick={() => onChange(offset + limit)}>
-          Next <ChevronRight className="h-3.5 w-3.5" />
+          {t('admin.next', 'Next')} <ChevronRight className="h-3.5 w-3.5" />
         </Button>
       </div>
     </div>
@@ -216,17 +247,24 @@ export function DateRangeBar({
   onChange: (from: string, to: string) => void
   children?: ReactNode
 }) {
+  const { t } = useTranslation()
   const preset = (days: number) => {
     const end = new Date()
     const start = new Date()
     start.setDate(start.getDate() - days + 1)
     onChange(start.toISOString().slice(0, 10), end.toISOString().slice(0, 10))
   }
+  const presets = [
+    { days: 1, label: t('admin.today', 'Today') },
+    { days: 7, label: t('admin.d7', '7D') },
+    { days: 30, label: t('admin.d30', '30D') },
+    { days: 90, label: t('admin.d90', '90D') }
+  ]
   return (
     <div className="flex flex-wrap items-center gap-2">
       {children}
       <div className="flex rounded-lg border border-input bg-background p-0.5">
-        {[{ days: 1, label: 'Today' }, { days: 7, label: '7D' }, { days: 30, label: '30D' }, { days: 90, label: '90D' }].map(item => (
+        {presets.map(item => (
           <button
             key={item.days}
             type="button"
@@ -241,7 +279,7 @@ export function DateRangeBar({
       <div className="flex items-center gap-1.5">
         <input
           type="date"
-          aria-label="From date"
+          aria-label={t('admin.fromDate', 'From date')}
           value={from}
           max={to}
           onChange={event => onChange(event.target.value, to)}
@@ -250,7 +288,7 @@ export function DateRangeBar({
         <span className="text-muted-foreground">–</span>
         <input
           type="date"
-          aria-label="To date"
+          aria-label={t('admin.toDate', 'To date')}
           value={to}
           min={from}
           onChange={event => onChange(from, event.target.value)}

@@ -18,8 +18,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
+import { useTranslation } from 'react-i18next'
 import { p2pApi } from '@/features/p2p/api'
 import { GameIcon } from '@/features/p2p/GameIcon'
+import { gameName } from '@/features/p2p/matchHistory'
 import { parseInviteError } from '@/features/p2p/inviteError'
 import { buildWebInviteUrl, copyToClipboard } from '@/lib/telegram'
 import { formatCurrency } from '@/lib/utils'
@@ -36,6 +38,7 @@ export function AcceptInviteModal({
   onClose,
   onOpenChallengeModal,
 }: AcceptInviteModalProps) {
+  const { t } = useTranslation()
   const { user } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -81,17 +84,17 @@ export function AcceptInviteModal({
       queryClient.invalidateQueries({ queryKey: ['p2p-lobby'] })
       queryClient.invalidateQueries({ queryKey: ['p2p-my-matches'] })
       toast({
-        title: 'Joined Match!',
-        description: 'Entering the duel arena now…',
+        title: t('p2p.acceptInvite.joinedSuccess', 'Joined Match!'),
+        description: t('p2p.acceptInvite.enteringArena', 'Entering the duel arena now…'),
         type: 'success',
       })
       onClose()
       navigate(`/games/match/${match.id}`)
     },
     onError: (err: unknown) => {
-      const errInfo = parseInviteError(err, cleanCode)
+      const errInfo = parseInviteError(err, cleanCode, t)
       toast({
-        title: errInfo.title === 'Challenge Not Found' ? 'Failed to Join Match' : errInfo.title,
+        title: errInfo.title,
         description: errInfo.description,
         type: 'error',
       })
@@ -120,9 +123,13 @@ export function AcceptInviteModal({
     if (success) {
       setCopiedLink(true)
       setTimeout(() => setCopiedLink(false), 2000)
-      toast({ title: 'Link Copied!', type: 'info' })
+      toast({ title: t('p2p.challenge.linkCopied', 'Link Copied!'), type: 'info' })
     } else {
-      toast({ title: 'Copy Failed', description: 'Please copy the link manually.', type: 'error' })
+      toast({
+        title: t('p2p.challenge.copyFailed', 'Copy Failed'),
+        description: t('p2p.challenge.copyLinkFailedDesc', 'Please copy the link manually.'),
+        type: 'error',
+      })
     }
   }
 
@@ -151,9 +158,11 @@ export function AcceptInviteModal({
             </div>
             <div>
               <h2 id="accept-invite-title" className="text-base font-bold text-foreground">
-                Match Challenge
+                {t('p2p.acceptInvite.matchChallenge', 'Match Challenge')}
               </h2>
-              <p className="text-xs text-muted-foreground font-mono">Room Code: {cleanCode}</p>
+              <p className="text-xs text-muted-foreground font-mono">
+                {t('p2p.acceptInvite.roomCode', { code: cleanCode, defaultValue: `Room Code: ${cleanCode}` })}
+              </p>
             </div>
           </div>
 
@@ -161,7 +170,7 @@ export function AcceptInviteModal({
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            aria-label="Close"
+            aria-label={t('common.close', 'Close')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -172,13 +181,15 @@ export function AcceptInviteModal({
           {isLoading && (
             <div className="py-12 flex flex-col items-center justify-center gap-3 text-center">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Looking up challenge details…</p>
+              <p className="text-sm text-muted-foreground">
+                {t('p2p.acceptInvite.lookingUp', 'Looking up challenge details…')}
+              </p>
             </div>
           )}
 
           {/* Error / Not Found state */}
           {isError && (() => {
-            const errInfo = parseInviteError(error, cleanCode)
+            const errInfo = parseInviteError(error, cleanCode, t)
             return (
               <div className="py-6 text-center space-y-3">
                 <div className="w-12 h-12 rounded-full bg-destructive/10 text-destructive flex items-center justify-center mx-auto">
@@ -193,7 +204,7 @@ export function AcceptInviteModal({
                 <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
                   {errInfo.canRetry && (
                     <Button size="sm" variant="outline" onClick={() => refetch()}>
-                      Try Again
+                      {t('p2p.acceptInvite.tryAgain', 'Try Again')}
                     </Button>
                   )}
                   {errInfo.isExpired && onOpenChallengeModal && (
@@ -204,11 +215,11 @@ export function AcceptInviteModal({
                         onOpenChallengeModal()
                       }}
                     >
-                      Create Challenge
+                      {t('p2p.acceptInvite.createChallenge', 'Create Challenge')}
                     </Button>
                   )}
                   <Button size="sm" variant="ghost" onClick={onClose}>
-                    Back to Games
+                    {t('p2p.acceptInvite.backToGames', 'Back to Games')}
                   </Button>
                 </div>
               </div>
@@ -235,7 +246,7 @@ export function AcceptInviteModal({
                 </div>
                 <div className="min-w-0 flex-1">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Challenger
+                    {t('p2p.acceptInvite.challenger', 'Challenger')}
                   </span>
                   <p className="font-bold text-sm text-foreground truncate">
                     {invite.creator_name}
@@ -246,12 +257,12 @@ export function AcceptInviteModal({
                   className="text-[11px]"
                 >
                   {isExpired
-                    ? 'Expired'
+                    ? t('p2p.acceptInvite.expiredBadge', 'Expired')
                     : isCancelled
-                      ? 'Cancelled'
+                      ? t('p2p.acceptInvite.cancelledBadge', 'Cancelled')
                       : isFull
-                        ? 'Match Full'
-                        : 'Open Challenge'}
+                        ? t('p2p.acceptInvite.matchFullBadge', 'Match Full')
+                        : t('p2p.acceptInvite.openChallengeBadge', 'Open Challenge')}
                 </Badge>
               </div>
 
@@ -263,7 +274,7 @@ export function AcceptInviteModal({
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3 className="font-bold text-base text-foreground truncate">
-                      {invite.game_title}
+                      {gameName(invite.game_slug, t) || invite.game_title}
                     </h3>
                     <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
                       {invite.game_description}
@@ -275,12 +286,16 @@ export function AcceptInviteModal({
                   <div className="flex items-center gap-1.5">
                     <Users className="w-3.5 h-3.5 text-primary" />
                     <span>
-                      {invite.max_rounds > 1 ? `Best of ${invite.max_rounds}` : 'Single Round'}
+                      {invite.max_rounds > 1
+                        ? t('p2p.acceptInvite.bestOfRounds', { rounds: invite.max_rounds, defaultValue: `Best of ${invite.max_rounds}` })
+                        : t('p2p.acceptInvite.singleRound', 'Single Round')}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-primary" />
-                    <span>{invite.default_turn_seconds}s turn clock</span>
+                    <span>
+                      {t('p2p.acceptInvite.turnClockSeconds', { seconds: invite.default_turn_seconds, defaultValue: `${invite.default_turn_seconds}s turn clock` })}
+                    </span>
                   </div>
                 </div>
 
@@ -288,26 +303,34 @@ export function AcceptInviteModal({
                   <div className="space-y-1.5 rounded-xl border border-[#fbbf24]/30 bg-[#fbbf24]/5 p-3 text-xs">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-[#b8860b] dark:text-[#fbbf24]">
-                        Compete to Earn
+                        {t('p2p.stakeSetup.title', 'Compete to Earn')}
                       </span>
                       <span className="rounded-full border border-[#fbbf24]/40 px-2 py-0.5 text-[10px] font-bold text-[#b8860b] dark:text-[#fbbf24]">
-                        {formatCurrency(invite.stake_amount)} stake each
+                        {t('p2p.acceptInvite.stakeEach', {
+                          amount: formatCurrency(invite.stake_amount),
+                          defaultValue: `${formatCurrency(invite.stake_amount)} stake each`,
+                        })}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-muted-foreground">
-                      <span>Prize pool</span>
+                      <span>{t('p2p.stakeSetup.totalPrizePool', 'Prize pool')}</span>
                       <span className="font-semibold text-foreground">
                         {formatCurrency(invite.prize_pool)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-muted-foreground">
-                      <span>Platform fee ({invite.service_fee_percent.toFixed(2)}%)</span>
+                      <span>
+                        {t('p2p.stakeSetup.platformFee', {
+                          percent: invite.service_fee_percent.toFixed(2),
+                          defaultValue: `Platform fee (${invite.service_fee_percent.toFixed(2)}%)`,
+                        })}
+                      </span>
                       <span className="font-semibold text-foreground">
                         {formatCurrency(invite.prize_pool - invite.potential_payout)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between border-t border-[#fbbf24]/20 pt-1.5">
-                      <span className="text-muted-foreground">Winner payout</span>
+                      <span className="text-muted-foreground">{t('p2p.stakeSetup.potentialWinnerPayout', 'Winner payout')}</span>
                       <span className="font-bold text-success">
                         {formatCurrency(invite.potential_payout)}
                       </span>
@@ -315,8 +338,8 @@ export function AcceptInviteModal({
                   </div>
                 ) : (
                   <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-xs">
-                    <span className="font-semibold text-foreground">Free Play</span>
-                    <span className="text-muted-foreground">No stake or wallet balance needed</span>
+                    <span className="font-semibold text-foreground">{t('p2p.acceptInvite.freePlay', 'Free Play')}</span>
+                    <span className="text-muted-foreground">{t('p2p.acceptInvite.noStakeNeeded', 'No stake or wallet balance needed')}</span>
                   </div>
                 )}
               </div>
@@ -324,42 +347,41 @@ export function AcceptInviteModal({
               {/* Status Message based on conditions */}
               {isExpired && (
                 <div className="p-3 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive text-xs space-y-1">
-                  <p className="font-semibold">This invitation has expired</p>
+                  <p className="font-semibold">{t('p2p.acceptInvite.expiredTitle', 'This invitation has expired')}</p>
                   <p className="text-muted-foreground text-[11px]">
-                    Private rooms expire after 5 minutes of inactivity. You can start a fresh match
-                    with your friend instead.
+                    {t('p2p.acceptInvite.expiredDetail', 'Private rooms expire after 5 minutes of inactivity. You can start a fresh match with your friend instead.')}
                   </p>
                 </div>
               )}
 
               {isCancelled && (
                 <div className="p-3 rounded-xl border border-muted-foreground/30 bg-muted text-foreground text-xs space-y-1">
-                  <p className="font-semibold">This invitation was cancelled</p>
+                  <p className="font-semibold">{t('p2p.acceptInvite.cancelledTitle', 'This invitation was cancelled')}</p>
                   <p className="text-muted-foreground text-[11px]">
-                    The host closed this challenge before it was accepted.
+                    {t('p2p.acceptInvite.cancelledDetail', 'The host closed this challenge before it was accepted.')}
                   </p>
                 </div>
               )}
 
               {isFull && (
                 <div className="p-3 rounded-xl border border-warning/30 bg-warning/10 text-warning text-xs space-y-1">
-                  <p className="font-semibold">Room is already full</p>
+                  <p className="font-semibold">{t('p2p.acceptInvite.fullTitle', 'Room is already full')}</p>
                   <p className="text-muted-foreground text-[11px]">
-                    Another player already joined this 1v1 duel.
+                    {t('p2p.acceptInvite.fullDetail', 'Another player already joined this 1v1 duel.')}
                   </p>
                 </div>
               )}
 
               {isCreator && (
                 <div className="p-3 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 text-xs space-y-2">
-                  <p className="font-semibold">You created this challenge!</p>
+                  <p className="font-semibold">{t('p2p.acceptInvite.creatorTitle', 'You created this challenge!')}</p>
                   <p className="text-muted-foreground text-[11px]">
-                    Share this code with your friend or re-enter the arena to wait for them.
+                    {t('p2p.acceptInvite.creatorDetail', 'Share this code with your friend or re-enter the arena to wait for them.')}
                   </p>
                   <div className="flex gap-2 pt-1">
                     <Button size="sm" variant="outline" onClick={handleCopyLink} className="h-8 text-xs gap-1.5">
                       {copiedLink ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedLink ? 'Copied' : 'Copy Share Link'}</span>
+                      <span>{copiedLink ? t('p2p.challenge.copied', 'Copied') : t('p2p.acceptInvite.copyShareLink', 'Copy Share Link')}</span>
                     </Button>
                     <Button
                       size="sm"
@@ -369,7 +391,7 @@ export function AcceptInviteModal({
                       }}
                       className="h-8 text-xs font-semibold"
                     >
-                      Enter Room
+                      {t('p2p.acceptInvite.enterRoom', 'Enter Room')}
                     </Button>
                   </div>
                 </div>
@@ -377,18 +399,22 @@ export function AcceptInviteModal({
 
               {invite.competition_mode === 'earn' && isJoinable && (
                 <p className="px-1 text-[11px] leading-relaxed text-muted-foreground">
-                  Accepting reserves {formatCurrency(invite.stake_amount)} from your available
-                  balance. The stake settles only when the match ends; draws and cancellations are
-                  refunded in full.
+                  {t('p2p.acceptInvite.acceptReserveNotice', {
+                    amount: formatCurrency(invite.stake_amount),
+                    defaultValue: `Accepting reserves ${formatCurrency(invite.stake_amount)} from your available balance. The stake settles only when the match ends; draws and cancellations are refunded in full.`,
+                  })}
                 </p>
               )}
 
               {/* Ticking countdown for active joinable room */}
               {isJoinable && displaySecondsLeft > 0 && (
                 <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-                  <span>Invitation active</span>
+                  <span>{t('p2p.acceptInvite.invitationActive', 'Invitation active')}</span>
                   <span className="font-mono font-semibold text-warning">
-                    Expires in {formatCountdown(displaySecondsLeft)}
+                    {t('p2p.challenge.expiresIn', {
+                      time: formatCountdown(displaySecondsLeft),
+                      defaultValue: `Expires in ${formatCountdown(displaySecondsLeft)}`,
+                    })}
                   </span>
                 </div>
               )}
@@ -406,15 +432,18 @@ export function AcceptInviteModal({
                       {joinMutation.isPending ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Joining Match…</span>
+                          <span>{t('p2p.acceptInvite.joining', 'Joining Match…')}</span>
                         </>
                       ) : (
                         <>
                           <Swords className="w-4 h-4" />
                           <span>
                             {invite.competition_mode === 'earn'
-                              ? `Accept & Stake ${formatCurrency(invite.stake_amount)}`
-                              : 'Accept Challenge ⚔️'}
+                              ? t('p2p.acceptInvite.acceptAndStake', {
+                                  amount: formatCurrency(invite.stake_amount),
+                                  defaultValue: `Accept & Stake ${formatCurrency(invite.stake_amount)}`,
+                                })
+                              : t('p2p.acceptInvite.acceptChallengeEmoji', 'Accept Challenge ⚔️')}
                           </span>
                         </>
                       )}
@@ -426,7 +455,7 @@ export function AcceptInviteModal({
                       className="w-full font-bold text-sm gap-2 shadow-lg shadow-primary/25 h-11"
                     >
                       <LogIn className="w-4 h-4" />
-                      <span>Sign In to Accept Challenge</span>
+                      <span>{t('p2p.acceptInvite.signInToAccept', 'Sign In to Accept Challenge')}</span>
                     </Button>
                   )
                 ) : (isExpired || isCancelled || isFull) && onOpenChallengeModal ? (
@@ -439,12 +468,12 @@ export function AcceptInviteModal({
                     className="w-full font-bold gap-2"
                   >
                     <Swords className="w-4 h-4" />
-                    <span>Create a New Challenge</span>
+                    <span>{t('p2p.acceptInvite.createNewChallenge', 'Create a New Challenge')}</span>
                   </Button>
                 ) : null}
 
                 <Button variant="ghost" size="sm" onClick={onClose} className="text-xs text-muted-foreground">
-                  Close
+                  {t('common.close', 'Close')}
                 </Button>
               </div>
             </div>

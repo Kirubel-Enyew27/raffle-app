@@ -6,6 +6,8 @@
  * can be unit-tested without a DOM or a network connection.
  */
 
+import type { TFunction } from 'i18next'
+
 export const DAMA_BOARD_SIZE = 8
 
 export interface DamaStep {
@@ -151,19 +153,27 @@ export function moveNotation(entry: Pick<DamaHistoryEntry, 'from' | 'to' | 'capt
 }
 
 /** A short, human-readable result line for the match page. */
-export function resultLabel(result: DamaResult | null | undefined, myPlayerIndex: number | undefined): string {
-  if (!result) return 'Match in progress'
+export function resultLabel(
+  result: DamaResult | null | undefined,
+  myPlayerIndex: number | undefined,
+  t?: TFunction
+): string {
+  if (!result) return t ? t('p2p.match.inProgress', { defaultValue: 'Match in progress' }) : 'Match in progress'
   if (result.draw) {
     switch (result.reason) {
       case 'draw_repetition':
-        return 'Draw — threefold repetition'
+        return t ? t('p2p.outcome.damaRepetition', { defaultValue: 'Draw — threefold repetition' }) : 'Draw — threefold repetition'
       case 'draw_halfmove':
-        return 'Draw — 50-move rule'
+        return t ? t('p2p.outcome.damaFiftyMoves', { defaultValue: 'Draw — 50-move rule' }) : 'Draw — 50-move rule'
       default:
-        return 'Draw'
+        return t ? t('p2p.outcome.draw', { defaultValue: 'Draw' }) : 'Draw'
     }
   }
-  if (result.winner === null || result.winner === undefined) return 'Match finished'
-  if (myPlayerIndex !== undefined && result.winner === myPlayerIndex) return 'Victory'
-  return 'Defeat'
+  if (result.winner === null || result.winner === undefined) {
+    return t ? t('p2p.outcome.matchFinished', { defaultValue: 'Match finished' }) : 'Match finished'
+  }
+  if (myPlayerIndex !== undefined && result.winner === myPlayerIndex) {
+    return t ? t('p2p.outcome.victoryDama', { defaultValue: 'Victory' }) : 'Victory'
+  }
+  return t ? t('p2p.outcome.defeatDama', { defaultValue: 'Defeat' }) : 'Defeat'
 }

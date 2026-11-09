@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   Users,
   Swords,
@@ -29,6 +31,7 @@ import { useToast } from '@/contexts/ToastContext'
 import { p2pApi } from '@/features/p2p/api'
 import { walletApi } from '@/features/wallet/api'
 import { formatCurrency } from '@/lib/utils'
+import { gameName } from '@/features/p2p/matchHistory'
 import {
   buildInviteUrl,
   buildWebInviteUrl,
@@ -66,14 +69,14 @@ import {
 import type { P2PMatch } from '@/types/api'
 
 // Surfaces the API's error message (axios error shape) without widening to any.
-function apiErrorMessage(err: unknown): string {
+function apiErrorMessage(err: unknown, t?: TFunction): string {
   if (typeof err === 'object' && err !== null) {
     const response = (err as { response?: { data?: { message?: string } } }).response
     if (response?.data?.message) return response.data.message
     const message = (err as { message?: string }).message
     if (message) return message
   }
-  return 'Something went wrong'
+  return t ? t('errors.somethingWentWrong', 'Something went wrong') : 'Something went wrong'
 }
 
 function MatchHistoryModal({
@@ -91,6 +94,7 @@ function MatchHistoryModal({
   onClose: () => void
   currentUserId?: string
 }) {
+  const { t } = useTranslation()
   return (
     <div
       className="fixed inset-0 z-50 flex items-stretch justify-center bg-background/80 backdrop-blur-sm sm:items-center sm:p-4"
@@ -110,10 +114,10 @@ function MatchHistoryModal({
             </div>
             <div className="min-w-0">
               <h2 id="match-history-title" className="truncate text-base font-bold text-foreground">
-                Recent Match History
+                {t('p2p.historyModal.title', 'Recent Match History')}
               </h2>
               <p className="truncate text-xs text-muted-foreground">
-                Your latest results and settlement records
+                {t('p2p.historyModal.subtitle', 'Your latest results and settlement records')}
               </p>
             </div>
           </div>
@@ -123,7 +127,7 @@ function MatchHistoryModal({
                 variant="outline"
                 className="hidden text-[10px] font-semibold sm:inline-flex"
               >
-                {matches.length} recent
+                {t('p2p.historyModal.recentBadge', { count: matches.length, defaultValue: `${matches.length} recent` })}
               </Badge>
             )}
             <Button
@@ -131,7 +135,7 @@ function MatchHistoryModal({
               size="icon"
               onClick={onClose}
               autoFocus
-              aria-label="Close match history"
+              aria-label={t('p2p.historyModal.close', 'Close match history')}
               className="h-8 w-8 text-muted-foreground hover:text-foreground"
             >
               <X className="h-4 w-4" />
@@ -154,6 +158,7 @@ function MatchHistoryModal({
 }
 
 export function Component() {
+  const { t } = useTranslation()
   const { id: matchId } = useParams<{ id: string }>()
   const { user, token } = useAuth()
   const navigate = useNavigate()
@@ -352,13 +357,17 @@ export function Component() {
         // toast({ title: 'Rematch started', description: 'Both players agreed — good luck!', type: 'success' })
         openRematch(payload.next_match_id)
       } else if (event.type === 'p2p.match_cancelled') {
-        toast({ title: 'Match cancelled', description: 'This invitation has been cancelled.', type: 'info' })
+        toast({
+          title: t('p2p.match.cancelledToast', 'Invitation cancelled'),
+          description: t('p2p.match.roomClosed', 'The room has been closed.'),
+          type: 'info',
+        })
         refetch()
       } else {
         refetch()
       }
     },
-    [matchId, applyMatchSnapshot, refetch, toast, openRematch]
+    [matchId, applyMatchSnapshot, refetch, toast, openRematch, t]
   )
 
   // Reconnect mutation: when the SSE stream recovers from a disconnection,
@@ -586,8 +595,8 @@ export function Component() {
     },
     onError: (err: unknown) => {
       toast({
-        title: 'Move rejected',
-        description: apiErrorMessage(err),
+        title: t('p2p.match.moveRejected', 'Move rejected'),
+        description: apiErrorMessage(err, t),
         type: 'error',
       })
     },
@@ -598,12 +607,11 @@ export function Component() {
     mutationFn: () => p2pApi.readyUp(matchId!),
     onSuccess: (updated) => {
       applyMatchSnapshot(updated)
-      // toast({ title: 'Ready!', description: 'Waiting for opponent to ready up...', type: 'success' })
     },
     onError: (err: unknown) => {
       toast({
-        title: 'Error',
-        description: apiErrorMessage(err),
+        title: t('common.error', 'Error'),
+        description: apiErrorMessage(err, t),
         type: 'error',
       })
     },
@@ -618,28 +626,14 @@ export function Component() {
         queryClient.setQueryData<P2PMatch>(['p2p-match', result.match.id], (current) =>
           mergeMatchSnapshot(current, result.match!),
         )
-        // toast({ title: 'Rematch started', description: 'Both players agreed — good luck!', type: 'success' })
         openRematch(result.match.id)
         return
       }
-      // if (result.match) {
-      //   applyMatchSnapshot(result.match)
-      //   toast({
-      //     title: 'Rematch requested',
-      //     description: 'Your opponent will be notified. Waiting for their response…',
-      //     type: 'info',
-      //   })
-      // }
-      // toast({
-      //   title: 'Rematch requested',
-      //   description: 'Waiting for your opponent to accept…',
-      //   type: 'info',
-      // })
     },
     onError: (err: unknown) => {
       toast({
-        title: 'Rematch failed',
-        description: apiErrorMessage(err),
+        title: t('p2p.match.rematchFailed', 'Rematch failed'),
+        description: apiErrorMessage(err, t),
         type: 'error',
       })
     },
@@ -650,12 +644,12 @@ export function Component() {
     mutationFn: () => p2pApi.resignMatch(matchId!),
     onSuccess: (updated) => {
       applyMatchSnapshot(updated)
-      toast({ title: 'You resigned the match', type: 'info' })
+      toast({ title: t('p2p.match.resignedToast', 'You resigned the match'), type: 'info' })
     },
     onError: (err: unknown) => {
       toast({
-        title: 'Could not resign the match',
-        description: apiErrorMessage(err),
+        title: t('p2p.match.couldNotResign', 'Could not resign the match'),
+        description: apiErrorMessage(err, t),
         type: 'error',
       })
     },
@@ -666,12 +660,16 @@ export function Component() {
     mutationFn: () => p2pApi.cancelMatch(matchId!),
     onSuccess: (updated) => {
       applyMatchSnapshot(updated)
-      toast({ title: 'Invitation cancelled', description: 'The room has been closed.', type: 'info' })
+      toast({
+        title: t('p2p.match.cancelledToast', 'Invitation cancelled'),
+        description: t('p2p.match.roomClosed', 'The room has been closed.'),
+        type: 'info',
+      })
     },
     onError: (err: unknown) => {
       toast({
-        title: 'Could not cancel match',
-        description: apiErrorMessage(err),
+        title: t('p2p.match.couldNotCancel', 'Could not cancel match'),
+        description: apiErrorMessage(err, t),
         type: 'error',
       })
     },
@@ -707,13 +705,13 @@ export function Component() {
         <div className="rounded-full bg-destructive/10 p-3 text-destructive">
           <WifiOff className="h-6 w-6" />
         </div>
-        <h1 className="text-lg font-bold">Could not load this match</h1>
-        <p className="text-sm text-muted-foreground">{apiErrorMessage(error)}</p>
+        <h1 className="text-lg font-bold">{t('p2p.match.couldNotLoad', 'Could not load this match')}</h1>
+        <p className="text-sm text-muted-foreground">{apiErrorMessage(error, t)}</p>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => navigate('/games')}>
-            Back to lobby
+            {t('p2p.match.backToLobby', 'Back to lobby')}
           </Button>
-          <Button onClick={() => refetch()}>Try again</Button>
+          <Button onClick={() => refetch()}>{t('common.retry', 'Try again')}</Button>
         </div>
       </div>
     )
@@ -723,7 +721,7 @@ export function Component() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Loading duel arena…</p>
+        <p className="text-sm text-muted-foreground">{t('p2p.match.loadingArena', 'Loading duel arena…')}</p>
       </div>
     )
   }
@@ -737,17 +735,18 @@ export function Component() {
   // One derived lifecycle state for the whole page. Transport status alone used
   // to drive the badge, so a client whose stream was down showed "Connecting…"
   // even after the server had started the match.
-  const connection = deriveMatchConnection({
-    transport: streamStatus,
-    hasState: true,
-    matchStatus: match.status,
-    isParticipant: !!myPlayer,
-    playersPresent: match.players?.length ?? 0,
-    allReady: (match.players?.length ?? 0) >= 2 && (match.players ?? []).every((p) => p.status === 'ready'),
-    // Staleness is the poll timer's observation; reading the clock here would
-    // be an impure render.
-    stale: streamStale,
-  })
+  const connection = deriveMatchConnection(
+    {
+      transport: streamStatus,
+      hasState: true,
+      matchStatus: match.status,
+      isParticipant: !!myPlayer,
+      playersPresent: match.players?.length ?? 0,
+      allReady: (match.players?.length ?? 0) >= 2 && (match.players ?? []).every((p) => p.status === 'ready'),
+      stale: streamStale,
+    },
+    t
+  )
 
   const isMyTurn = match.status === 'in_progress' && match.current_turn_user_id === user?.id
   // Between rounds the server holds the finished board (with its winning line)
@@ -789,17 +788,25 @@ export function Component() {
     if (success) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-      toast({ title: 'Code copied!', description: 'Share this 6-character code with your opponent.', type: 'info' })
+      toast({
+        title: t('p2p.match.codeCopied', 'Code copied!'),
+        description: t('p2p.match.codeCopiedDesc', 'Share this 6-character code with your opponent.'),
+        type: 'info',
+      })
     } else {
-      toast({ title: 'Copy failed', description: 'Please copy the code manually.', type: 'error' })
+      toast({
+        title: t('p2p.match.copyFailed', 'Copy failed'),
+        description: t('p2p.match.copyCodeManual', 'Please copy the code manually.'),
+        type: 'error',
+      })
     }
   }
 
   const handleShareTelegram = () => {
     if (!match?.invite_code) return
     const inviteUrl = buildInviteUrl(match.invite_code)
-    const gameName = match.game_slug.replace('-', ' ')
-    const message = buildInviteMessage(gameName, match.invite_code, inviteUrl)
+    const displayName = gameName(match.game_slug, t) || match.game_slug.replace('-', ' ')
+    const message = buildInviteMessage(displayName, match.invite_code, inviteUrl, t)
     shareViaTelegram(inviteUrl, message)
   }
 
@@ -810,26 +817,38 @@ export function Component() {
     if (success) {
       setCopiedLink(true)
       setTimeout(() => setCopiedLink(false), 2000)
-      toast({ title: 'Link copied!', description: 'Challenge link copied to clipboard.', type: 'info' })
+      toast({
+        title: t('p2p.match.linkCopiedToast', 'Link copied!'),
+        description: t('p2p.match.linkCopiedDesc', 'Challenge link copied to clipboard.'),
+        type: 'info',
+      })
     } else {
-      toast({ title: 'Copy failed', description: 'Please copy the link manually.', type: 'error' })
+      toast({
+        title: t('p2p.match.copyFailed', 'Copy failed'),
+        description: t('p2p.match.copyLinkManual', 'Please copy the link manually.'),
+        type: 'error',
+      })
     }
   }
 
   const handleShareOptions = async () => {
     if (!match?.invite_code) return
     const inviteUrl = buildWebInviteUrl(match.invite_code)
-    const gameName = match.game_slug.replace('-', ' ')
-    const message = buildInviteMessage(gameName, match.invite_code, inviteUrl)
+    const displayName = gameName(match.game_slug, t) || match.game_slug.replace('-', ' ')
+    const message = buildInviteMessage(displayName, match.invite_code, inviteUrl, t)
     const result = await shareLinkOrCopy({
-      title: `Challenge: ${gameName}`,
+      title: t('p2p.match.challengeTitle', { game: displayName, defaultValue: `Challenge: ${displayName}` }),
       text: message,
       url: inviteUrl,
     })
     if (result === 'copied') {
       setCopiedLink(true)
       setTimeout(() => setCopiedLink(false), 2000)
-      toast({ title: 'Link copied!', description: 'Challenge link copied to clipboard.', type: 'info' })
+      toast({
+        title: t('p2p.match.linkCopiedToast', 'Link copied!'),
+        description: t('p2p.match.linkCopiedDesc', 'Challenge link copied to clipboard.'),
+        type: 'info',
+      })
     }
   }
 
@@ -848,7 +867,7 @@ export function Component() {
           className="gap-1.5 text-xs text-muted-foreground -ml-2"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Exit to Lobby</span>
+          <span>{t('p2p.match.exitToLobby', 'Exit to Lobby')}</span>
         </Button>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -856,12 +875,12 @@ export function Component() {
 
           {match.invite_code && (
             <Badge variant="outline" className="font-mono text-xs px-2.5 py-0.5 gap-1.5 bg-muted/40">
-              <span>Code: {match.invite_code}</span>
+              <span>{t('p2p.match.codeLabel', { code: match.invite_code, defaultValue: `Code: ${match.invite_code}` })}</span>
               <button
                 type="button"
                 onClick={handleCopyCode}
                 className="hover:text-primary transition-colors"
-                title="Copy code"
+                title={t('p2p.match.copyCode', 'Copy code')}
               >
                 {copied ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3" />}
               </button>
@@ -906,7 +925,7 @@ export function Component() {
             className="h-8 gap-1.5 border-border/80 bg-card/60 text-xs font-semibold"
           >
             <History className="h-3.5 w-3.5" />
-            <span>Match History</span>
+            <span>{t('p2p.match.matchHistory', 'Match History')}</span>
           </Button>
         </div>
       </div>
@@ -919,7 +938,7 @@ export function Component() {
         >
           <div className="flex items-center gap-2">
             <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-            <span>Reconnecting to the live match… your moves are safe on the server.</span>
+            <span>{t('p2p.match.reconnectingBanner', 'Reconnecting to the live match… your moves are safe on the server.')}</span>
           </div>
           <Button
             variant="outline"
@@ -930,7 +949,7 @@ export function Component() {
               refetch()
             }}
           >
-            Retry now
+            {t('p2p.match.retryNow', 'Retry now')}
           </Button>
         </div>
       )}
@@ -945,8 +964,10 @@ export function Component() {
           <div className="flex items-center gap-2">
             <WifiOff className="h-4 w-4 shrink-0" />
             <span>
-              Live connection lost. Your match is still active on the server and is being
-              reloaded from it automatically.
+              {t(
+                'p2p.match.connectionLostBanner',
+                'Live connection lost. Your match is still active on the server and is being reloaded from it automatically.'
+              )}
             </span>
           </div>
           <Button
@@ -958,7 +979,7 @@ export function Component() {
               refetch()
             }}
           >
-            Retry connection
+            {t('p2p.match.retryConnection', 'Retry connection')}
           </Button>
         </div>
       )}
@@ -973,10 +994,15 @@ export function Component() {
           <div className="flex items-center gap-2">
             <WifiOff className="h-4 w-4 shrink-0 text-warning" />
             <span>
-              Your opponent disconnected.{' '}
               {disconnectSecondsLeft > 0
-                ? `They have ${disconnectSecondsLeft}s to reconnect.`
-                : 'Waiting for them to reconnect…'}
+                ? t('p2p.match.opponentDisconnectedWithTime', {
+                    seconds: disconnectSecondsLeft,
+                    defaultValue: `Your opponent disconnected. They have ${disconnectSecondsLeft}s to reconnect.`,
+                  })
+                : `${t('p2p.opponentDisconnectedBanner', 'Your opponent disconnected.')} ${t(
+                    'p2p.match.waitingForReconnect',
+                    'Waiting for them to reconnect…'
+                  )}`}
             </span>
           </div>
           {disconnectSecondsLeft > 0 && (
@@ -997,10 +1023,12 @@ export function Component() {
           <div className="flex items-center gap-2">
             <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
             <span>
-              You are reconnecting.{' '}
               {disconnectSecondsLeft > 0
-                ? `Resume within ${disconnectSecondsLeft}s or the match will be forfeited.`
-                : 'Forfeiting soon…'}
+                ? t('p2p.match.selfDisconnectedWithTime', {
+                    seconds: disconnectSecondsLeft,
+                    defaultValue: `You are reconnecting. Resume within ${disconnectSecondsLeft}s or the match will be forfeited.`,
+                  })
+                : t('p2p.match.forfeitingSoon', 'Forfeiting soon…')}
             </span>
           </div>
           {disconnectSecondsLeft > 0 && (
@@ -1021,36 +1049,39 @@ export function Component() {
               </div>
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#b8860b] dark:text-[#fbbf24]">
-                  Compete to Earn
+                  {t('p2p.stakeSetup.title', 'Compete to Earn')}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {match.status === 'waiting' || match.status === 'ready'
-                    ? 'Stakes are reserved until the match ends'
+                    ? t('p2p.match.stakesReserved', 'Stakes are reserved until the match ends')
                     : match.status === 'tied'
-                      ? 'Draw — both stakes refunded'
+                      ? t('p2p.match.drawRefunded', 'Draw — both stakes refunded')
                       : match.status === 'cancelled'
-                        ? 'Cancelled — stakes refunded'
-                        : 'Match settled'}
+                        ? t('p2p.match.cancelledRefunded', 'Cancelled — stakes refunded')
+                        : t('p2p.match.matchSettled', 'Match settled')}
                 </p>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
-              <PaidMetric label="Your stake" value={formatCurrency(match.stake_amount)} />
-              <PaidMetric label="Opponent stake" value={formatCurrency(match.stake_amount)} />
-              <PaidMetric label="Prize pool" value={formatCurrency(match.prize_pool)} />
+              <PaidMetric label={t('p2p.stakeSetup.yourStakeRow', 'Your stake')} value={formatCurrency(match.stake_amount)} />
+              <PaidMetric label={t('p2p.match.opponentStake', 'Opponent stake')} value={formatCurrency(match.stake_amount)} />
+              <PaidMetric label={t('p2p.prizePool', 'Prize pool')} value={formatCurrency(match.prize_pool)} />
               <PaidMetric
-                label={`Fee ${match.service_fee_percent.toFixed(2)}%`}
+                label={t('p2p.match.feeLabel', {
+                  fee: match.service_fee_percent.toFixed(2),
+                  defaultValue: `Fee ${match.service_fee_percent.toFixed(2)}%`,
+                })}
                 value={formatCurrency(match.status === 'tied' || match.status === 'cancelled' ? 0 : match.total_fee || (match.prize_pool * match.service_fee_bp) / 10000)}
               />
               <PaidMetric
-                label="Winner payout"
+                label={t('p2p.match.winnerPayout', 'Winner payout')}
                 value={formatCurrency(match.potential_payout)}
                 highlight
               />
               {wallet && (
                 <PaidMetric
-                  label="Available"
+                  label={t('p2p.match.available', 'Available')}
                   value={formatCurrency(wallet.available_balance ?? wallet.balance)}
                 />
               )}
@@ -1081,15 +1112,15 @@ export function Component() {
                 </div>
                 {p0?.user_id === user?.id && (
                   <span className="absolute -top-1.5 -right-1.5 bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.2 rounded-full">
-                    YOU
+                    {t('p2p.match.youTag', 'YOU')}
                   </span>
                 )}
               </div>
               <span className="font-bold text-sm truncate max-w-[120px] sm:max-w-[160px]">
-                {p0?.display_name || (isP0 ? 'You' : 'Host Player')}
+                {p0?.display_name || (isP0 ? t('p2p.match.you', 'You') : t('p2p.match.hostPlayer', 'Host Player'))}
               </span>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span>Score:</span>
+                <span>{t('p2p.match.score', 'Score:')}</span>
                 <span className="font-bold text-foreground text-sm">{match.scores?.['0'] ?? 0}</span>
               </div>
             </div>
@@ -1097,7 +1128,7 @@ export function Component() {
             {/* Duel Status / Timer (Center) */}
             <div className="flex flex-col items-center justify-center text-center space-y-1.5">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {match.game_slug.replace('-', ' ')}
+                {gameName(match.game_slug, t) || match.game_slug.replace('-', ' ')}
               </span>
 
               {match.status === 'in_progress' ? (
@@ -1106,10 +1137,10 @@ export function Component() {
                     <>
                       <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border border-success/30 bg-success/15 text-success">
                         <Trophy className="w-3.5 h-3.5" />
-                        <span>ROUND WON</span>
+                        <span>{t('p2p.match.roundWon', 'ROUND WON')}</span>
                       </div>
                       <div className="text-[11px] font-semibold text-muted-foreground animate-pulse">
-                        Next round starting…
+                        {t('p2p.match.nextRoundStarting', 'Next round starting…')}
                       </div>
                     </>
                   ) : (
@@ -1124,7 +1155,7 @@ export function Component() {
                       >
                         {mySeat && <TicTacToeMarker seat={mySeat} variant="plain" className="h-3.5 w-3.5" />}
                         <Clock className="w-3.5 h-3.5" />
-                        <span>{isMyTurn ? 'YOUR TURN' : 'OPPONENT TURN'}</span>
+                        <span>{isMyTurn ? t('p2p.yourTurn', 'YOUR TURN') : t('p2p.opponentTurn', 'OPPONENT TURN')}</span>
                       </div>
                       <div className="text-2xl font-black tabular-nums tracking-tight">
                         {secondsLeft}s
@@ -1132,7 +1163,11 @@ export function Component() {
                     </>
                   )}
                   <div className="text-[11px] text-muted-foreground">
-                    Round {match.current_round} of {match.max_rounds}
+                    {t('p2p.roundIndicator', {
+                      current: match.current_round,
+                      total: match.max_rounds,
+                      defaultValue: `Round ${match.current_round} of ${match.max_rounds}`,
+                    })}
                   </div>
                 </div>
               ) : (
@@ -1179,15 +1214,15 @@ export function Component() {
                 </div>
                 {p1?.user_id === user?.id && (
                   <span className="absolute -top-1.5 -left-1.5 bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.2 rounded-full">
-                    YOU
+                    {t('p2p.match.youTag', 'YOU')}
                   </span>
                 )}
               </div>
               <span className="font-bold text-sm truncate max-w-[120px] sm:max-w-[160px]">
-                {p1?.display_name || (isP1 ? 'You' : p1 ? 'Challenger' : 'Waiting…')}
+                {p1?.display_name || (isP1 ? t('p2p.match.you', 'You') : p1 ? t('p2p.match.challenger', 'Challenger') : t('p2p.match.waiting', 'Waiting…'))}
               </span>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span>Score:</span>
+                <span>{t('p2p.match.score', 'Score:')}</span>
                 <span className="font-bold text-foreground text-sm">{match.scores?.['1'] ?? 0}</span>
               </div>
             </div>
@@ -1205,14 +1240,14 @@ export function Component() {
                 <Users className="w-8 h-8 opacity-60" />
               </div>
               <div>
-                <h3 className="text-xl font-bold">Match Cancelled</h3>
+                <h3 className="text-xl font-bold">{t('p2p.match.cancelledTitle', 'Match Cancelled')}</h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  This room was cancelled by the host or expired after 5 minutes of inactivity.
+                  {t('p2p.match.cancelledDesc', 'This room was cancelled by the host or expired after 5 minutes of inactivity.')}
                 </p>
               </div>
               <div className="pt-2">
                 <Button onClick={() => navigate('/games')} className="font-semibold text-xs">
-                  Return to Games Lobby
+                  {t('p2p.match.returnToLobby', 'Return to Games Lobby')}
                 </Button>
               </div>
             </div>
@@ -1234,12 +1269,20 @@ export function Component() {
 
               <div>
                 <h3 className="text-xl font-bold">
-                  {isPaidMatch ? 'Searching for a Staked Opponent' : 'Waiting for Challenger'}
+                  {isPaidMatch
+                    ? t('p2p.match.searchingStakedOpponent', 'Searching for a Staked Opponent')
+                    : t('p2p.match.waitingForChallenger', 'Waiting for Challenger')}
                 </h3>
                 <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
                   {isPaidMatch
-                    ? `Only a player staking exactly ${formatCurrency(match.stake_amount)} can join. Your stake is reserved while you wait.`
-                    : 'Share this invitation with a friend through Telegram or copy the room link to play!'}
+                    ? t('p2p.match.stakedWaitingDesc', {
+                        amount: formatCurrency(match.stake_amount),
+                        defaultValue: `Only a player staking exactly ${formatCurrency(match.stake_amount)} can join. Your stake is reserved while you wait.`,
+                      })
+                    : t(
+                        'p2p.match.freeWaitingDesc',
+                        'Share this invitation with a friend through Telegram or copy the room link to play!'
+                      )}
                 </p>
               </div>
 
@@ -1249,8 +1292,11 @@ export function Component() {
                   <Clock className="w-3.5 h-3.5 text-warning" />
                   <span>
                     {waitingSecondsLeft > 0
-                      ? `Expires in ${Math.floor(waitingSecondsLeft / 60)}:${waitingSecondsLeft % 60 < 10 ? '0' : ''}${waitingSecondsLeft % 60}`
-                      : 'Expired'}
+                      ? t('p2p.match.expiresIn', {
+                          time: `${Math.floor(waitingSecondsLeft / 60)}:${waitingSecondsLeft % 60 < 10 ? '0' : ''}${waitingSecondsLeft % 60}`,
+                          defaultValue: `Expires in ${Math.floor(waitingSecondsLeft / 60)}:${waitingSecondsLeft % 60 < 10 ? '0' : ''}${waitingSecondsLeft % 60}`,
+                        })
+                      : t('p2p.match.expired', 'Expired')}
                   </span>
                 </Badge>
               </div>
@@ -1259,7 +1305,7 @@ export function Component() {
               {match.invite_code && (
                 <div className="p-4 bg-muted/40 rounded-2xl border border-border/80 space-y-2">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Private Room Code
+                    {t('p2p.match.privateRoomCode', 'Private Room Code')}
                   </span>
                   <div className="flex items-center justify-center gap-3">
                     <span className="font-mono text-3xl font-black tracking-widest text-primary">
@@ -1274,12 +1320,12 @@ export function Component() {
                       {copied ? (
                         <>
                           <Check className="w-3.5 h-3.5 text-success" />
-                          <span>Copied</span>
+                          <span>{t('common.copied', 'Copied')}</span>
                         </>
                       ) : (
                         <>
                           <Copy className="w-3.5 h-3.5" />
-                          <span>Copy</span>
+                          <span>{t('common.copy', 'Copy')}</span>
                         </>
                       )}
                     </Button>
@@ -1295,7 +1341,7 @@ export function Component() {
                     className="w-full h-11 font-bold text-sm gap-2 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-md shadow-sky-500/20"
                   >
                     <Send className="w-4 h-4" />
-                    <span>Invite via Telegram</span>
+                    <span>{t('p2p.match.inviteViaTelegram', 'Invite via Telegram')}</span>
                   </Button>
 
                   <div className="grid grid-cols-2 gap-2">
@@ -1307,12 +1353,12 @@ export function Component() {
                       {copiedLink ? (
                         <>
                           <Check className="w-3.5 h-3.5 text-success" />
-                          <span>Link Copied</span>
+                          <span>{t('p2p.match.linkCopied', 'Link Copied')}</span>
                         </>
                       ) : (
                         <>
                           <Copy className="w-3.5 h-3.5" />
-                          <span>Copy Link</span>
+                          <span>{t('p2p.match.copyLink', 'Copy Link')}</span>
                         </>
                       )}
                     </Button>
@@ -1323,7 +1369,7 @@ export function Component() {
                       className="h-9 text-xs font-semibold gap-1.5"
                     >
                       <Share2 className="w-3.5 h-3.5" />
-                      <span>Share Options</span>
+                      <span>{t('p2p.match.shareOptions', 'Share Options')}</span>
                     </Button>
                   </div>
                 </div>
@@ -1339,7 +1385,7 @@ export function Component() {
                     disabled={cancelMutation.isPending}
                     className="text-xs text-muted-foreground hover:text-destructive"
                   >
-                    Cancel Invitation
+                    {t('p2p.match.cancelInvitation', 'Cancel Invitation')}
                   </Button>
                 </div>
               )}
@@ -1354,12 +1400,15 @@ export function Component() {
               </div>
               <div>
                 <h3 className="text-xl font-bold">
-                  {isPaidMatch ? 'Confirm Your Stake' : 'Both Players Joined!'}
+                  {isPaidMatch ? t('p2p.match.confirmStake', 'Confirm Your Stake') : t('p2p.match.bothPlayersJoined', 'Both Players Joined!')}
                 </h3>
                 <p className="text-xs text-muted-foreground mt-1">
                   {isPaidMatch
-                    ? `Both players must confirm the ${formatCurrency(match.stake_amount)} stake before the match starts. Funds settle only when the match ends.`
-                    : 'Click Ready Up when you are prepared to begin the duel.'}
+                    ? t('p2p.match.confirmStakeDesc', {
+                        amount: formatCurrency(match.stake_amount),
+                        defaultValue: `Both players must confirm the ${formatCurrency(match.stake_amount)} stake before the match starts. Funds settle only when the match ends.`,
+                      })
+                    : t('p2p.match.readyUpDesc', 'Click Ready Up when you are prepared to begin the duel.')}
                 </p>
               </div>
 
@@ -1367,8 +1416,8 @@ export function Component() {
                 <div className="inline-flex items-center gap-2 text-sm font-semibold text-success bg-success/10 px-4 py-2 rounded-full border border-success/20">
                   <span>
                     {opponentReady
-                      ? 'Both players are ready — starting the match…'
-                      : 'You are ready! Waiting for opponent…'}
+                      ? t('p2p.match.bothReadyStarting', 'Both players are ready — starting the match…')
+                      : t('p2p.match.youReadyWaiting', 'You are ready! Waiting for opponent…')}
                   </span>
                 </div>
               ) : (
@@ -1380,13 +1429,18 @@ export function Component() {
                     className="w-full font-bold shadow-lg shadow-primary/20 text-base"
                   >
                     {readyMutation.isPending
-                      ? 'Confirming…'
+                      ? t('p2p.match.confirming', 'Confirming…')
                       : isPaidMatch
-                        ? `Confirm ${formatCurrency(match.stake_amount)} Stake`
-                        : 'I am Ready! ⚔️'}
+                        ? t('p2p.match.confirmStakeButton', {
+                            amount: formatCurrency(match.stake_amount),
+                            defaultValue: `Confirm ${formatCurrency(match.stake_amount)} Stake`,
+                          })
+                        : t('p2p.match.iAmReady', 'I am Ready! ⚔️')}
                   </Button>
                   <p className="text-[11px] text-muted-foreground">
-                    {opponentReady ? 'Your opponent is ready.' : 'Your opponent has not readied up yet.'}
+                    {opponentReady
+                      ? t('p2p.match.opponentIsReady', 'Your opponent is ready.')
+                      : t('p2p.match.opponentNotReady', 'Your opponent has not readied up yet.')}
                   </p>
                 </div>
               )}
@@ -1498,7 +1552,7 @@ export function Component() {
             className="text-muted-foreground hover:text-destructive text-xs gap-1.5"
           >
             <Flag className="w-3.5 h-3.5" />
-            <span>Surrender Match</span>
+            <span>{t('p2p.match.surrenderMatch', 'Surrender Match')}</span>
           </Button>
         </div>
       )}
@@ -1529,15 +1583,15 @@ export function Component() {
             <CardContent className="space-y-4 p-5">
               <div>
                 <h2 id="resign-dialog-title" className="text-lg font-bold">
-                  Resign this match?
+                  {t('p2p.match.resignTitle', 'Resign this match?')}
                 </h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Your opponent will be awarded the result. This cannot be undone.
+                  {t('p2p.match.resignDesc', 'Your opponent will be awarded the result. This cannot be undone.')}
                 </p>
               </div>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setResignDialogOpen(false)} autoFocus>
-                  Keep playing
+                  {t('p2p.match.keepPlaying', 'Keep playing')}
                 </Button>
                 <Button
                   variant="destructive"
@@ -1547,7 +1601,7 @@ export function Component() {
                     resignMutation.mutate()
                   }}
                 >
-                  {resignMutation.isPending ? 'Resigning…' : 'Resign'}
+                  {resignMutation.isPending ? t('p2p.match.resigning', 'Resigning…') : t('p2p.match.resignConfirm', 'Resign')}
                 </Button>
               </div>
             </CardContent>
@@ -1574,16 +1628,19 @@ export function Component() {
                 </div>
                 <div>
                   <h2 id="cancel-dialog-title" className="text-base font-bold">
-                    Cancel Invitation?
+                    {t('p2p.match.cancelDialogTitle', 'Cancel Invitation?')}
                   </h2>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    This will close the room and invalidate the invite code. Your friend will no longer be able to join.
+                    {t(
+                      'p2p.match.cancelDialogDesc',
+                      'This will close the room and invalidate the invite code. Your friend will no longer be able to join.'
+                    )}
                   </p>
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" size="sm" onClick={() => setCancelDialogOpen(false)} autoFocus>
-                  Keep Waiting
+                  {t('p2p.match.keepWaiting', 'Keep Waiting')}
                 </Button>
                 <Button
                   variant="destructive"
@@ -1594,7 +1651,7 @@ export function Component() {
                     cancelMutation.mutate()
                   }}
                 >
-                  {cancelMutation.isPending ? 'Cancelling…' : 'Cancel Invitation'}
+                  {cancelMutation.isPending ? t('p2p.match.cancelling', 'Cancelling…') : t('p2p.match.cancelConfirm', 'Cancel Invitation')}
                 </Button>
               </div>
             </CardContent>

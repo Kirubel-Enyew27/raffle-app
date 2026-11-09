@@ -41,11 +41,11 @@ export function Component() {
     <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">{t('notifications.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('common.noData')}</p>
+        <p className="text-sm text-muted-foreground">{t('notifications.subtitle')}</p>
       </div>
 
       {isLoading ? (
-        <div className="space-y-3">
+        <div className="space-y-3" role="status" aria-label={t('notifications.loading')}>
           {[1, 2, 3].map((n) => (
             <div key={n} className="h-20 w-full animate-pulse rounded-xl bg-muted" />
           ))}
@@ -58,7 +58,7 @@ export function Component() {
             </div>
             <h3 className="mt-4 text-lg font-semibold">{t('notifications.noNotifications')}</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              {t('notifications.noNotifications')}
+              {t('notifications.caughtUp')}
             </p>
           </CardContent>
         </Card>

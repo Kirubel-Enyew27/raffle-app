@@ -1,3 +1,4 @@
+import i18n from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils'
 
 export const formatNumber = (value: number) => value.toLocaleString('en-US')
@@ -27,12 +28,12 @@ export function relativeTime(value?: string) {
   if (!value) return '—'
   const diff = Date.now() - new Date(value).getTime()
   const minutes = Math.floor(diff / 60_000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m ago`
+  if (minutes < 1) return i18n.t('time.justNow')
+  if (minutes < 60) return i18n.t('time.minutesAgo', { count: minutes })
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) return i18n.t('time.hoursAgo', { count: hours })
   const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d ago`
+  if (days < 30) return i18n.t('time.daysAgo', { count: days })
   return formatDate(value)
 }
 
@@ -42,6 +43,9 @@ export const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructi
   credited: 'success',
   settled: 'success',
   approved: 'success',
+  scheduled: 'warning',
+  draft: 'secondary',
+  closed: 'destructive',
   in_progress: 'default',
   running: 'default',
   ready: 'warning',

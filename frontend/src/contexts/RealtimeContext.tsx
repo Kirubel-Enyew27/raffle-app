@@ -4,6 +4,7 @@ import { useToast } from './ToastContext'
 import { useQueryClient } from '@tanstack/react-query'
 import { sseClient } from '@/lib/sseClient'
 import type { SSEEvent, SSEStatus } from '@/lib/sseClient'
+import i18n from '@/lib/i18n'
 
 // ─── Context type ─────────────────────────────────────────────────────────────
 
@@ -76,9 +77,11 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       switch (raw.type) {
         case 'wallet_update': {
           queryClient.invalidateQueries({ queryKey: ['wallet'] })
+          const balance = (raw.payload as { balance: unknown }).balance
+          const currency = (raw.payload as { currency?: string }).currency ?? 'ETB'
           toast({
-            title: 'Wallet Balance Updated',
-            description: `Your balance is now ${(raw.payload as { balance: unknown }).balance} ${(raw.payload as { currency?: string }).currency ?? 'ETB'}.`,
+            title: i18n.t('realtime.walletUpdated', 'Wallet Balance Updated'),
+            description: i18n.t('realtime.balanceNow', { balance, currency, defaultValue: `Your balance is now ${balance} ${currency}.` }),
             type: 'success',
           })
           break
@@ -98,27 +101,27 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
           if (txType === 'deposit' && payload.status === 'completed') {
             toast({
-              title: 'Deposit Successful',
-              description: `Successfully deposited ${payload.amount} ETB.`,
+              title: i18n.t('realtime.depositSuccess', 'Deposit Successful'),
+              description: i18n.t('realtime.depositSuccessDesc', { amount: payload.amount, defaultValue: `Successfully deposited ${payload.amount} ETB.` }),
               type: 'success',
             })
           } else if (txType === 'withdraw') {
             if (payload.status === 'pending') {
               toast({
-                title: 'Withdrawal Requested',
-                description: `Your request for ${payload.amount} ETB is pending admin approval.`,
+                title: i18n.t('realtime.withdrawalRequested', 'Withdrawal Requested'),
+                description: i18n.t('realtime.withdrawalRequestedDesc', { amount: payload.amount, defaultValue: `Your request for ${payload.amount} ETB is pending admin approval.` }),
                 type: 'info',
               })
             } else if (payload.status === 'completed') {
               toast({
-                title: 'Withdrawal Processed',
-                description: `Your withdrawal of ${payload.amount} ETB was approved and completed.`,
+                title: i18n.t('realtime.withdrawalProcessed', 'Withdrawal Processed'),
+                description: i18n.t('realtime.withdrawalProcessedDesc', { amount: payload.amount, defaultValue: `Your withdrawal of ${payload.amount} ETB was approved and completed.` }),
                 type: 'success',
               })
             } else if (payload.status === 'rejected') {
               toast({
-                title: 'Withdrawal Rejected',
-                description: `Your withdrawal request of ${payload.amount} ETB was rejected.`,
+                title: i18n.t('realtime.withdrawalRejected', 'Withdrawal Rejected'),
+                description: i18n.t('realtime.withdrawalRejectedDesc', { amount: payload.amount, defaultValue: `Your withdrawal request of ${payload.amount} ETB was rejected.` }),
                 type: 'error',
               })
             }
@@ -136,9 +139,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         case 'withdrawal_request': {
           if (user?.role === 'admin') {
             queryClient.invalidateQueries({ queryKey: ['admin-pending-withdrawals'] })
+            const amount = (raw.payload as { amount?: number }).amount
             toast({
-              title: 'Withdrawal Action Required',
-              description: `A user has requested a withdrawal of ${(raw.payload as { amount?: number }).amount} ETB.`,
+              title: i18n.t('realtime.withdrawalActionRequired', 'Withdrawal Action Required'),
+              description: i18n.t('realtime.withdrawalActionRequiredDesc', { amount, defaultValue: `A user has requested a withdrawal of ${amount} ETB.` }),
               type: 'warning',
             })
           }
@@ -169,8 +173,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         case 'winner_notification': {
           const payload = raw.payload as { prize_amount?: number }
           toast({
-            title: '🎉 Congratulations!',
-            description: `You are the winner of the raffle! A prize of ${payload.prize_amount} ETB has been sent to your wallet!`,
+            title: i18n.t('realtime.congratulations', '🎉 Congratulations!'),
+            description: i18n.t('realtime.raffleWinnerDesc', { amount: payload.prize_amount, defaultValue: `You are the winner of the raffle! A prize of ${payload.prize_amount} ETB has been sent to your wallet!` }),
             type: 'success',
           })
           queryClient.invalidateQueries({ queryKey: ['wallet'] })

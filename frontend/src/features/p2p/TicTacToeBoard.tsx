@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { TicTacToeMarker } from './TicTacToeMarkers'
 import { EMPTY_CELL, markerLabel, seatForCell, seatForSymbol } from './ticTacToe'
 
@@ -55,6 +56,7 @@ export function TicTacToeBoard({
   isGameOver = false,
   isTie = false,
 }: TicTacToeBoardProps) {
+  const { t } = useTranslation()
   const cells = boardState?.cells || [0, 0, 0, 0, 0, 0, 0, 0, 0]
   const winningLine = boardState?.winning_line || null
   const lastMove = boardState?.last_move ?? null
@@ -101,8 +103,8 @@ export function TicTacToeBoard({
               disabled={!canClick}
               aria-label={
                 seat
-                  ? `Cell ${idx + 1}, ${markerLabel(seat)}${isWin ? ', part of the winning line' : ''}`
-                  : `Cell ${idx + 1}, empty${canClick ? ', your move' : ''}`
+                  ? `${t('p2p.board.cell', { cell: idx + 1 })}, ${markerLabel(seat)}${isWin ? ` · ${t('p2p.board.winningLine')}` : ''}`
+                  : `${t('p2p.board.cell', { cell: idx + 1 })}, ${t('p2p.board.empty')}${canClick ? ` · ${t('p2p.board.yourMove')}` : ''}`
               }
               style={isWin && winOrder >= 0 ? { animationDelay: `${winOrder * 140}ms` } : undefined}
               className={[
@@ -172,16 +174,21 @@ export function TicTacToeBoard({
       {/* Footer indication */}
       {isDraw ? (
         <div className="mt-3 flex items-center gap-2 text-xs font-bold text-warning">
-          <span>Grid is Full — No winning line (Stalemate)</span>
+          <span>{t('p2p.tttGridFull', 'Grid is Full — No winning line (Stalemate)')}</span>
         </div>
       ) : winningLine ? (
         <div className="mt-3 flex items-center gap-2 text-xs font-bold text-success animate-pulse">
-          <span>Decisive 3 in a Row Connected!</span>
+          <span>{t('p2p.tttDecisive', 'Decisive 3 in a Row Connected!')}</span>
         </div>
       ) : mySeat ? (
         <div className="mt-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           <TicTacToeMarker seat={mySeat} variant="plain" className="h-4 w-4" />
-          <span>You play the {markerLabel(mySeat)}</span>
+          <span>
+            {t('p2p.tttYouPlay', {
+              marker: markerLabel(mySeat),
+              defaultValue: `You play the ${markerLabel(mySeat)}`,
+            })}
+          </span>
         </div>
       ) : null}
     </div>

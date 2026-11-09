@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { ArrowRight, Eye, EyeOff, Loader2, Lock, Mail } from 'lucide-react'
 import { AuthShell } from '@/features/auth/AuthShell'
 import { GoogleSignInButton } from '@/features/auth/GoogleSignInButton'
@@ -23,14 +24,17 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
-const schema = z.object({
-  identifier: z.string().min(1, 'Enter your email or phone'),
-  password: z.string().min(1, 'Password is required'),
+const makeSchema = (t: TFunction) => z.object({
+  identifier: z.string().min(1, t('validation.emailOrPhone')),
+  password: z.string().min(1, t('validation.enterPassword')),
 })
-type Fields = z.infer<typeof schema>
+type Fields = z.infer<ReturnType<typeof makeSchema>>
 
 export function Component() {
   const { t } = useTranslation()
+  // `t` is rebound by react-i18next when the language changes, so validation
+  // messages follow the active locale instead of freezing at first render.
+  const schema = useMemo(() => makeSchema(t), [t])
   usePageTitle(t('auth.signIn'))
   const { login } = useAuth()
   const navigate = useNavigate()
@@ -66,6 +70,8 @@ export function Component() {
 
   // A failed Google round trip comes back as ?error=<reason>.
   const googleError = searchParams.get('error')
+  // The API redirects here with ?reason=session_expired after a failed refresh.
+  const sessionExpired = searchParams.get('reason') === 'session_expired'
 
   const { mutate, isPending, error } = useMutation({
     mutationFn: ({ identifier, password }: Fields) => authApi.login(identifier, password),
@@ -81,6 +87,12 @@ export function Component() {
   return (
     <AuthShell>
       <form onSubmit={handleSubmit(d => mutate(d))} noValidate className="space-y-5">
+        {sessionExpired && (
+          <p role="alert" className={authAlertClass}>
+            {t('auth.sessionExpired')}
+          </p>
+        )}
+
         {googleError && (
           <p role="alert" className={authAlertClass}>
             {t(googleErrorKey(googleError))}
@@ -139,7 +151,7 @@ export function Component() {
             <button
               type="button"
               onClick={() => setShowPassword(prev => !prev)}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
               className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40"
             >
               {showPassword ? (

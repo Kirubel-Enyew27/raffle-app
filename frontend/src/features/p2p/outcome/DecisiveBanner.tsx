@@ -1,6 +1,8 @@
 import { FastForward } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { GameOutcome, OutcomePhase } from './outcomeTypes'
 import { Button } from '@/components/ui/button'
+import { getOutcomeSubtitle } from './outcomeExtractor'
 
 interface DecisiveBannerProps {
   outcome: GameOutcome
@@ -9,10 +11,12 @@ interface DecisiveBannerProps {
 }
 
 export function DecisiveBanner({ outcome, phase, onSkip }: DecisiveBannerProps) {
+  const { t } = useTranslation()
   if (phase === 'idle' || phase === 'announced') return null
 
   const isWin = outcome.type === 'win'
   const isLoss = outcome.type === 'loss'
+  const subtitle = getOutcomeSubtitle(outcome, t)
 
   return (
     <div
@@ -28,7 +32,7 @@ export function DecisiveBanner({ outcome, phase, onSkip }: DecisiveBannerProps) 
       ].join(' ')}
     >
       <div className="flex items-center gap-2 text-xs font-bold">
-        <span className="truncate">{outcome.subtitle}</span>
+        <span className="truncate">{subtitle}</span>
       </div>
 
       {onSkip && (
@@ -38,7 +42,7 @@ export function DecisiveBanner({ outcome, phase, onSkip }: DecisiveBannerProps) 
           onClick={onSkip}
           className="h-6 px-2 text-[11px] font-semibold text-muted-foreground hover:text-foreground shrink-0 gap-1"
         >
-          <span>Skip</span>
+          <span>{t('common.skip', 'Skip')}</span>
           <FastForward className="h-3 w-3" />
         </Button>
       )}

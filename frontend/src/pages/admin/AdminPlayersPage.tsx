@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { Flame, Medal, Trophy } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
@@ -11,17 +12,18 @@ import { formatNumber } from '@/features/admin/AdminUtils'
 import { cn } from '@/lib/utils'
 import type { LeaderboardPeriod, LeaderboardSortBy } from '@/types/api'
 
-const GAMES = [
-  { slug: '', label: 'All games' },
-  { slug: 'ethiopian-dama', label: 'Ethiopian Dama' },
-  { slug: 'tic-tac-toe', label: 'Tic-Tac-Toe' },
-  { slug: 'rock-paper-scissors', label: 'Rock-Paper-Scissors' },
-  { slug: 'connect-four', label: 'Connect Four' },
-]
 const PAGE_SIZE = 20
 
 export function Component() {
-  usePageTitle('Top Players · KWIK Admin')
+  const { t } = useTranslation()
+  usePageTitle(`${t('admin.topPlayers')} · KWIK Admin`)
+  const games = [
+    { slug: '', label: t('admin.allGames') },
+    { slug: 'ethiopian-dama', label: t('p2p.ethiopianDama') },
+    { slug: 'tic-tac-toe', label: t('p2p.ticTacToe') },
+    { slug: 'rock-paper-scissors', label: t('p2p.rockPaperScissors') },
+    { slug: 'connect-four', label: t('p2p.connectFour') },
+  ]
   const [period, setPeriod] = useState<LeaderboardPeriod>('all_time')
   const [game, setGame] = useState('')
   const [sort, setSort] = useState<LeaderboardSortBy>('wins')
@@ -38,27 +40,27 @@ export function Component() {
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-5 p-3 sm:p-5 lg:p-7">
       <PageHeader
-        eyebrow="Competition rankings"
-        title="Top players"
-        description="Rankings from finalized P2P matches, using the same leaderboard logic players see. Crash earnings are not part of this leaderboard."
-        actions={<span className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold">{formatNumber(data?.pagination.total_players ?? 0)} ranked</span>}
+        eyebrow={t('admin.competitionRankings')}
+        title={t('admin.topPlayers')}
+        description={t('admin.topPlayersDesc')}
+        actions={<span className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold">{t('admin.rankedCount', { count: formatNumber(data?.pagination.total_players ?? 0) })}</span>}
       />
 
       <Card className="border-border/70 p-3 sm:p-4">
         <div className="grid gap-2 sm:grid-cols-3 lg:flex">
           <Select value={period} onChange={event => changeFilter(() => setPeriod(event.target.value as LeaderboardPeriod))} className="h-10">
-            <option value="all_time">All time</option>
-            <option value="daily">Today</option>
-            <option value="weekly">This week</option>
-            <option value="monthly">This month</option>
+            <option value="all_time">{t('admin.allTime')}</option>
+            <option value="daily">{t('admin.today')}</option>
+            <option value="weekly">{t('admin.thisWeek')}</option>
+            <option value="monthly">{t('admin.thisMonth')}</option>
           </Select>
           <Select value={game} onChange={event => changeFilter(() => setGame(event.target.value))} className="h-10">
-            {GAMES.map(item => <option key={item.slug} value={item.slug}>{item.label}</option>)}
+            {games.map(item => <option key={item.slug} value={item.slug}>{item.label}</option>)}
           </Select>
           <Select value={sort} onChange={event => changeFilter(() => setSort(event.target.value as LeaderboardSortBy))} className="h-10">
-            <option value="wins">Most wins</option>
-            <option value="win_rate">Highest win rate</option>
-            <option value="win_streak">Longest current streak</option>
+            <option value="wins">{t('admin.mostWins')}</option>
+            <option value="win_rate">{t('admin.highestWinRate')}</option>
+            <option value="win_streak">{t('admin.longestCurrentStreak')}</option>
           </Select>
         </div>
       </Card>
@@ -83,10 +85,10 @@ export function Component() {
                         </span>
                       </div>
                       <p className="mt-3 max-w-full truncate text-sm font-bold">{player.display_name}</p>
-                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{player.wins} wins · {player.win_rate}% rate</p>
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('admin.winsRate', { wins: player.wins, winRate: player.win_rate })}</p>
                       <div className="mt-2 flex items-center gap-1 text-xs font-bold text-warning">
                         {place === 1 ? <Trophy className="h-4 w-4" /> : <Medal className="h-4 w-4" />}
-                        {player.matches_played} matches
+                        {t('admin.matchesCount', { count: player.matches_played })}
                       </div>
                     </CardContent>
                   </Card>
@@ -100,18 +102,18 @@ export function Component() {
               <table className="w-full min-w-[780px] text-left text-sm">
                 <thead className="border-b border-border/60 bg-muted/30 text-[10px] uppercase tracking-wider text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-3 text-center font-semibold">Rank</th>
-                    <th className="px-4 py-3 font-semibold">Player</th>
-                    <th className="px-4 py-3 text-center font-semibold">W / L / D</th>
-                    <th className="px-4 py-3 text-center font-semibold">Win rate</th>
-                    <th className="px-4 py-3 text-center font-semibold">Current streak</th>
-                    <th className="px-4 py-3 text-center font-semibold">Best streak</th>
-                    <th className="px-4 py-3 text-right font-semibold">Matches</th>
+                    <th className="px-4 py-3 text-center font-semibold">{t('admin.rank')}</th>
+                    <th className="px-4 py-3 font-semibold">{t('admin.player')}</th>
+                    <th className="px-4 py-3 text-center font-semibold">{t('admin.wld')}</th>
+                    <th className="px-4 py-3 text-center font-semibold">{t('admin.winRate')}</th>
+                    <th className="px-4 py-3 text-center font-semibold">{t('admin.currentStreak')}</th>
+                    <th className="px-4 py-3 text-center font-semibold">{t('admin.bestStreak')}</th>
+                    <th className="px-4 py-3 text-right font-semibold">{t('admin.matches')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {isLoading && Array.from({ length: 8 }).map((_, index) => <tr key={index}>{Array.from({ length: 7 }).map((__, cell) => <td key={cell} className="px-4 py-3"><Skeleton className="h-4 w-full" /></td>)}</tr>)}
-                  {!isLoading && players.length === 0 && <tr><td colSpan={7}><EmptyState title="No ranked players in this view" description="Finalized matches in the selected period will establish rankings." /></td></tr>}
+                  {!isLoading && players.length === 0 && <tr><td colSpan={7}><EmptyState title={t('admin.noRankedPlayers')} description={t('admin.noRankedPlayersDesc')} /></td></tr>}
                   {players.map(player => (
                     <tr key={player.player_id} className="transition-colors hover:bg-muted/25">
                       <td className="px-4 py-3 text-center"><span className={cn('inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-black', player.rank <= 3 ? 'bg-warning/15 text-warning' : 'text-muted-foreground')}>{player.rank}</span></td>
@@ -128,14 +130,14 @@ export function Component() {
             </div>
             <div className="divide-y divide-border/60 md:hidden">
               {isLoading && Array.from({ length: 4 }).map((_, i) => <div key={i} className="p-4"><Skeleton className="h-16 w-full" /></div>)}
-              {!isLoading && players.length === 0 && <EmptyState title="No ranked players in this view" />}
+              {!isLoading && players.length === 0 && <EmptyState title={t('admin.noRankedPlayers')} />}
               {players.map(player => (
                 <div key={player.player_id} className="flex items-center gap-3 p-4">
                   <span className="w-6 shrink-0 text-center text-xs font-black text-muted-foreground">{player.rank}</span>
                   <Avatar name={player.display_name} src={player.avatar_url ?? undefined} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">{player.display_name}</p>
-                    <p className="text-[10px] text-muted-foreground">{player.wins}W · {player.losses}L · {player.win_rate}% · {player.matches_played} matches</p>
+                    <p className="text-[10px] text-muted-foreground">{t('admin.playerStatsLine', { wins: player.wins, losses: player.losses, winRate: player.win_rate, matches: player.matches_played })}</p>
                   </div>
                   {player.current_win_streak > 0 && <span className="inline-flex shrink-0 items-center gap-0.5 text-xs font-bold text-warning"><Flame className="h-3 w-3" />{player.current_win_streak}</span>}
                 </div>
@@ -143,7 +145,7 @@ export function Component() {
             </div>
             <Pagination total={data?.pagination.total_players ?? 0} limit={PAGE_SIZE} offset={(page - 1) * PAGE_SIZE} onChange={offset => setPage(Math.floor(offset / PAGE_SIZE) + 1)} loading={isLoading} />
           </Card>
-          <p className="text-[10px] text-muted-foreground">Earnings and payouts are not exposed by the leaderboard endpoint, so no monetary ranking is shown. Competition-mode filtering is not available in that response.</p>
+          <p className="text-[10px] text-muted-foreground">{t('admin.playersFooterNote')}</p>
         </>
       )}
     </div>

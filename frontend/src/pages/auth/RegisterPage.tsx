@@ -1,9 +1,11 @@
+import { useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { AuthCard } from '@/features/auth/AuthCard'
 import { clearPendingRedirect, readPendingRedirect, resolvePostAuthPath } from '@/features/auth/landing'
 import { authApi } from '@/features/auth/api'
@@ -19,23 +21,25 @@ import { FormField } from '@/components/forms/FormField'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
-const schema = z.object({
-  fullName: z.string().min(2, 'Enter your full name'),
-  email: z.string().email('Enter a valid email').optional().or(z.literal('')),
-  phone: z.string().regex(/^\+?[0-9]{7,15}$/, 'Enter a valid phone number').optional().or(z.literal('')),
-  password: z.string().min(6, 'At least 6 characters'),
+const makeSchema = (t: TFunction) => z.object({
+  fullName: z.string().min(2, t('validation.enterFullName')),
+  email: z.string().email(t('validation.validEmail')).optional().or(z.literal('')),
+  phone: z.string().regex(/^\+?[0-9]{7,15}$/, t('validation.validPhone')).optional().or(z.literal('')),
+  password: z.string().min(6, t('validation.atLeastCharacters', { count: 6 })),
   confirm: z.string(),
 }).refine(d => d.password === d.confirm, {
-  message: 'Passwords do not match',
+  message: t('validation.passwordsDoNotMatch'),
   path: ['confirm'],
 }).refine(d => d.email || d.phone, {
-  message: 'Enter your email or phone number',
+  message: t('validation.emailOrPhoneRequired'),
   path: ['email'],
 })
-type Fields = z.infer<typeof schema>
+type Fields = z.infer<ReturnType<typeof makeSchema>>
 
 export function Component() {
   const { t } = useTranslation()
+  // Validation messages must follow the active language, not the first render.
+  const schema = useMemo(() => makeSchema(t), [t])
   usePageTitle(t('auth.signUp'))
   const { login } = useAuth()
   const navigate = useNavigate()
