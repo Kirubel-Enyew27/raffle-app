@@ -128,22 +128,22 @@ export function UserMenu() {
         >
           {/* Profile */}
           <div className="border-b border-border px-3 py-2.5">
-            <Link
+            {/* <Link
               to="/profile"
               onClick={() => setOpen(false)}
               className="group block rounded-md transition-colors hover:opacity-85"
-            >
+            > */}
               <p className="text-sm font-medium truncate group-hover:text-primary">
                 {displayName}
               </p>
               {user?.full_name && user?.email && (
                 <p className="text-xs text-muted-foreground truncate">{user.email}</p>
               )}
-              <div className="mt-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground group-hover:text-primary">
+              {/* <div className="mt-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground group-hover:text-primary">
                 <UserIcon className="h-3.5 w-3.5" />
                 <span>{t('nav.profile', 'Profile')}</span>
-              </div>
-            </Link>
+              </div> */}
+            {/* </Link> */}
           </div>
 
           {/* Theme */}
