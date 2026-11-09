@@ -172,7 +172,7 @@ func (r *AdminRepo) Matches(ctx context.Context, filter domain.MatchFilter) ([]d
 
 	queryArgs := append(append([]interface{}{}, args...), filter.Limit, filter.Offset)
 	query := matchSelect + " WHERE 1=1" + where +
-		" GROUP BY m.id, g.title ORDER BY " + matchOrderClause(filter.Sort) +
+		" GROUP BY m.id, g.title ORDER BY m.created_at DESC" +
 		fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
 	matches, err := queryMatchRows(ctx, r.db, query, queryArgs...)
 	if err != nil {

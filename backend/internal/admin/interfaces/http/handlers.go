@@ -179,7 +179,6 @@ func (h *AdminHandler) Matches(c *gin.Context) {
 		Game:   c.Query("game"),
 		Status: c.Query("status"),
 		Mode:   c.Query("mode"),
-		Sort:   c.Query("sort"),
 		From:   from,
 		To:     to,
 		Limit:  intQuery(c, "limit", 25),

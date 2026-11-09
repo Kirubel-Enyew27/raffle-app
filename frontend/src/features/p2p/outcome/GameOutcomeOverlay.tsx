@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { Trophy, Frown, Handshake, Eye, ArrowLeft, Loader2, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -29,55 +30,72 @@ export function GameOutcomeOverlay({
   const isWin = outcome.type === 'win'
   const isLoss = outcome.type === 'loss'
 
-  // ── Review mode: minimal floating bar that doesn't cover the board ─────────
-  // Kept as a fixed bar at the bottom so the player can inspect the board freely.
+  // ── Review mode: touch-friendly floating bar that doesn't obstruct the board ─
+  // Portalled to document.body so it reliably renders above mobile tab navigation
+  // and any parent stacking contexts. Positioned above mobile safe-areas and
+  // the bottom tab bar on mobile, and neatly centered at the bottom on desktop.
   if (isReviewingBoard) {
-    return (
+    const reviewBarContent = (
       <aside
         aria-label="Match outcome controls"
-        className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 flex items-center gap-3 rounded-full border border-border/80 bg-background/95 px-5 py-2.5 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-3"
+        className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+4.25rem)] sm:bottom-6 left-1/2 z-50 -translate-x-1/2 flex items-center justify-between sm:justify-center gap-2 sm:gap-3 rounded-full border border-border/80 bg-background/95 px-3 py-1.5 sm:px-5 sm:py-2.5 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-3 w-[calc(100%-1.5rem)] max-w-md sm:w-auto"
       >
-        <div className="flex items-center gap-2 font-bold text-xs">
-          <span>{isWin ? '🏆' : isLoss ? '💀' : '🤝'}</span>
+        <div className="flex items-center gap-1.5 sm:gap-2 font-bold text-xs shrink-0">
+          <span className="text-sm sm:text-base">{isWin ? '🏆' : isLoss ? '💀' : '🤝'}</span>
           <span className={isWin ? 'text-success' : isLoss ? 'text-destructive' : 'text-warning'}>
             {outcome.title}
           </span>
-          <span className="text-muted-foreground hidden sm:inline">· {outcome.subtitle}</span>
+          <span className="text-muted-foreground hidden md:inline">· {outcome.subtitle}</span>
         </div>
 
-        <div className="h-4 w-px bg-border/80" />
+        <div className="h-5 w-px bg-border/80 shrink-0 hidden sm:block" />
 
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={onToggleReviewBoard}
-          className="h-7 text-xs font-semibold gap-1.5 rounded-full"
-        >
-          <Trophy className="h-3.5 w-3.5" />
-          <span>Show Summary</span>
-        </Button>
-
-        {canRematch && (
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <Button
             size="sm"
-            onClick={onRematch}
-            disabled={isRematchPending || iRequestedRematch}
-            className="h-7 text-xs font-semibold rounded-full gap-1"
+            variant="secondary"
+            onClick={onToggleReviewBoard}
+            aria-label="View game results"
+            className="h-11 min-h-[44px] min-w-[44px] text-xs font-semibold gap-1.5 rounded-full px-3.5 sm:px-4 shadow-sm active:scale-95 transition-transform"
           >
-            {iRequestedRematch ? (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin" />
-                <span className="hidden sm:inline">Waiting…</span>
-              </>
-            ) : opponentRequestedRematch ? (
-              'Accept Rematch'
-            ) : (
-              'Rematch'
-            )}
+            <Trophy className="h-4 w-4 text-primary" />
+            <span>View Results</span>
           </Button>
-        )}
+
+          {canRematch && (
+            <Button
+              size="sm"
+              onClick={onRematch}
+              disabled={isRematchPending || iRequestedRematch}
+              aria-label="Request rematch"
+              className="h-11 min-h-[44px] min-w-[44px] text-xs font-bold rounded-full gap-1.5 px-3.5 sm:px-4 shadow-md shadow-primary/20 active:scale-95 transition-transform"
+            >
+              {iRequestedRematch ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span className="hidden sm:inline">Waiting…</span>
+                </>
+              ) : opponentRequestedRematch ? (
+                <>
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>Accept</span>
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>Rematch</span>
+                </>
+              )}
+            </Button>
+          )}
+        </div>
       </aside>
     )
+
+    if (typeof document !== 'undefined') {
+      return createPortal(reviewBarContent, document.body)
+    }
+    return reviewBarContent
   }
 
   // ── Full result card — absolutely positioned over the board ────────────────
@@ -181,9 +199,9 @@ export function GameOutcomeOverlay({
                   variant="outline"
                   size="sm"
                   onClick={onToggleReviewBoard}
-                  className="flex-1 text-xs font-semibold h-8 gap-1.5"
+                  className="flex-1 text-xs font-semibold min-h-[44px] h-10 gap-1.5 active:scale-95 transition-transform"
                 >
-                  <Eye className="h-3.5 w-3.5" />
+                  <Eye className="h-4 w-4" />
                   <span>Review Board</span>
                 </Button>
 
@@ -192,7 +210,7 @@ export function GameOutcomeOverlay({
                     size="sm"
                     onClick={onRematch}
                     disabled={isRematchPending || iRequestedRematch}
-                    className="flex-1 text-xs font-bold h-8 gap-1.5 shadow-md shadow-primary/20"
+                    className="flex-1 text-xs font-bold min-h-[44px] h-10 gap-1.5 shadow-md shadow-primary/20 active:scale-95 transition-transform"
                   >
                     {iRequestedRematch ? (
                       <>
@@ -218,9 +236,9 @@ export function GameOutcomeOverlay({
                 variant="ghost"
                 size="sm"
                 onClick={onBackToLobby}
-                className="text-xs text-muted-foreground hover:text-foreground h-7 gap-1.5"
+                className="text-xs text-muted-foreground hover:text-foreground min-h-[44px] h-10 gap-1.5 active:scale-95 transition-transform"
               >
-                <ArrowLeft className="h-3.5 w-3.5" />
+                <ArrowLeft className="h-4 w-4" />
                 <span>Return to Lobby</span>
               </Button>
             </div>

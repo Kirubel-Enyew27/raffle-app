@@ -1395,7 +1395,11 @@ export function Component() {
 
           {/* State 3 & 4: BOARD STAGE (Active Play & Decisive Game-Ending Review) */}
           {(match.status === 'in_progress' || isGameOver) && (
-            <div className="relative isolate w-full flex flex-col items-center">
+            <div
+              className={`relative w-full flex flex-col items-center transition-all duration-200 ${
+                isReviewingBoard ? 'pb-28 sm:pb-8' : ''
+              }`}
+            >
               {/* Victory Celebration Confetti Particles */}
               {isEffectsActive && outcome?.type === 'win' && <VictoryConfetti />}
 
