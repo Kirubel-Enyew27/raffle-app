@@ -22,9 +22,30 @@ export interface CreateMatchPayload {
   auto_match?: boolean
 }
 
+/**
+ * Editorial order for game catalogs (lobby, challenge/host pickers and the
+ * leaderboard filter). The API lists games alphabetically; the product wants
+ * this order instead. Unknown slugs keep their API order at the end.
+ */
+const GAME_DISPLAY_ORDER = [
+  'connect-four',
+  'ethiopian-dama',
+  'tic-tac-toe',
+  'rock-paper-scissors',
+]
+
+function inDisplayOrder(games: P2PGame[]): P2PGame[] {
+  const rank = new Map(GAME_DISPLAY_ORDER.map((slug, index) => [slug, index]))
+  return [...games].sort(
+    (a, b) =>
+      (rank.get(a.slug) ?? GAME_DISPLAY_ORDER.length) -
+      (rank.get(b.slug) ?? GAME_DISPLAY_ORDER.length)
+  )
+}
+
 export const p2pApi = {
   listGames: () =>
-    api.get<ApiResponse<P2PGame[]>>('/p2p/games').then((r) => r.data.data),
+    api.get<ApiResponse<P2PGame[]>>('/p2p/games').then((r) => inDisplayOrder(r.data.data ?? [])),
 
   getGame: (slug: string) =>
     api.get<ApiResponse<P2PGame>>(`/p2p/games/${slug}`).then((r) => r.data.data),
