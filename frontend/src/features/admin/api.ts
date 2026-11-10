@@ -1,6 +1,14 @@
 import { api } from '@/lib/api'
 import type { ApiResponse, Raffle, Ticket, WalletTransaction } from '@/types/api'
 import { mapTransaction } from '../wallet/api'
+import {
+  asArray,
+  normalizeGames,
+  normalizeLive,
+  normalizeOverview,
+  normalizePage,
+  normalizeUserDetail,
+} from './normalize'
 
 export interface RevenueRow {
   period: string
@@ -274,7 +282,7 @@ export interface AdminLiveSnapshot {
   }[]
 }
 
-interface Page<T> { items: T[]; total: number; limit: number; offset: number }
+export interface Page<T> { items: T[]; total: number; limit: number; offset: number }
 
 const fmt = (d: Date) => d.toISOString().split('T')[0]
 
@@ -291,15 +299,15 @@ export const adminApi = {
 
   revenue: (from: string, to: string, period = 'daily', limit = 30, offset = 0) =>
     api.get<ApiResponse<Page<RevenueRow>>>('/reports/revenue', { params: { from, to, period, limit, offset } })
-      .then(r => r.data.data),
+      .then(r => r.data.data && normalizePage(r.data.data, 'reports.revenue')),
 
   ticketSales: (from: string, to: string, period = 'daily', limit = 30, offset = 0) =>
     api.get<ApiResponse<Page<TicketSalesRow>>>('/reports/tickets', { params: { from, to, period, limit, offset } })
-      .then(r => r.data.data),
+      .then(r => r.data.data && normalizePage(r.data.data, 'reports.tickets')),
 
   activeUsers: (from: string, to: string, period = 'daily', limit = 30, offset = 0) =>
     api.get<ApiResponse<Page<ActiveUsersRow>>>('/reports/active-users', { params: { from, to, period, limit, offset } })
-      .then(r => r.data.data),
+      .then(r => r.data.data && normalizePage(r.data.data, 'reports.active-users')),
 
   raffles: (limit = 10, offset = 0, status?: string) =>
     api.get<ApiResponse<{ raffles: Raffle[]; total: number }>>('/raffles', { params: { limit, offset, status } })
@@ -354,35 +362,39 @@ export const adminApi = {
 
   overview: (from: string, to: string, period = 'day') =>
     api.get<ApiResponse<AdminOverview>>('/admin/overview', { params: { from, to, period } })
-      .then(r => r.data.data),
+      .then(r => r.data.data && normalizeOverview(r.data.data)),
 
   games: (from: string, to: string, period = 'day') =>
     api.get<ApiResponse<AdminGame[]>>('/admin/games', { params: { from, to, period } })
-      .then(r => r.data.data),
+      .then(r => normalizeGames(r.data.data)),
 
   users: (params: { search?: string; status?: string; sort?: string; limit?: number; offset?: number } = {}) =>
     api.get<ApiResponse<Page<AdminUser>>>('/admin/users', { params })
-      .then(r => r.data.data),
+      .then(r => r.data.data && normalizePage(r.data.data, 'users')),
 
   user: (id: string) =>
-    api.get<ApiResponse<AdminUserDetail>>(`/admin/users/${id}`).then(r => r.data.data),
+    api.get<ApiResponse<AdminUserDetail>>(`/admin/users/${id}`)
+      .then(r => r.data.data && normalizeUserDetail(r.data.data)),
 
   matches: (params: { search?: string; game?: string; status?: string; mode?: string; sort?: string; from?: string; to?: string; limit?: number; offset?: number } = {}) =>
     api.get<ApiResponse<Page<AdminMatch>>>('/admin/matches', { params })
-      .then(r => r.data.data),
+      .then(r => r.data.data && normalizePage(r.data.data, 'matches')),
 
   deposits: (params: { search?: string; status?: string; from?: string; to?: string; limit?: number; offset?: number } = {}) =>
     api.get<ApiResponse<Page<AdminDeposit>>>('/admin/deposits', { params })
-      .then(r => r.data.data),
+      .then(r => r.data.data && normalizePage(r.data.data, 'deposits')),
 
   withdrawals: (params: { search?: string; status?: string; from?: string; to?: string; limit?: number; offset?: number } = {}) =>
     api.get<ApiResponse<Page<AdminWithdrawal>>>('/admin/withdrawals', { params })
-      .then(r => r.data.data),
+      .then(r => r.data.data && normalizePage(r.data.data, 'withdrawals')),
 
   live: () =>
-    api.get<ApiResponse<AdminLiveSnapshot>>('/admin/live').then(r => r.data.data),
+    api.get<ApiResponse<AdminLiveSnapshot>>('/admin/live')
+      .then(r => r.data.data && normalizeLive(r.data.data)),
 
   audit: (params: { action?: string; resource_type?: string; user_id?: string; from?: string; to?: string; limit?: number; offset?: number } = {}) =>
     api.get<ApiResponse<{ logs: AuditLog[]; total: number; limit: number; offset: number }>>('/audit/logs', { params })
-      .then(r => r.data.data),
+      .then(r => r.data.data
+        ? { ...r.data.data, logs: asArray<AuditLog>(r.data.data.logs, 'audit.logs') }
+        : r.data.data),
 }

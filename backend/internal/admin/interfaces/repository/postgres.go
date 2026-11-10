@@ -169,6 +169,9 @@ SELECT
 	if overview.FinanceTrend, err = r.financeTrend(ctx, from, to, period); err != nil {
 		return nil, err
 	}
+	if overview.RevenueTrend, err = r.revenueTrend(ctx, from, to, period); err != nil {
+		return nil, err
+	}
 	return overview, nil
 }
 
@@ -249,15 +252,7 @@ ORDER BY bucket ASC`, from, to, period)
 	return points, rows.Err()
 }
 
-type revenuePoint struct {
-	Period      string
-	P2PFees     float64
-	CrashFees   float64
-	RaffleProfit float64
-	Total       float64
-}
-
-func (r *AdminRepo) revenueTrend(ctx context.Context, from, to time.Time, period string) ([]revenuePoint, error) {
+func (r *AdminRepo) revenueTrend(ctx context.Context, from, to time.Time, period string) ([]domain.RevenuePoint, error) {
 	rows, err := r.db.QueryContext(ctx, `
 SELECT
   TO_CHAR(DATE_TRUNC($3::text, bucket), 'YYYY-MM-DD') AS period,
@@ -300,9 +295,9 @@ ORDER BY bucket ASC`, from, to, period)
 	}
 	defer rows.Close()
 
-	points := make([]revenuePoint, 0)
+	points := make([]domain.RevenuePoint, 0)
 	for rows.Next() {
-		var point revenuePoint
+		var point domain.RevenuePoint
 		if err := rows.Scan(&point.Period, &point.P2PFees, &point.CrashFees, &point.RaffleProfit); err != nil {
 			return nil, err
 		}

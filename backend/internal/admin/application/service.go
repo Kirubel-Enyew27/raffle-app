@@ -84,12 +84,46 @@ func (s *AdminService) Overview(ctx context.Context, from, to time.Time, period 
 		return nil, err
 	}
 	overview.Games = games
+	ensureOverviewCollections(overview)
 	return overview, nil
+}
+
+// ensureOverviewCollections keeps the JSON contract stable for the dashboard:
+// Go marshals a nil slice as null, and the charts call .length on these arrays.
+// Every collection must therefore be an empty array when there is no data.
+func ensureOverviewCollections(overview *domain.Overview) {
+	if overview.RegistrationTrend == nil {
+		overview.RegistrationTrend = []domain.RegistrationPoint{}
+	}
+	if overview.MatchTrend == nil {
+		overview.MatchTrend = []domain.MatchPoint{}
+	}
+	if overview.FinanceTrend == nil {
+		overview.FinanceTrend = []domain.FinancePoint{}
+	}
+	if overview.RevenueTrend == nil {
+		overview.RevenueTrend = []domain.RevenuePoint{}
+	}
+	if overview.Games == nil {
+		overview.Games = []domain.GameSummary{}
+	}
+	for i := range overview.Games {
+		if overview.Games[i].Trend == nil {
+			overview.Games[i].Trend = []domain.GameTrendPoint{}
+		}
+	}
 }
 
 func (s *AdminService) Games(ctx context.Context, from, to time.Time, period string) ([]domain.GameSummary, error) {
 	from, to = normalizeRange(from, to)
-	return s.repo.Games(ctx, from, to, normalizePeriod(period))
+	games, err := s.repo.Games(ctx, from, to, normalizePeriod(period))
+	if err != nil {
+		return nil, err
+	}
+	if games == nil {
+		games = []domain.GameSummary{}
+	}
+	return games, nil
 }
 
 func (s *AdminService) Users(ctx context.Context, filter domain.UserFilter) (domain.Page[domain.UserRow], error) {

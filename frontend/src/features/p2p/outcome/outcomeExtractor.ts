@@ -185,8 +185,8 @@ export function extractMatchOutcome(
       if (winningLine && Array.isArray(winningLine) && winningLine.length === 4) {
         reason = 'line_completion'
         decisiveIndices = winningLine
-        subtitle = isWinner ? '' : ''
-        subtitleKey = isWinner ? '' : ''
+        subtitle = isWinner ? '4 in a Row — Decisive Connection!' : 'Opponent connected 4 Tokens'
+        subtitleKey = isWinner ? 'p2p.outcome.c4Win' : 'p2p.outcome.c4Loss'
         detail = 'First to align four chips wins'
         detailKey = 'p2p.outcome.c4Detail'
       } else if (isTie || (cells.length > 0 && cells.slice(0, 7).every((c) => c !== 0))) {

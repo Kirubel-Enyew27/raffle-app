@@ -254,6 +254,48 @@ func TestAdminRoutes_DateFilterValidation(t *testing.T) {
 	}
 }
 
+// The dashboard renders each trend/chart with `.length`, so a collection that
+// serialises as JSON null crashes the page after an admin signs in. Empty data
+// must therefore still be encoded as an empty array, never null.
+func TestAdminOverview_CollectionsAreNeverNull(t *testing.T) {
+	r := setupAdminRouter(&mockAdminRepo{
+		overviewFn: func(ctx context.Context, from, to time.Time, period string) (*domain.Overview, error) {
+			return &domain.Overview{}, nil
+		},
+		gamesFn: func(ctx context.Context, from, to time.Time, period string) ([]domain.GameSummary, error) {
+			return nil, nil
+		},
+	})
+	token := makeToken(t, "admin")
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/admin/overview", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var body struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	for _, field := range []string{"registration_trend", "match_trend", "finance_trend", "revenue_trend", "games"} {
+		raw, ok := body.Data[field]
+		if !ok {
+			t.Errorf("expected field %q in the overview response", field)
+			continue
+		}
+		if string(raw) != "[]" {
+			t.Errorf("expected %q to be an empty array, got %s", field, raw)
+		}
+	}
+}
+
 func TestAdminRoutes_UserDetailValidation(t *testing.T) {
 	r := setupAdminRouter(&mockAdminRepo{})
 	adminToken := makeToken(t, "admin")

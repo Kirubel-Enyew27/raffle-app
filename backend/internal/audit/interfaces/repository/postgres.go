@@ -112,7 +112,9 @@ func (r *AuditRepo) FindByFilter(ctx context.Context, filter domain.AuditLogFilt
 	}
 	defer rows.Close()
 
-	var logs []domain.AuditLog
+	// A nil slice encodes as JSON null, which the admin table dereferences as
+	// `.length`; start empty so an audit log with no matches is `[]`.
+	logs := make([]domain.AuditLog, 0)
 	for rows.Next() {
 		var l domain.AuditLog
 		if err := rows.Scan(
