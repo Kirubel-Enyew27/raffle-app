@@ -1849,7 +1849,7 @@
   },
   "invite": {
     "shareTitle": "🎮 {{game}} አብረን እንጫወት!",
-    "shareBody": "በRaffleApp ላይ ለጨዋታ ተግዳሮት ልኬልዎታለሁ።",
+    "shareBody": "በKWIK ላይ ለጨዋታ ተግዳሮት ልኬልዎታለሁ።",
     "joinHere": "እዚህ ይቀላቀሉኝ፦ {{url}}",
     "roomCode": "የክፍል ኮድ፦ {{code}}",
     "ready": "ለመጫወት ዝግጁ ነዎት? ⚔️"

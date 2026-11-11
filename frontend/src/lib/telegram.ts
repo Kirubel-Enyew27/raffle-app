@@ -152,7 +152,7 @@ export function buildInviteMessage(
   return [
     tr('invite.shareTitle', `🎮 Let's play ${gameTitle} together!`, { game: gameTitle }),
     '',
-    tr('invite.shareBody', "I've challenged you to a match on RaffleApp."),
+    tr('invite.shareBody', "I've challenged you to a match on KWIK."),
     tr('invite.joinHere', `Join me here: ${inviteUrl}`, { url: inviteUrl }),
     '',
     tr('invite.roomCode', `Room Code: ${inviteCode.trim().toUpperCase()}`, {

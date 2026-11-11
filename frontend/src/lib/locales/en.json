@@ -1,7 +1,7 @@
 {
   "app": {
-    "title": "🎟 RaffleApp",
-    "adminTitle": "🎟 Admin",
+    "title": "KWIK",
+    "adminTitle": "Admin",
     "tagline": "Play. Compete. Earn."
   },
   "nav": {
@@ -1849,7 +1849,7 @@
   },
   "invite": {
     "shareTitle": "🎮 Let's play {{game}} together!",
-    "shareBody": "I've challenged you to a match on RaffleApp.",
+    "shareBody": "I've challenged you to a match on KWIK.",
     "joinHere": "Join me here: {{url}}",
     "roomCode": "Room Code: {{code}}",
     "ready": "Ready to play? ⚔️"
