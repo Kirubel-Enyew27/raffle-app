@@ -16,6 +16,9 @@ export type SoundEffectType =
   | 'match_start'
   | 'capture'
   | 'promotion'
+  | 'drop'
+  | 'select'
+  | 'reveal'
 
 const STORAGE_KEY = 'raffle_p2p_sound_enabled'
 const DEFAULT_VOLUME = 0.3
@@ -79,13 +82,17 @@ class SoundManager {
     if (this.unlockListenersAttached || typeof window === 'undefined') return
 
     const unlock = () => {
-      if (this.ctx && this.ctx.state === 'suspended') {
-        this.ctx.resume().then(() => {
-          this.removeUnlockListeners()
-        }).catch(() => {})
-      } else if (this.ctx && this.ctx.state === 'running') {
+      // Warm the context on the first gesture so the first move does not pay
+      // AudioContext construction + resume latency while its animation starts.
+      const ctx = this.getContext()
+      if (!ctx) return
+      if (ctx.state === 'running') {
         this.removeUnlockListeners()
+        return
       }
+      ctx.resume().then(() => {
+        this.removeUnlockListeners()
+      }).catch(() => {})
     }
 
     this.unlockHandlers = { pointer: unlock, key: unlock }
@@ -231,6 +238,37 @@ class SoundManager {
   }
 
   /**
+   * Drop: A short falling whoosh for a Connect Four token leaving the top of
+   * the board. Fired at the start of the drop animation, never on arrival.
+   */
+  public playDrop(): void {
+    if (this.muted) return
+    const ctx = this.getContext()
+    if (!ctx || !this.masterGain) return
+
+    try {
+      const now = ctx.currentTime
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.type = 'triangle'
+      osc.frequency.setValueAtTime(760, now)
+      osc.frequency.exponentialRampToValueAtTime(190, now + 0.15)
+
+      gain.gain.setValueAtTime(0, now)
+      gain.gain.linearRampToValueAtTime(0.09, now + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16)
+
+      osc.connect(gain)
+      gain.connect(this.masterGain)
+      osc.start(now)
+      osc.stop(now + 0.16)
+    } catch {
+      // Safe no-op
+    }
+  }
+
+  /**
    * Capture: A heavier, lower double-thud for a jumped piece. Deliberately
    * distinct from the ordinary placement pop so Dama players can hear that a
    * mandatory capture happened.
@@ -288,6 +326,67 @@ class SoundManager {
       gain.connect(this.masterGain)
       osc.start(now)
       osc.stop(now + 0.24)
+    } catch {
+      // Safe no-op
+    }
+  }
+
+  /**
+   * Select: A tiny acknowledgement blip for choosing a Rock-Paper-Scissors
+   * move, played at the moment the tile's selection animation starts.
+   */
+  public playSelect(): void {
+    if (this.muted) return
+    const ctx = this.getContext()
+    if (!ctx || !this.masterGain) return
+
+    try {
+      const now = ctx.currentTime
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(880, now)
+
+      gain.gain.setValueAtTime(0, now)
+      gain.gain.linearRampToValueAtTime(0.14, now + 0.004)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055)
+
+      osc.connect(gain)
+      gain.connect(this.masterGain)
+      osc.start(now)
+      osc.stop(now + 0.055)
+    } catch {
+      // Safe no-op
+    }
+  }
+
+  /**
+   * Reveal: A rising two-tone flourish for the Rock-Paper-Scissors round
+   * reveal, fired as the reveal card animates in.
+   */
+  public playReveal(): void {
+    if (this.muted) return
+    const ctx = this.getContext()
+    if (!ctx || !this.masterGain) return
+
+    try {
+      const now = ctx.currentTime
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(520, now)
+      osc.frequency.exponentialRampToValueAtTime(784, now + 0.14)
+
+      gain.gain.setValueAtTime(0, now)
+      gain.gain.linearRampToValueAtTime(0.18, now + 0.015)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18)
+
+      osc.connect(gain)
+      gain.connect(this.masterGain)
+      osc.start(now)
+      osc.stop(now + 0.18)
     } catch {
       // Safe no-op
     }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { soundManager } from '@/lib/sound/soundManager'
 import {
   SoundEventTracker,
@@ -20,6 +20,10 @@ interface UseGameSoundsOptions {
  * All deduplication lives in `SoundEventTracker`, so duplicate SSE events,
  * polling refreshes, React re-renders and loading a historical match cannot
  * retrigger a sound. Audio failures are swallowed and never block gameplay.
+ *
+ * Board cues (move, drop, landing, capture, promotion, select, reveal) are NOT
+ * played here: they belong to the boards' animation timelines so they never
+ * wait for the REST response or SSE event that produced this snapshot.
  */
 export function useGameSounds({
   match,
@@ -32,34 +36,28 @@ export function useGameSounds({
   const sink = useMemo<SoundSink>(
     () => ({
       playMatchStart: () => soundManager.playMatchStart(),
-      playMove: () => soundManager.playMove(),
       playTurnAlert: () => soundManager.playTurnAlert(),
       playTimerTick: (sec?: number) => soundManager.playTimerTick(sec),
       playVictory: () => soundManager.playVictory(),
       playDefeat: () => soundManager.playDefeat(),
       playDraw: () => soundManager.playDraw(),
-      playCapture: () => soundManager.playCapture(),
-      playPromotion: () => soundManager.playPromotion(),
     }),
     []
   )
 
-  const trackerRef = useRef<SoundEventTracker | null>(null)
-  if (!trackerRef.current) {
-    trackerRef.current = new SoundEventTracker(sink, timerThreshold)
-  }
+  // Lazy state initialisation keeps one tracker per mounted arena without
+  // reading a ref during render.
+  const [tracker] = useState(() => new SoundEventTracker(sink, timerThreshold))
 
   useEffect(() => {
-    const tracker = trackerRef.current
-    if (!tracker) return
     tracker.setUser(userId)
     tracker.update(match, secondsLeft, timerThreshold)
-  }, [match, userId, secondsLeft, timerThreshold])
+  }, [tracker, match, userId, secondsLeft, timerThreshold])
 
   // Reset when the arena unmounts so a later visit starts from a clean baseline.
   useEffect(() => {
-    return () => trackerRef.current?.reset()
-  }, [])
+    return () => tracker.reset()
+  }, [tracker])
 
   const toggleMute = useCallback(() => {
     const newMuted = soundManager.toggleMute()
@@ -75,11 +73,5 @@ export function useGameSounds({
     isMuted,
     toggleMute,
     setMuted,
-    playMove: useCallback(() => soundManager.playMove(), []),
-    playTurnAlert: useCallback(() => soundManager.playTurnAlert(), []),
-    playTimerTick: useCallback((sec?: number) => soundManager.playTimerTick(sec), []),
-    playVictory: useCallback(() => soundManager.playVictory(), []),
-    playDefeat: useCallback(() => soundManager.playDefeat(), []),
-    playDraw: useCallback(() => soundManager.playDraw(), []),
   }
 }

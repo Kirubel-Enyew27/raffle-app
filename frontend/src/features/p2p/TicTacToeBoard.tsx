@@ -1,4 +1,6 @@
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useAnimationCues } from './useAnimationCues'
 import { TicTacToeMarker } from './TicTacToeMarkers'
 import { EMPTY_CELL, markerLabel, seatForCell, seatForSymbol } from './ticTacToe'
 
@@ -61,6 +63,29 @@ export function TicTacToeBoard({
   const winningLine = boardState?.winning_line || null
   const lastMove = boardState?.last_move ?? null
   const mySeat = seatForSymbol(mySymbol)
+
+  // The placement cue belongs to the marker's scale-in, not to the snapshot
+  // that delivered the move. The board renders the optimistic move, so a local
+  // move sounds immediately; the identical confirmed snapshot changes nothing
+  // and therefore cannot replay it. `move_count` scopes the key per move.
+  const moveCount = boardState?.move_count ?? 0
+  const cues = useAnimationCues()
+  const moveBaselineRef = useRef<{ count: number; cell: number | null } | null>(null)
+
+  useEffect(() => {
+    const next = { count: moveCount, cell: typeof lastMove === 'number' ? lastMove : null }
+    const previous = moveBaselineRef.current
+    moveBaselineRef.current = next
+    // Mounting a board (live or historical) must stay silent.
+    if (!previous) return
+    // New match or a rejected optimistic move: drop pending cues and re-baseline.
+    if (next.count < previous.count) {
+      cues.reset()
+      return
+    }
+    if (next.count === previous.count || next.cell === null) return
+    cues.playOnce(`ttt:${next.count}:${next.cell}`, 'move')
+  }, [lastMove, moveCount, cues])
 
   const lineCoords = winningLine ? getWinningLineCoords(winningLine) : null
   const isDraw = isTie || (isGameOver && !winningLine && cells.every((c) => c !== EMPTY_CELL))

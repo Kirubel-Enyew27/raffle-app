@@ -2,7 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Lock } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import {
+  ANIMATION_MS,
+  DAMA_HOP_CLEANUP_GRACE_MS,
+  animationDelay,
+} from '@/lib/sound/animationCueTimeline'
 import { DamaPiece } from './DamaPiece'
+import { useAnimationCues } from './useAnimationCues'
 import {
   displaySquares,
   findStep,
@@ -72,6 +78,7 @@ export function DamaBoard({
   const [moveArrived, setMoveArrived] = useState(false)
   const seenMoveSeq = useRef(0)
   const initializedMoveHistory = useRef(false)
+  const cues = useAnimationCues()
 
   const orientation = orientationFor(myPlayerIndex)
   const cells = useMemo(() => boardState?.cells ?? [], [boardState?.cells])
@@ -115,6 +122,9 @@ export function DamaBoard({
       seenMoveSeq.current = latestSeq
       setMoveQueue([])
       setMovingPiece(null)
+      // The rejected move never happened: cancel its capture/promotion cues and
+      // forget its keys so a legitimate retry can still sound.
+      cues.reset()
       return
     }
 
@@ -130,7 +140,7 @@ export function DamaBoard({
       king: !move.promotion && pieceIsKing(cells[move.to] ?? 0),
       promotion: !!move.promotion,
     }))))
-  }, [latestHistoryMove?.seq, boardState?.move_history, cells])
+  }, [latestHistoryMove?.seq, boardState?.move_history, cells, cues])
 
   useEffect(() => {
     if (movingPiece || moveQueue.length === 0) return
@@ -144,16 +154,32 @@ export function DamaBoard({
 
   useEffect(() => {
     if (!movingPiece) return
-    const frame = requestAnimationFrame(() => setMoveArrived(true))
+    const key = `dama:${movingPiece.seq}`
+
+    // The transition starts on the frame after the overlay mounts, so fire the
+    // movement cue from that same frame. The captured pieces leave the board at
+    // this same commit, so each hop's capture cue lands with the removal; the
+    // king crown only appears on arrival, so promotion waits for that milestone.
+    const frame = requestAnimationFrame(() => {
+      cues.playOnce(`${key}:move`, 'move')
+      if (movingPiece.captures.length > 0) {
+        cues.playOnce(`${key}:capture`, 'capture')
+      }
+      setMoveArrived(true)
+    })
+    if (movingPiece.promotion) {
+      cues.schedule(`${key}:promotion`, 'promotion', animationDelay(ANIMATION_MS.damaSlide))
+    }
+
     const timer = window.setTimeout(() => {
       setMovingPiece(null)
       setMoveArrived(false)
-    }, 225)
+    }, ANIMATION_MS.damaSlide + DAMA_HOP_CLEANUP_GRACE_MS)
     return () => {
       cancelAnimationFrame(frame)
       window.clearTimeout(timer)
     }
-  }, [movingPiece])
+  }, [movingPiece, cues])
 
   // Count active pieces on the board
   const { lightCount, darkCount } = useMemo(() => {

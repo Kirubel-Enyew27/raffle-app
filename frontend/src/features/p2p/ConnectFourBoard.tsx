@@ -1,5 +1,7 @@
 import {
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
@@ -7,6 +9,11 @@ import {
 import { ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import {
+  ANIMATION_MS,
+  animationDelay,
+} from '@/lib/sound/animationCueTimeline'
+import { useAnimationCues } from './useAnimationCues'
 import { ConnectFourToken } from './ConnectFourToken'
 import {
   dropFallOffset,
@@ -24,6 +31,7 @@ interface ConnectFourBoardProps {
     rows?: number
     last_move?: { row: number; col: number; index: number } | null
     winning_line?: number[] | null
+    move_count?: number
   }
   isMyTurn: boolean
   mySymbol?: string
@@ -48,6 +56,37 @@ export function ConnectFourBoard({
   const cells = boardState?.cells || new Array(cols * rows).fill(0)
   const winningLine = boardState?.winning_line || null
   const lastMove = boardState?.last_move ?? null
+  const moveCount = boardState?.move_count ?? 0
+
+  // A drop owns two milestones: the whoosh at the start of the fall and the
+  // landing thud exactly `c4TokenDrop` later. Both are keyed by move_count so
+  // the confirmed snapshot, a duplicate SSE event or a re-render cannot replay
+  // them, while the optimistic drop still sounds immediately.
+  const cues = useAnimationCues()
+  const dropBaselineRef = useRef<{ count: number; index: number | null } | null>(null)
+
+  useEffect(() => {
+    const next = { count: moveCount, index: lastMove?.index ?? null }
+    const previous = dropBaselineRef.current
+    dropBaselineRef.current = next
+    if (!previous) return
+    // New match, or the drop was rejected and the token was rolled back.
+    if (next.count < previous.count) {
+      cues.reset()
+      return
+    }
+    if (next.count === previous.count || next.index === null) return
+
+    const key = `c4:${next.count}:${next.index}`
+    if (isGameOver) {
+      // A finished match arrives without the falling animation, so a fall cue
+      // would describe motion that never happens. One placement cue instead.
+      cues.playOnce(`${key}:place`, 'land')
+      return
+    }
+    cues.playOnce(`${key}:drop`, 'drop')
+    cues.schedule(`${key}:land`, 'land', animationDelay(ANIMATION_MS.c4TokenDrop))
+  }, [cues, isGameOver, lastMove?.index, moveCount])
 
   // Mouse hover drives the desktop preview. Touch has its own, transient
   // selection state: a touch preview exists only while the player is pressing

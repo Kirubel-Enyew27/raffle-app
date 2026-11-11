@@ -3,7 +3,12 @@
  *
  * The tracker is deliberately pure with respect to React: it is fed an
  * authoritative match snapshot (plus the locally ticking countdown) and calls a
- * sink only for *transitions*. That gives three guarantees the UI depends on:
+ * sink only for *transitions*. It owns only signals that genuinely belong to a
+ * snapshot change (match start, turn alert, countdown, final outcome). Piece
+ * movement, drops, captures and reveals are owned by the boards, which fire
+ * them at their animation milestones instead of on the network response.
+ *
+ * That gives three guarantees the UI depends on:
  *
  *  1. Initial mount / loading a historical match never plays an outcome sound.
  *  2. The same event delivered twice (SSE + polling, React re-render) is ignored.
@@ -18,64 +23,27 @@ export interface MatchSnapshot {
   status: string
   current_turn_user_id?: string | null
   winner_user_id?: string | null
-  board_state?: unknown
   current_round?: number
 }
 
 export interface SoundSink {
   playMatchStart(): void
-  playMove(): void
   playTurnAlert(): void
   playTimerTick(secondsLeft?: number): void
   playVictory(): void
   playDefeat(): void
   playDraw(): void
-  // Optional: games with richer moves (Dama captures/promotions) can provide
-  // dedicated cues. Sinks without them keep the ordinary placement sound.
-  playCapture?(): void
-  playPromotion?(): void
 }
 
 const GAME_OVER_STATUSES = ['completed', 'tied', 'forfeited', 'cancelled']
 
 export const DEFAULT_TIMER_THRESHOLD = 5
 
-function moveSignature(match: MatchSnapshot): string | null {
-  if (!match.board_state) return null
-  const round = match.current_round ? `_r${match.current_round}` : ''
-  try {
-    return JSON.stringify(match.board_state) + round
-  } catch {
-    // Circular/degenerate payloads must not break gameplay sound handling.
-    return null
-  }
-}
-
-/**
- * Reads the game-agnostic move hints used by Dama. Other games' last_move
- * shapes (a cell number, a column, null) simply produce no flags.
- */
-function moveSoundFlags(boardState: unknown): { capture: boolean; promotion: boolean } {
-  if (!boardState || typeof boardState !== 'object') {
-    return { capture: false, promotion: false }
-  }
-  const lastMove = (boardState as { last_move?: unknown }).last_move
-  if (!lastMove || typeof lastMove !== 'object') {
-    return { capture: false, promotion: false }
-  }
-  const captures = (lastMove as { captures?: unknown }).captures
-  return {
-    capture: Array.isArray(captures) && captures.length > 0,
-    promotion: (lastMove as { promotion?: unknown }).promotion === true,
-  }
-}
-
 export class SoundEventTracker {
   private userId?: string
   private lastMatchId?: string
   private lastStatus?: string
   private lastTurnUserId?: string | null
-  private lastMoveSignature: string | null = null
   private lastTickedSecond: number | null = null
   private playedEndSoundFor: string | null = null
   private readonly sink: SoundSink
@@ -116,7 +84,6 @@ export class SoundEventTracker {
 
     this.handleOutcome(match)
     this.handleTurn(match)
-    this.handleMove(match)
     this.handleTimer(match, secondsLeft, timerThreshold)
   }
 
@@ -125,7 +92,6 @@ export class SoundEventTracker {
     this.lastMatchId = undefined
     this.lastStatus = undefined
     this.lastTurnUserId = undefined
-    this.lastMoveSignature = null
     this.lastTickedSecond = null
     this.playedEndSoundFor = null
   }
@@ -134,7 +100,6 @@ export class SoundEventTracker {
     this.lastMatchId = match.id
     this.lastStatus = match.status
     this.lastTurnUserId = match.current_turn_user_id
-    this.lastMoveSignature = moveSignature(match)
     this.lastTickedSecond = null
     // A match that is already over when first opened (history) must stay silent.
     this.playedEndSoundFor = GAME_OVER_STATUSES.includes(match.status) ? match.id : null
@@ -166,25 +131,6 @@ export class SoundEventTracker {
       previousTurn !== this.userId
     ) {
       this.play(() => this.sink.playTurnAlert())
-    }
-  }
-
-  private handleMove(match: MatchSnapshot): void {
-    if (match.status !== 'in_progress') return
-
-    const signature = moveSignature(match)
-    const previous = this.lastMoveSignature
-    this.lastMoveSignature = signature
-
-    if (previous !== null && signature !== null && previous !== signature) {
-      const flags = moveSoundFlags(match.board_state)
-      if (flags.promotion && this.sink.playPromotion) {
-        this.play(() => this.sink.playPromotion?.())
-      } else if (flags.capture && this.sink.playCapture) {
-        this.play(() => this.sink.playCapture?.())
-      } else {
-        this.play(() => this.sink.playMove())
-      }
     }
   }
 

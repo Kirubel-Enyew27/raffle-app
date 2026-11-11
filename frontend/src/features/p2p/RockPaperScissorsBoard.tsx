@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Trophy, Swords } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 
 import { Button } from '@/components/ui/button'
 import { RpsChoiceIcon } from './RockPaperScissorsIcons'
+import { useAnimationCues } from './useAnimationCues'
 import {
   RPS_CHOICES,
   RPS_CHOICE_MAP,
@@ -180,9 +181,44 @@ export function RockPaperScissorsBoard({
   const myRevealed = parseRpsChoice(myPlayerIndex === 1 ? lastResult?.p1_choice : lastResult?.p0_choice)
   const theirRevealed = parseRpsChoice(myPlayerIndex === 1 ? lastResult?.p0_choice : lastResult?.p1_choice)
 
+  // Selection, lock-in and reveal cues follow the board's own animations.
+  // The reveal key is the round result signature, so the REST acknowledgement
+  // and a later SSE event for the same round cannot play it twice.
+  const cues = useAnimationCues()
+  const submittedBaselineRef = useRef<RpsChoice | null>(myChoice)
+  const revealBaselineRef = useRef<string | null>(null)
+  const revealMountedRef = useRef(false)
+
+  useEffect(() => {
+    const previous = submittedBaselineRef.current
+    submittedBaselineRef.current = myChoice
+    if (previous === null && myChoice) {
+      cues.playOnce(`rps:${roundNumber}:${myChoice}:lock`, 'move')
+    }
+  }, [cues, myChoice, roundNumber])
+
+  useEffect(() => {
+    let signature: string | null = null
+    if (lastResult) {
+      try {
+        signature = JSON.stringify(lastResult)
+      } catch {
+        signature = null
+      }
+    }
+    const previous = revealBaselineRef.current
+    const wasMounted = revealMountedRef.current
+    revealMountedRef.current = true
+    revealBaselineRef.current = signature
+    // Joining mid-round stays silent; only a newly arrived result reveals.
+    if (!signature || !wasMounted || previous === signature || isGameOver) return
+    cues.playOnce(`rps:${roundNumber}:${signature}:reveal`, 'reveal')
+  }, [cues, isGameOver, lastResult, roundNumber])
+
   const handlePick = (choice: RpsChoice) => {
     if (!canSelect) return
     setDraft({ round: roundNumber, choice })
+    cues.emit('select')
   }
 
   const handleConfirm = () => {

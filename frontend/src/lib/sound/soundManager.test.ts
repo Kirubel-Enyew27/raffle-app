@@ -118,6 +118,9 @@ test('SoundManager - Default state and initialization', () => {
   assert.equal(typeof soundManager.playDefeat, 'function')
   assert.equal(typeof soundManager.playDraw, 'function')
   assert.equal(typeof soundManager.playMatchStart, 'function')
+  assert.equal(typeof soundManager.playDrop, 'function')
+  assert.equal(typeof soundManager.playSelect, 'function')
+  assert.equal(typeof soundManager.playReveal, 'function')
 })
 
 test('SoundManager - Volume control and bounds clamping', () => {

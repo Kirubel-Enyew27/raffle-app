@@ -5,7 +5,6 @@ import { SoundEventTracker, type MatchSnapshot, type SoundSink } from './soundEv
 
 interface Calls {
   matchStart: number
-  move: number
   turnAlert: number
   ticks: number[]
   victory: number
@@ -16,7 +15,6 @@ interface Calls {
 function createSink() {
   const calls: Calls = {
     matchStart: 0,
-    move: 0,
     turnAlert: 0,
     ticks: [],
     victory: 0,
@@ -25,7 +23,6 @@ function createSink() {
   }
   const sink: SoundSink = {
     playMatchStart: () => void calls.matchStart++,
-    playMove: () => void calls.move++,
     playTurnAlert: () => void calls.turnAlert++,
     playTimerTick: (sec?: number) => void calls.ticks.push(sec ?? 0),
     playVictory: () => void calls.victory++,
@@ -46,7 +43,6 @@ const inProgress = (overrides: Partial<MatchSnapshot> = {}): MatchSnapshot => ({
   id: 'match-1',
   status: 'in_progress',
   current_turn_user_id: 'bob',
-  board_state: { cells: [0, 0, 0, 0, 0, 0, 0, 0, 0] },
   current_round: 1,
   ...overrides,
 })
@@ -57,7 +53,6 @@ test('historical completed match stays silent on load and on refresh', () => {
     id: 'match-1',
     status: 'completed',
     winner_user_id: 'alice',
-    board_state: { cells: [1, 1, 1, 2, 2, 0, 0, 0, 0] },
   }
 
   tracker.update(finished)
@@ -66,7 +61,6 @@ test('historical completed match stays silent on load and on refresh', () => {
 
   assert.equal(calls.victory, 0)
   assert.equal(calls.defeat, 0)
-  assert.equal(calls.move, 0)
   assert.equal(calls.matchStart, 0)
 })
 
@@ -84,57 +78,12 @@ test('turn alert fires only on transition to the local player, once per transiti
   assert.equal(calls.turnAlert, 0, 'opponent turn must stay silent')
 
   // Opponent moved; it is now Alice's turn.
-  tracker.update(inProgress({ current_turn_user_id: 'alice', board_state: { cells: [2, 0, 0, 0, 0, 0, 0, 0, 0] } }))
+  tracker.update(inProgress({ current_turn_user_id: 'alice', current_round: 1 }))
   assert.equal(calls.turnAlert, 1)
-  assert.equal(calls.move, 1)
 
-  // Duplicate SSE event / re-render must not repeat either sound.
-  tracker.update(inProgress({ current_turn_user_id: 'alice', board_state: { cells: [2, 0, 0, 0, 0, 0, 0, 0, 0] } }))
+  // Duplicate SSE event / re-render must not repeat the alert.
+  tracker.update(inProgress({ current_turn_user_id: 'alice', current_round: 1 }))
   assert.equal(calls.turnAlert, 1)
-  assert.equal(calls.move, 1)
-})
-
-test('dama captures and promotions use their dedicated sounds', () => {
-  let moves = 0
-  let captures = 0
-  let promotions = 0
-  const sink: SoundSink = {
-    playMatchStart() {},
-    playMove() {
-      moves++
-    },
-    playTurnAlert() {},
-    playTimerTick() {},
-    playVictory() {},
-    playDefeat() {},
-    playDraw() {},
-    playCapture() {
-      captures++
-    },
-    playPromotion() {
-      promotions++
-    },
-  }
-  const tracker = new SoundEventTracker(sink)
-  tracker.setUser('alice')
-
-  tracker.update(inProgress({ board_state: { cells: [0], last_move: null } }))
-  tracker.update(
-    inProgress({ board_state: { cells: [1], last_move: { from: 1, to: 2, captures: [3] } } })
-  )
-  assert.equal(captures, 1)
-  assert.equal(moves, 0, 'a capture must not also play the plain placement cue')
-
-  tracker.update(
-    inProgress({
-      board_state: { cells: [1, 1], last_move: { from: 2, to: 3, captures: [4], promotion: true } },
-    })
-  )
-  assert.equal(promotions, 1)
-  assert.equal(captures, 1)
-
-  tracker.update(inProgress({ board_state: { cells: [1, 1, 1], last_move: { from: 3, to: 4 } } }))
-  assert.equal(moves, 1, 'ordinary moves keep the placement cue')
 })
 
 test('match start plays once when the match transitions into progress', () => {
@@ -211,10 +160,9 @@ test('switching to a different match resets baselines and stays silent for histo
 test('a throwing sink never propagates into gameplay', () => {
   const sink: SoundSink = {
     playMatchStart() {},
-    playMove() {
+    playTurnAlert() {
       throw new Error('audio exploded')
     },
-    playTurnAlert() {},
     playTimerTick() {},
     playVictory() {},
     playDefeat() {},
@@ -225,6 +173,6 @@ test('a throwing sink never propagates into gameplay', () => {
 
   tracker.update(inProgress())
   assert.doesNotThrow(() =>
-    tracker.update(inProgress({ board_state: { cells: [1, 0, 0, 0, 0, 0, 0, 0, 0] } }))
+    tracker.update(inProgress({ current_turn_user_id: 'alice' }))
   )
 })
