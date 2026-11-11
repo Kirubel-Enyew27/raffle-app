@@ -16,6 +16,7 @@ func RegisterWalletRoutes(r *gin.RouterGroup, handler *WalletHandler) {
 		wallets.GET("/deposits/:id", handler.GetDeposit)
 		wallets.POST("/deposits/:id/verify", handler.VerifyDeposit)
 		wallets.POST("/deposit/verify", handler.VerifyAndDepositReceipt)
+		wallets.POST("/deposit/sms", handler.VerifyDepositFromSMS)
 		wallets.POST("/deposit/extract", handler.ExtractReceipt)
 		wallets.POST("/withdraw", handler.Withdraw)
 	}

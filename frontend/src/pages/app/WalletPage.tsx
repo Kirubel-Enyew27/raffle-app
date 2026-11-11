@@ -81,6 +81,10 @@ function apiErrorMessage(err: unknown, fallback: string): string {
 function DepositCard() {
   const { t } = useTranslation()
   const [method, setMethod] = useState<'telebirr' | 'cbe'>('telebirr')
+  // How the payment reference is supplied: a receipt screenshot, a transaction
+  // ID, or the confirmation SMS the provider sent.
+  const [mode, setMode] = useState<'receipt' | 'transaction' | 'sms'>('receipt')
+  const [smsText, setSmsText] = useState('')
   const [copied, setCopied] = useState(false)
   const [transactionId, setTransactionId] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -132,6 +136,9 @@ function DepositCard() {
     // off it, verifies the transaction and credits the wallet straight away.
     mutationFn: () => {
       setErrorMessage(null)
+      if (mode === 'sms') {
+        return walletApi.verifyDepositSms(smsText)
+      }
       return walletApi.verifyAndDeposit({
         method,
         transaction_id: transactionId.trim() || undefined,
@@ -151,6 +158,7 @@ function DepositCard() {
   const resetForm = () => {
     handleRemoveFile()
     setTransactionId('')
+    setSmsText('')
     setDepositResult(null)
     setErrorMessage(null)
     setExtractSuccess(null)
@@ -292,8 +300,33 @@ function DepositCard() {
               </div>
             )}
 
+            {/* Choose how the payment reference is supplied */}
+            <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
+              {([
+                { id: 'receipt', label: t('wallet.depositModeReceipt') },
+                { id: 'transaction', label: t('wallet.depositModeTransactionId') },
+                { id: 'sms', label: t('wallet.depositModeSms') },
+              ] as const).map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => { setMode(option.id); setErrorMessage(null) }}
+                  aria-pressed={mode === option.id}
+                  className={cn(
+                    'rounded-md px-2 py-1.5 text-[11px] font-medium transition-all sm:text-xs',
+                    mode === option.id
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
             {/* Verification & Upload section */}
             <div className="space-y-4">
+              {mode === 'receipt' && (<>
               {/* Screenshot instructions */}
               <div className="rounded-lg border border-info/30 bg-info/10 p-3.5 text-xs text-info">
                 <p className="flex items-center gap-1.5 font-semibold">
@@ -378,6 +411,9 @@ function DepositCard() {
               </div>
 
               {/* Transaction Number Input */}
+              </>)}
+
+              {mode === 'transaction' && (
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-foreground" htmlFor="tx-number-input">
                   {method === 'cbe' ? t('wallet.cbeReceiptTokenLabel') : t('wallet.transactionNumber')}
@@ -402,17 +438,44 @@ function DepositCard() {
                   <p className="text-[11px] text-muted-foreground">{t('wallet.telebirrTip')}</p>
                 )}
               </div>
+              )}
+
+              {mode === 'sms' && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground" htmlFor="deposit-sms-input">
+                  {t('wallet.smsLabel')}
+                </label>
+                <div className="rounded-lg border border-info/30 bg-info/10 p-3 text-xs text-info leading-relaxed">
+                  {t('wallet.smsHelper')}
+                </div>
+                <textarea
+                  id="deposit-sms-input"
+                  value={smsText}
+                  onChange={(e) => setSmsText(e.target.value)}
+                  rows={5}
+                  placeholder={t('wallet.smsPlaceholder')}
+                  className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-xs leading-relaxed shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+                />
+                <p className="text-[11px] text-muted-foreground leading-relaxed">{t('wallet.smsNotice')}</p>
+              </div>
+              )}
 
               {/* Submit button */}
               <Button
                 className="w-full gap-2 font-medium"
-                disabled={(!transactionId.trim() && !selectedFile) || depositMutation.isPending || isExtracting}
+                disabled={
+                  depositMutation.isPending ||
+                  isExtracting ||
+                  (mode === 'receipt' && !selectedFile) ||
+                  (mode === 'transaction' && !transactionId.trim()) ||
+                  (mode === 'sms' && !smsText.trim())
+                }
                 onClick={() => depositMutation.mutate()}
               >
                 {depositMutation.isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    {t('wallet.verifying')}
+                    {mode === 'sms' ? t('wallet.smsVerifying') : t('wallet.verifying')}
                   </>
                 ) : (
                   <>

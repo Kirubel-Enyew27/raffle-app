@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"mime/multipart"
 	"net/http"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/raffle-app/backend/internal/wallet/application"
+	"github.com/raffle-app/backend/internal/wallet/infrastructure/verifier"
 	apperrors "github.com/raffle-app/backend/pkg/errors"
 )
 
@@ -286,6 +288,70 @@ func (h *WalletHandler) VerifyAndDepositReceipt(c *gin.Context) {
 			},
 		},
 	})
+}
+
+// VerifyDepositFromSMS parses a pasted Telebirr or CBE confirmation SMS and runs
+// it through the same provider verification pipeline as the receipt and
+// transaction-number deposit methods. The SMS only supplies the reference and an
+// expected amount; the provider receipt decides whether the payment happened.
+func (h *WalletHandler) VerifyDepositFromSMS(c *gin.Context) {
+	userID := c.GetString("user_id")
+	var req struct {
+		SMSText string `json:"sms_text"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "error", "message": "Paste the payment confirmation SMS you received from Telebirr or CBE."})
+		return
+	}
+
+	deposit, tx, parsed, err := h.walletService.VerifyDepositFromSMS(c.Request.Context(), userID, req.SMSText)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "error", "message": smsDepositErrorMessage(err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": "success",
+		"data": gin.H{
+			"transaction": tx,
+			"receipt": gin.H{
+				"payment_method":  deposit.PaymentMethod,
+				"amount":          tx.Amount,
+				"transaction_ref": tx.Reference,
+				"transfer_date":   parsed.TransactionDate,
+				"receiver_name":   deposit.ReceiverName,
+				"status":          "Completed",
+				"receipt_url":     deposit.ReceiptURL,
+			},
+			"parsed": parsed,
+		},
+	})
+}
+
+// smsDepositErrorMessage keeps provider and database internals out of the
+// response while still telling the user what they can act on.
+func smsDepositErrorMessage(err error) string {
+	var parseErr *verifier.SMSParseError
+	if errors.As(err, &parseErr) {
+		return parseErr.Message
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "already been credited"), strings.Contains(msg, "already been processed"):
+		return "This transaction has already been credited to a wallet."
+	case strings.Contains(msg, "does not match expected deposit amount"):
+		return "The verified payment amount does not match the amount in the SMS."
+	case strings.Contains(msg, "receipt not found"):
+		return "We couldn't find a receipt for this payment yet. If you just paid, wait a moment and try again."
+	case strings.Contains(msg, "not completed"):
+		return "This payment has not completed yet. Please try again once the transfer settles."
+	case strings.Contains(msg, "automatic crediting"),
+		strings.Contains(msg, "not yet been configured"),
+		strings.Contains(msg, "disabled by server configuration"):
+		return "Automatic deposit verification is temporarily unavailable. Please try again later or contact support."
+	default:
+		return "We couldn't verify this payment. Please check the SMS and try again."
+	}
 }
 
 func (h *WalletHandler) Withdraw(c *gin.Context) {

@@ -619,6 +619,84 @@ func (s *WalletService) VerifyAndDepositReceipt(ctx context.Context, userID, met
 	return tx, receiptInfo, nil
 }
 
+// VerifyDepositFromSMS accepts a pasted Telebirr or CBE payment confirmation SMS,
+// extracts the transaction reference and expected amount from it, and then runs
+// the same intent + provider verification + atomic credit pipeline used by the
+// screenshot and transaction-number deposit methods. The SMS only identifies the
+// transaction; the provider receipt decides whether the payment happened.
+func (s *WalletService) VerifyDepositFromSMS(ctx context.Context, userID, smsText string) (*domain.Deposit, *domain.WalletTransaction, *verifier.SMSPaymentDetails, error) {
+	if strings.TrimSpace(smsText) == "" {
+		return nil, nil, nil, &verifier.SMSParseError{
+			Code:    verifier.SMSErrorEmpty,
+			Message: "Paste the payment confirmation SMS you received from Telebirr or CBE.",
+		}
+	}
+	details, err := verifier.ParsePaymentSMS(smsText)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if s.depositRepo == nil {
+		return nil, nil, nil, fmt.Errorf("deposit repository is not configured")
+	}
+
+	// The extracted amount becomes the expected amount, so the provider receipt
+	// must agree with what the SMS claimed before anything is credited.
+	deposit, err := s.CreateDepositIntent(ctx, userID, details.Amount, details.Provider)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if err := s.markDepositSMSSubmission(ctx, deposit, details); err != nil {
+		return nil, nil, nil, err
+	}
+
+	reference := details.TransactionRef
+	if details.Provider == verifier.SMSProviderCBE && details.ReceiptToken != "" {
+		reference = details.ReceiptToken
+	}
+
+	verified, tx, err := s.VerifyDeposit(ctx, deposit.ID, userID, reference, details.ReceiptURL, nil, "")
+	if err != nil {
+		return verified, tx, details, err
+	}
+	// VerifyDeposit stores the raw provider payload as metadata, so the SMS
+	// provenance is written again on the credited deposit for the audit trail.
+	if err := s.markDepositSMSSubmission(ctx, verified, details); err != nil {
+		return verified, tx, details, err
+	}
+	return verified, tx, details, nil
+}
+
+// markDepositSMSSubmission records that a deposit was submitted from a pasted
+// SMS, together with the details extracted from it.
+func (s *WalletService) markDepositSMSSubmission(ctx context.Context, deposit *domain.Deposit, details *verifier.SMSPaymentDetails) error {
+	if deposit == nil || s.depositRepo == nil {
+		return nil
+	}
+	meta := deposit.Metadata
+	if meta == nil {
+		meta = map[string]interface{}{}
+	}
+	meta["submission_method"] = "sms"
+	meta["sms_provider"] = details.Provider
+	if details.Amount > 0 {
+		meta["sms_amount"] = details.Amount
+	}
+	if details.TotalDebit > 0 {
+		meta["sms_total_debit"] = details.TotalDebit
+	}
+	if details.TransactionDate != "" {
+		meta["sms_transaction_date"] = details.TransactionDate
+	}
+	if details.ReceiverName != "" {
+		meta["sms_receiver_name"] = details.ReceiverName
+	}
+	deposit.Metadata = meta
+	if err := s.depositRepo.Update(ctx, deposit); err != nil {
+		return fmt.Errorf("failed to record SMS deposit details: %w", err)
+	}
+	return nil
+}
+
 func (s *WalletService) VerifyDirect(ctx context.Context, userID, method, tokenOrRef string) (*domain.Deposit, *domain.WalletTransaction, error) {
 	// Helper creating and executing an immediate flex deposit intent
 	clean := strings.TrimSpace(tokenOrRef)

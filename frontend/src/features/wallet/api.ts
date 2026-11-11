@@ -67,6 +67,15 @@ export const walletApi = {
     }))
   },
 
+  // The SMS is only a reference source: the server extracts the provider and
+  // transaction details, then verifies them with the provider before crediting.
+  verifyDepositSms: (smsText: string) =>
+    api.post<ApiResponse<ReceiptDepositResult>>('/wallets/deposit/sms', { sms_text: smsText })
+      .then(r => ({
+        transaction: mapTransaction(r.data.data.transaction),
+        receipt: r.data.data.receipt,
+      })),
+
   createDepositIntent: (amount: number, payment_method: string) =>
     api.post<ApiResponse<any>>('/wallets/deposits/intent', { amount, payment_method })
       .then(r => r.data.data),
