@@ -165,13 +165,18 @@ export async function createSession(name = 'player'): Promise<TestSession> {
   }
 }
 
-/** Seeds a browser context with the session (dev builds read sessionStorage). */
+/**
+ * Seeds a browser context with the session. Development builds read
+ * sessionStorage (one account per tab); production builds read localStorage.
+ */
 export async function seedSession(context: BrowserContext, session: TestSession): Promise<void> {
   await context.addInitScript(
     ([token, refresh, user]: [string, string, string]) => {
-      window.sessionStorage.setItem('token', token)
-      window.sessionStorage.setItem('refresh_token', refresh)
-      window.sessionStorage.setItem('user', user)
+      for (const store of [window.sessionStorage, window.localStorage]) {
+        store.setItem('token', token)
+        store.setItem('refresh_token', refresh)
+        store.setItem('user', user)
+      }
     },
     [session.token, session.refreshToken, JSON.stringify(session.user)],
   )

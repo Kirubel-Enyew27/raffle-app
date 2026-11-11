@@ -37,6 +37,7 @@ import (
 	notificationqueue "github.com/raffle-app/backend/internal/notification/interfaces/queue"
 	notificationrepo "github.com/raffle-app/backend/internal/notification/interfaces/repository"
 	p2papp "github.com/raffle-app/backend/internal/p2p/application"
+	p2pcache "github.com/raffle-app/backend/internal/p2p/infrastructure/cache"
 	p2phttp "github.com/raffle-app/backend/internal/p2p/interfaces/http"
 	p2prepo "github.com/raffle-app/backend/internal/p2p/interfaces/repository"
 	raffleapp "github.com/raffle-app/backend/internal/raffle/application"
@@ -308,6 +309,7 @@ func main() {
 		p2pEscrowRepo,
 		realtimeSvc,
 		auditSvc,
+		p2papp.WithSeatCache(p2pcache.NewSeatCache(rdb)),
 	)
 
 	// Paid competition is gated by the deployment switch (PAID_MATCHES_ENABLED)

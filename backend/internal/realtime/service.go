@@ -274,6 +274,55 @@ func (s *Service) PublishToChannel(ctx context.Context, channel, eventType strin
 	})
 }
 
+// PublishBatch publishes several events through one Redis pipeline. Per-player
+// match views arrive together instead of paying one network round trip per
+// recipient, while each event keeps its own addressee and payload.
+func (s *Service) PublishBatch(ctx context.Context, events []Event) error {
+	if len(events) == 0 {
+		return nil
+	}
+	started := time.Now()
+	pipe := s.rdb.Pipeline()
+	now := time.Now()
+	queued := 0
+	var bytes int64
+	var firstErr error
+	for i := range events {
+		if events[i].CreatedAt.IsZero() {
+			events[i].CreatedAt = now
+		}
+		data, err := json.Marshal(events[i])
+		if err != nil {
+			s.publishFailures.Add(1)
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		pipe.Publish(ctx, s.channel, data)
+		queued++
+		bytes += int64(len(data))
+	}
+	if queued == 0 {
+		s.publishTimeNanos.Add(time.Since(started).Nanoseconds())
+		return firstErr
+	}
+
+	_, err := pipe.Exec(ctx)
+	s.publishTimeNanos.Add(time.Since(started).Nanoseconds())
+	if err != nil {
+		s.publishFailures.Add(int64(queued))
+		s.log.Error("Failed to publish real-time event batch",
+			zap.Int("events", queued),
+			zap.Error(err),
+		)
+		return err
+	}
+	s.publishedCount.Add(int64(queued))
+	s.publishBytes.Add(bytes)
+	return firstErr
+}
+
 func (s *Service) publish(ctx context.Context, ev Event) error {
 	started := time.Now()
 	data, err := json.Marshal(ev)

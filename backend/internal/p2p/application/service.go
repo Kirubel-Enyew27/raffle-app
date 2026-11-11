@@ -116,6 +116,22 @@ type CreateMatchRequest struct {
 	AutoMatch bool `json:"auto_match"`
 }
 
+// SeatCache caches the immutable two-player seat mapping for an in-progress
+// match. It is a read-through hint only: PostgreSQL remains authoritative and
+// every cache miss or failure falls back to the repository.
+type SeatCache interface {
+	Get(ctx context.Context, matchID string) ([]*domain.MatchPlayer, bool)
+	Set(ctx context.Context, matchID string, players []*domain.MatchPlayer)
+	Delete(ctx context.Context, matchID string)
+}
+
+type P2PServiceOption func(*P2PService)
+
+// WithSeatCache enables the Redis-backed seat lookup used on the move hot path.
+func WithSeatCache(cache SeatCache) P2PServiceOption {
+	return func(s *P2PService) { s.seatCache = cache }
+}
+
 type P2PService struct {
 	gameRepo           domain.GameRepository
 	matchRepo          domain.MatchRepository
@@ -126,6 +142,7 @@ type P2PService struct {
 	ruleEngines        map[string]domain.RuleEngine
 	realtime           *realtime.Service
 	auditSvc           *auditapp.AuditService
+	seatCache          SeatCache
 	paidMatchesEnabled bool
 	// paidMatchesOperatorAllowed is the deployment/environment feature gate.
 	// An administrator can switch paid play off at any time, but cannot switch
@@ -143,6 +160,7 @@ func NewP2PService(
 	escrowRepo domain.EscrowRepository,
 	realtime *realtime.Service,
 	auditSvc *auditapp.AuditService,
+	opts ...P2PServiceOption,
 ) *P2PService {
 	engines := map[string]domain.RuleEngine{
 		"tic-tac-toe":         domain.NewTicTacToeEngine(),
@@ -151,7 +169,7 @@ func NewP2PService(
 		"ethiopian-dama":      domain.NewDamaEngine(),
 	}
 
-	return &P2PService{
+	svc := &P2PService{
 		gameRepo:            gameRepo,
 		matchRepo:           matchRepo,
 		playerRepo:          playerRepo,
@@ -164,6 +182,45 @@ func NewP2PService(
 		paidMatchesEnabled:  false, // Strict default: paid matches disabled until regulatory clearance
 		defaultServiceFeeBP: 500,   // 5.00% platform fee unless configured otherwise
 	}
+	for _, opt := range opts {
+		opt(svc)
+	}
+	return svc
+}
+
+// playersForMove returns the seated players needed to validate and publish a
+// move. Seats cannot change once a match is in progress, so the first lookup
+// warms Redis and subsequent moves skip the player query. Any cache problem
+// falls back to the transactional PostgreSQL read.
+func (s *P2PService) playersForMove(ctx context.Context, tx *sql.Tx, match *domain.Match) ([]*domain.MatchPlayer, error) {
+	var players []*domain.MatchPlayer
+	if s.seatCache != nil {
+		if cached, ok := s.seatCache.Get(ctx, match.ID); ok {
+			players = cached
+		}
+	}
+	if players == nil {
+		loaded, err := s.playerRepo.ListByMatchTx(ctx, tx, match.ID)
+		if err != nil {
+			return nil, err
+		}
+		players = loaded
+		if s.seatCache != nil {
+			s.seatCache.Set(ctx, match.ID, players)
+		}
+	}
+
+	// Scores live on the match snapshot; keep cached seat rows from exposing a
+	// score from an earlier round in the per-player view.
+	for _, p := range players {
+		if p == nil {
+			continue
+		}
+		if score, ok := match.Scores[strconv.Itoa(p.PlayerIndex)]; ok {
+			p.Score = score
+		}
+	}
+	return players, nil
 }
 
 func (s *P2PService) SetPaidMatchesEnabled(enabled bool) {
@@ -1171,7 +1228,7 @@ func (s *P2PService) SubmitMove(ctx context.Context, userID, matchID string, act
 		return nil, domain.ErrTurnTimeout
 	}
 
-	players, err := s.playerRepo.ListByMatchTx(ctx, tx, match.ID)
+	players, err := s.playersForMove(ctx, tx, match)
 	if err != nil {
 		return nil, err
 	}
@@ -1205,23 +1262,23 @@ func (s *P2PService) SubmitMove(ctx context.Context, userID, matchID string, act
 
 	match.BoardState = newBoard
 
-	// Record the move log. move_number must increase across a whole round, even
-	// after the board has round-tripped through JSONB (where numbers arrive as
-	// float64). The previous int-only assertion silently recorded every move as
-	// number 0 and the unique constraint discarded all but the first.
+	// Build the move log now, but persist it together with the advanced match
+	// state at the end of the transaction. move_number must increase across a
+	// whole round, even after the board has round-tripped through JSONB (where
+	// numbers arrive as float64). The previous int-only assertion silently
+	// recorded every move as number 0 and the unique constraint discarded all
+	// but the first.
 	moveCount := boardMoveCount(newBoard)
 	if moveCount <= 0 {
 		moveCount = 1
 	}
-	if err := s.moveRepo.RecordMoveTx(ctx, tx, &domain.MatchMove{
+	moveRecord := &domain.MatchMove{
 		MatchID:       match.ID,
 		RoundNumber:   match.CurrentRound,
 		MoveNumber:    moveCount,
 		UserID:        userID,
 		Action:        action,
 		BoardSnapshot: newBoard,
-	}); err != nil {
-		return nil, fmt.Errorf("failed to record move: %w", err)
 	}
 
 	var isMatchOver bool
@@ -1238,9 +1295,11 @@ func (s *P2PService) SubmitMove(ctx context.Context, userID, matchID string, act
 		if roundWinnerIdx != nil {
 			if *roundWinnerIdx == 0 {
 				match.Scores["0"]++
+				players[0].Score = match.Scores["0"]
 				_ = s.playerRepo.UpdateScoreTx(ctx, tx, match.ID, players[0].UserID, match.Scores["0"])
 			} else {
 				match.Scores["1"]++
+				players[1].Score = match.Scores["1"]
 				_ = s.playerRepo.UpdateScoreTx(ctx, tx, match.ID, players[1].UserID, match.Scores["1"])
 			}
 		}
@@ -1355,18 +1414,18 @@ func (s *P2PService) SubmitMove(ctx context.Context, userID, matchID string, act
 		// winning move: the final piece and the whole winning_line disappear the
 		// moment either client refetches the terminal state, leaving no winning
 		// combination to highlight on the board.
-		if err := s.matchRepo.UpdateStateTx(ctx, tx, match); err != nil {
-			return nil, err
+		if err := s.matchRepo.RecordMoveAndUpdateStateTx(ctx, tx, moveRecord, match); err != nil {
+			return nil, fmt.Errorf("failed to record move: %w", err)
 		}
 
-		// UpdateStateTx already advanced this match's version with the final
-		// board; terminal bookkeeping belongs to that same committed snapshot.
+		// The combined write already advanced this match's version with the
+		// final board; terminal bookkeeping belongs to the same snapshot.
 		if err := s.matchRepo.MarkCompletedTx(ctx, tx, match, winnerUserID, status, settlement.FeeCents, now, false); err != nil {
 			return nil, err
 		}
 	} else {
-		if err := s.matchRepo.UpdateStateTx(ctx, tx, match); err != nil {
-			return nil, err
+		if err := s.matchRepo.RecordMoveAndUpdateStateTx(ctx, tx, moveRecord, match); err != nil {
+			return nil, fmt.Errorf("failed to record move: %w", err)
 		}
 	}
 
@@ -1979,6 +2038,7 @@ func (s *P2PService) publishMatchState(
 	match.Players = players
 
 	seen := make(map[string]bool, len(players))
+	events := make([]realtime.Event, 0, len(players))
 	for _, p := range players {
 		if p == nil || p.UserID == "" || seen[p.UserID] {
 			continue
@@ -1992,8 +2052,14 @@ func (s *P2PService) publishMatchState(
 		payload["match_id"] = match.ID
 		payload["state"] = s.buildView(match, p.UserID)
 
-		_ = s.realtime.Publish(ctx, eventType, p.UserID, "", payload)
+		events = append(events, realtime.Event{
+			Type:    eventType,
+			UserID:  p.UserID,
+			Payload: payload,
+		})
 	}
+
+	_ = s.realtime.PublishBatch(ctx, events)
 }
 
 // lobbyChannel is the shared channel for public matchmaking changes. Lobby

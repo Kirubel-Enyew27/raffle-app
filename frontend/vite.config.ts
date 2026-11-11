@@ -13,6 +13,13 @@ export default defineConfig({
       '/api': { target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8080', changeOrigin: true },
     },
   },
+  // Keep `vite preview` usable for production-build browser validation with
+  // the same API origin as development.
+  preview: {
+    proxy: {
+      '/api': { target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8080', changeOrigin: true },
+    },
+  },
   build: {
     rollupOptions: {
       output: {

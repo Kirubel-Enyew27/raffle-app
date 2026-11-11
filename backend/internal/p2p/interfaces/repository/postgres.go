@@ -429,6 +429,47 @@ func (r *MatchRepo) UpdateStateTx(ctx context.Context, tx *sql.Tx, match *domain
 	return err
 }
 
+// RecordMoveAndUpdateStateTx replaces the separate move INSERT and match UPDATE
+// with one statement. Data-modifying CTEs run exactly once, so the move log is
+// still durable before the transaction can commit.
+func (r *MatchRepo) RecordMoveAndUpdateStateTx(ctx context.Context, tx *sql.Tx, move *domain.MatchMove, match *domain.Match) error {
+	if move.ID == "" {
+		move.ID = newID()
+	}
+	scoresJSON, _ := json.Marshal(match.Scores)
+	boardJSON, _ := json.Marshal(match.BoardState)
+	actionJSON, _ := json.Marshal(move.Action)
+	moveBoardJSON, _ := json.Marshal(move.BoardSnapshot)
+
+	err := tx.QueryRowContext(ctx, `WITH recorded_move AS (
+		INSERT INTO p2p_match_moves (
+			id, match_id, round_number, move_number, user_id, action, board_snapshot, created_at
+		) VALUES ($14,$1,$15,$16,$17,$18,$19,NOW())
+	)
+	UPDATE p2p_matches SET
+		status = $2,
+		current_turn_user_id = $3,
+		turn_deadline = $4,
+		current_round = $5,
+		scores = $6,
+		board_state = $7,
+		prize_pool_cents = $8,
+		started_at = COALESCE(started_at, $9),
+		rematch_requested_by = $10,
+		rematch_match_id = $11,
+		disconnect_user_id = $12,
+		disconnect_deadline = $13,
+		updated_at = GREATEST(clock_timestamp(), updated_at + INTERVAL '1 microsecond'),
+		state_version = state_version + 1
+		WHERE id = $1 RETURNING updated_at, state_version`,
+		match.ID, match.Status, nullIfEmpty(ptrStr(match.CurrentTurnUserID)), match.TurnDeadline,
+		match.CurrentRound, string(scoresJSON), string(boardJSON), int64(match.PrizePoolCents), match.StartedAt,
+		nullIfEmpty(ptrStr(match.RematchRequestedBy)), nullIfEmpty(ptrStr(match.RematchMatchID)),
+		nullIfEmpty(ptrStr(match.DisconnectUserID)), match.DisconnectDeadline,
+		move.ID, move.RoundNumber, move.MoveNumber, move.UserID, string(actionJSON), string(moveBoardJSON)).Scan(&match.UpdatedAt, &match.StateVersion)
+	return err
+}
+
 func (r *MatchRepo) MarkCompletedTx(ctx context.Context, tx *sql.Tx, match *domain.Match, winnerUserID *string, status string, totalFeeCents money.Cents, completedAt time.Time, incrementVersion bool) error {
 	err := tx.QueryRowContext(ctx, `UPDATE p2p_matches SET
 		status = $2,

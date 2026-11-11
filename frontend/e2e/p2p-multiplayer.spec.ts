@@ -256,15 +256,44 @@ test.describe('P2P multiplayer', () => {
     // The opening move is a3 → b4 for the first seat in the server's standard
     // Ethiopian Dama position.
     await host.getByRole('button', { name: /^a3, ivory checker/ }).click()
-    await host.getByRole('button', { name: /^b4, empty, legal destination/ }).click()
+    await host.getByRole('button', { name: /^b4, empty · legal destination/ }).click()
     await expect
       .poll(async () => guest.getByRole('button', { name: /^b4, ivory checker/ }).count(), { timeout: 10_000 })
       .toBe(1)
 
+    // Play into a deterministic capture: a3–b4, b6–a5, b4–c5, d6×b4.
+    await guest.getByRole('button', { name: /^b6, crimson checker/ }).click()
+    await guest.getByRole('button', { name: /^a5, empty · legal destination/ }).click()
+    await expect
+      .poll(async () => host.getByRole('button', { name: /^a5, crimson checker/ }).count(), { timeout: 10_000 })
+      .toBe(1)
+    await host.getByRole('button', { name: /^b4, ivory checker/ }).click()
+    await host.getByRole('button', { name: /^c5, empty · legal destination/ }).click()
+    await expect
+      .poll(async () => guest.getByRole('button', { name: /^c5, ivory checker/ }).count(), { timeout: 10_000 })
+      .toBe(1)
+    await guest.getByRole('button', { name: /^d6, crimson checker/ }).click()
+    await guest.getByRole('button', { name: /^b4, empty · legal destination/ }).click()
+
+    // The captured ivory piece disappears on both authoritative views, and a
+    // crimson piece lands on b4 exactly once.
+    await expect
+      .poll(async () => host.getByRole('button', { name: /^b4, crimson checker/ }).count(), { timeout: 10_000 })
+      .toBe(1)
+    await expect(host.getByRole('button', { name: /^c5, empty/ })).toHaveCount(1)
+    await expect(guest.getByRole('button', { name: /^b4, crimson checker/ })).toHaveCount(1)
+    await expect(guest.getByRole('button', { name: /^c5, empty/ })).toHaveCount(1)
+
     const state = await fetchMatch(hostSession, match.id)
     expect(state.status).toBe('in_progress')
-    const board = state.board_state as { move_count?: number }
-    expect(board.move_count).toBe(1)
+    const board = state.board_state as {
+      move_count?: number
+      move_history?: Array<{ captures?: number[] }>
+      last_move?: { from?: number; to?: number; captures?: number[] }
+    }
+    expect(board.move_count).toBe(4)
+    expect(board.move_history).toHaveLength(4)
+    expect(board.last_move).toMatchObject({ from: 19, to: 33, captures: [26] })
     await hostContext.close()
     await guestContext.close()
   })
@@ -300,8 +329,8 @@ test.describe('P2P multiplayer', () => {
 
     await guest.getByRole('button', { name: /^Scissors/ }).click()
     await guest.getByRole('button', { name: /Lock in Scissors/ }).click()
-    await expect(host.getByText('You Won the Round!')).toBeVisible({ timeout: 10_000 })
-    await expect(guest.getByText('Opponent Won the Round!')).toBeVisible({ timeout: 10_000 })
+    await expect(host.getByText('You Won This Round!')).toBeVisible({ timeout: 10_000 })
+    await expect(guest.getByText('Opponent Won This Round')).toBeVisible({ timeout: 10_000 })
 
     const state = await fetchMatch(hostSession, match.id)
     expect(state.status).toBe('in_progress')
@@ -352,9 +381,8 @@ test.describe('P2P multiplayer', () => {
     await expect.poll(() => badgeState(guest), { timeout: 15_000 }).toBe('completed')
 
     await host.getByRole('button', { name: 'Play Again' }).click()
-    await expect(host.getByText('Your opponent will be notified. Waiting for their response…')).toBeVisible()
-    await expect(guest.getByText('Your opponent wants to play again.')).toHaveCount(1, { timeout: 10_000 })
-    await expect(guest.getByRole('button', { name: 'Accept' })).toBeVisible()
+    await expect(host.getByRole('button', { name: /Waiting/ })).toBeVisible()
+    await expect(guest.getByRole('button', { name: 'Accept' })).toBeVisible({ timeout: 10_000 })
     // Pending rematch consent is authoritative server state and survives a
     // refresh, including the notification's action button.
     await guest.reload()
@@ -396,7 +424,6 @@ test.describe('P2P multiplayer', () => {
 
     await host.getByRole('button', { name: 'Play Again' }).click()
     await expect(guest.getByRole('button', { name: 'Accept' })).toBeVisible({ timeout: 10_000 })
-    await expect(guest.getByText('Your opponent wants to play again.')).toHaveCount(1)
     const secondRematchResponsePromise = guest.waitForResponse((response) =>
       response.request().method() === 'POST' && /\/p2p\/matches\/[^/]+\/rematch/.test(response.url()),
     )
@@ -451,7 +478,7 @@ test.describe('P2P multiplayer', () => {
     // authoritative polling fallback. The badge stays candidly "reconnecting",
     // but the board and the turn clock are live — before the fix this client sat
     // on "Both Players Joined" (or a bare "Connecting…") for the whole match.
-    await expect(guest.getByText(/YOUR TURN|OPPONENT TURN/), {
+    await expect(guest.getByText(/Your Turn|Opponent's Turn/i), {
       timeout: 25_000,
     }).toBeVisible()
     await expect(guest.getByRole('button', { name: /^Cell 1, / })).toBeVisible()
@@ -460,7 +487,7 @@ test.describe('P2P multiplayer', () => {
     expect(await submitMove(hostSession, match.id, { cell: 0 })).toBe(200)
 
     await expect
-      .poll(async () => (await bodyText(guest)).includes('YOUR TURN'), { timeout: 15_000 })
+      .poll(async () => (await bodyText(guest)).toLowerCase().includes('your turn'), { timeout: 15_000 })
       .toBe(true)
     await expect(guest.getByRole('button', { name: /^Cell 1, / })).toBeVisible()
 

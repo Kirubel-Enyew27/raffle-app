@@ -53,6 +53,7 @@ import { ConnectFourBoard } from '@/features/p2p/ConnectFourBoard'
 import { RockPaperScissorsBoard } from '@/features/p2p/RockPaperScissorsBoard'
 import { DamaBoard } from '@/features/p2p/DamaBoard'
 import { type DamaBoardState } from '@/features/p2p/dama'
+import { applyOptimisticMove, buildOptimisticMove, type OptimisticMove } from '@/features/p2p/optimisticMove'
 import { useGameSounds } from '@/features/p2p/useGameSounds'
 import { SoundToggle } from '@/features/p2p/SoundToggle'
 import { MatchHistoryList, PaidMetric } from '@/features/p2p/MatchHistory'
@@ -184,6 +185,12 @@ export function Component() {
   const [resignDialogOpen, setResignDialogOpen] = useState(false)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  // A move overlay belongs to one match only. Tagging it with its match lets
+  // navigation drop it without an effect (and without touching a newer move).
+  const [pendingMove, setPendingMove] = useState<{ matchId: string; move: OptimisticMove } | null>(null)
+  const moveInFlightRef = useRef<string | null>(null)
+  const activePendingMove =
+    pendingMove && pendingMove.matchId === matchId ? pendingMove.move : null
 
   // Fetch initial match state
   const {
@@ -589,16 +596,28 @@ export function Component() {
 
   // Move mutation
   const moveMutation = useMutation({
-    mutationFn: (action: Record<string, unknown>) => p2pApi.submitMove(matchId!, action),
-    onSuccess: (updated) => {
+    mutationFn: ({ matchId: id, action }: { matchId: string; action: Record<string, unknown> }) =>
+      p2pApi.submitMove(id, action),
+    onSuccess: (updated, variables) => {
+      // The authoritative snapshot now contains the move; dropping the overlay
+      // in the same batch avoids a visible snap-back.
       applyMatchSnapshot(updated)
+      setPendingMove((current) => (current?.matchId === variables.matchId ? null : current))
     },
-    onError: (err: unknown) => {
+    onError: (err: unknown, variables) => {
+      // The request may have committed even if the response was lost, so clear
+      // the provisional paint and read back the server's actual state.
+      setPendingMove((current) => (current?.matchId === variables.matchId ? null : current))
+      if (variables.matchId !== matchId) return
       toast({
         title: t('p2p.match.moveRejected', 'Move rejected'),
         description: apiErrorMessage(err, t),
         type: 'error',
       })
+      void refetch()
+    },
+    onSettled: (_data, _error, variables) => {
+      if (moveInFlightRef.current === variables.matchId) moveInFlightRef.current = null
     },
   })
 
@@ -756,6 +775,11 @@ export function Component() {
   const isTicTacToe = match.game_slug === 'tic-tac-toe'
   const mySeat = isTicTacToe ? seatForPlayerIndex(myPlayer?.player_index) : null
   const isGameOver = ['completed', 'tied', 'forfeited', 'cancelled'].includes(match.status)
+  // Presentation-only overlay. The cached `match` remains the authoritative
+  // snapshot used by version checks, settlement and reconnect recovery.
+  const boardMatch = activePendingMove ? applyOptimisticMove(match, activePendingMove) : match
+  const boardLocked =
+    !!activePendingMove || (moveMutation.isPending && moveMutation.variables?.matchId === matchId) || isGameOver
   const recentMatches = (matchHistory?.matches ?? [])
     .filter((historyMatch) => isTerminalMatchRecord(historyMatch))
     .slice(0, RECENT_HISTORY_LIMIT)
@@ -853,7 +877,14 @@ export function Component() {
   }
 
   const handleMoveAction = (action: Record<string, unknown>) => {
-    moveMutation.mutate(action)
+    // The ref closes the sub-frame gap between two rapid pointer events,
+    // before React has re-rendered the disabled board.
+    if (!matchId || moveInFlightRef.current === matchId) return
+    const optimistic = buildOptimisticMove(match, user?.id, action)
+    if (!optimistic) return
+    moveInFlightRef.current = matchId
+    setPendingMove({ matchId, move: optimistic })
+    moveMutation.mutate({ matchId, action })
   }
 
   return (
@@ -1469,11 +1500,11 @@ export function Component() {
               {/* The game board stays mounted and highlights decisive events */}
               {match.game_slug === 'tic-tac-toe' && (
                 <TicTacToeBoard
-                  boardState={match.board_state}
+                  boardState={boardMatch.board_state}
                   isMyTurn={isMyTurn}
                   mySymbol={myPlayer?.symbol}
                   onMove={(cell) => handleMoveAction({ cell })}
-                  disabled={moveMutation.isPending || isGameOver}
+                  disabled={boardLocked}
                   isGameOver={isGameOver}
                   isTie={outcome?.type === 'draw'}
                 />
@@ -1481,11 +1512,11 @@ export function Component() {
 
               {match.game_slug === 'connect-four' && (
                 <ConnectFourBoard
-                  boardState={match.board_state}
+                  boardState={boardMatch.board_state}
                   isMyTurn={isMyTurn}
                   mySymbol={myPlayer?.symbol}
                   onMove={(column) => handleMoveAction({ column })}
-                  disabled={moveMutation.isPending || isGameOver}
+                  disabled={boardLocked}
                   isGameOver={isGameOver}
                   isTie={outcome?.type === 'draw'}
                 />
@@ -1493,14 +1524,14 @@ export function Component() {
 
               {match.game_slug === 'rock-paper-scissors' && (
                 <RockPaperScissorsBoard
-                  boardState={match.board_state}
+                  boardState={boardMatch.board_state}
                   isMyTurn={isMyTurn}
                   myPlayerIndex={myPlayer?.player_index}
                   scores={match.scores}
                   currentRound={match.current_round}
                   maxRounds={match.max_rounds}
                   onMove={(choice) => handleMoveAction({ choice })}
-                  disabled={moveMutation.isPending || isGameOver}
+                  disabled={boardLocked}
                   isGameOver={isGameOver}
                 />
               )}
@@ -1508,11 +1539,11 @@ export function Component() {
               {match.game_slug === 'ethiopian-dama' && (
                 <div className="flex w-full flex-col items-center gap-4">
                   <DamaBoard
-                    boardState={match.board_state as DamaBoardState}
+                    boardState={boardMatch.board_state as DamaBoardState}
                     isMyTurn={isMyTurn}
                     myPlayerIndex={myPlayer?.player_index}
                     onMove={handleMoveAction}
-                    disabled={moveMutation.isPending || isGameOver}
+                    disabled={boardLocked}
                     isGameOver={isGameOver}
                     outcome={outcome}
                   />

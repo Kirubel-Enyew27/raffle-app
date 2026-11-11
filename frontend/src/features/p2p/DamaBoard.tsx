@@ -106,6 +106,18 @@ export function DamaBoard({
       seenMoveSeq.current = latestHistoryMove?.seq ?? 0
       return
     }
+
+    // A rejected optimistic move removes its synthetic history entry. Roll the
+    // animation cursor back and cancel anything still queued so the next real
+    // move is not mistaken for an already-seen sequence.
+    const latestSeq = latestHistoryMove?.seq ?? 0
+    if (latestSeq < seenMoveSeq.current) {
+      seenMoveSeq.current = latestSeq
+      setMoveQueue([])
+      setMovingPiece(null)
+      return
+    }
+
     const newMoves = (boardState?.move_history ?? []).filter((move) => move.seq > seenMoveSeq.current)
     if (newMoves.length === 0) return
     seenMoveSeq.current = newMoves[newMoves.length - 1].seq
