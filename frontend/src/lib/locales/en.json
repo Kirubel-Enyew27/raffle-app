@@ -136,7 +136,11 @@
     "googleEmailUnverified": "Your Google account has no verified email address, so it cannot be used to sign in.",
     "googleUnavailable": "Google sign-in is unavailable right now. Please use your email and password.",
     "googleAccountDisabled": "This account has been disabled.",
-    "googleMissingCode": "That sign-in link is no longer valid. Please try again."
+    "googleMissingCode": "That sign-in link is no longer valid. Please try again.",
+    "telegramContinue": "Continue with Telegram",
+    "telegramSigningIn": "Signing in with Telegram…",
+    "telegramContinueNote": "Your Telegram account creates or opens your KWIK profile automatically.",
+    "orSignInWithPassword": "OR SIGN IN WITH PASSWORD"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -423,6 +427,14 @@
     "googleLinkExpired": "That attempt expired. Please try again.",
     "googleLinkDisabled": "This account is not available.",
     "googleLinkFailed": "Could not connect Google. Please try again.",
+    "telegramConnected": "Connected — you can sign in with Telegram.",
+    "telegramNotConnected": "Not connected",
+    "connectTelegram": "Connect Telegram",
+    "telegramLinkPrompt": "Enter your password to confirm it's you, then open this profile inside Telegram to connect it.",
+    "telegramLaunchRequired": "Open KWIK from your Telegram bot to connect Telegram.",
+    "telegramLinked": "Telegram is now connected. You can use it to sign in next time.",
+    "telegramLinkFailed": "Could not connect Telegram. Please try again.",
+    "telegramUnavailable": "Telegram sign-in is unavailable right now.",
     "title": "Profile",
     "settings": "Profile Settings",
     "settingsSubtitle": "Update your personal information and avatar",

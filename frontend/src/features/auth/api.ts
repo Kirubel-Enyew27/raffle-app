@@ -22,7 +22,28 @@ export const authApi = {
 
   /** Which external sign-in providers this server has configured. */
   providers: () =>
-    api.get<ApiResponse<{ google: boolean }>>('/auth/providers')
+    api.get<ApiResponse<{ google: boolean; telegram?: boolean }>>('/auth/providers')
+      .then(r => r.data.data),
+
+  /**
+   * Signs in with a raw Telegram.WebApp.initData payload. The backend verifies
+   * its HMAC against the bot token; no Telegram user fields are sent separately.
+   */
+  telegramLogin: (initData: string) =>
+    api.post<ApiResponse<LoginResponse>>('/auth/telegram', { init_data: initData })
+      .then(r => r.data.data),
+
+  /** Whether the signed-in account has Telegram connected. */
+  telegramLinkStatus: () =>
+    api.get<ApiResponse<{ linked: boolean }>>('/auth/telegram/link')
+      .then(r => r.data.data),
+
+  /** Connects the current Telegram identity to the signed-in account. */
+  linkTelegram: (initData: string, password: string) =>
+    api.post<ApiResponse<{ linked: boolean }>>('/auth/telegram/link', {
+      init_data: initData,
+      password,
+    })
       .then(r => r.data.data),
 
   /**

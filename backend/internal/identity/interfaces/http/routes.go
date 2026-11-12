@@ -27,6 +27,22 @@ func RegisterGoogleAuthRoutes(r *gin.RouterGroup, handler *GoogleAuthHandler, li
 	}
 }
 
+// RegisterTelegramAuthRoutes mounts Mini App authentication. initData is a
+// credential: the login endpoint is rate limited when a limiter is supplied,
+// and linking always requires an authenticated KWIK session.
+func RegisterTelegramAuthRoutes(r *gin.RouterGroup, handler *TelegramAuthHandler, limiter gin.HandlerFunc) {
+	auth := r.Group("/auth")
+	{
+		if limiter != nil {
+			auth.POST("/telegram", limiter, handler.Login)
+		} else {
+			auth.POST("/telegram", handler.Login)
+		}
+		auth.GET("/telegram/link", middleware.AuthMiddleware(), handler.LinkStatus)
+		auth.POST("/telegram/link", middleware.AuthMiddleware(), handler.Link)
+	}
+}
+
 func RegisterIdentityRoutes(r *gin.RouterGroup, handler *IdentityHandler) {
 	auth := r.Group("/auth")
 	{

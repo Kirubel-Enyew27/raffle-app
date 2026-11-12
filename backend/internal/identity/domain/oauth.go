@@ -1,9 +1,15 @@
 package domain
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
-// ProviderGoogle is the provider key stored in oauth_identities.provider.
-const ProviderGoogle = "google"
+// Provider keys stored in oauth_identities.provider.
+const (
+	ProviderGoogle   = "google"
+	ProviderTelegram = "telegram"
+)
 
 // OAuthIdentity links a local account to an external provider identity. The
 // provider's immutable subject identifier (Google's `sub`) is the key; email is
@@ -16,6 +22,30 @@ type OAuthIdentity struct {
 	ProviderEmail  string    `json:"provider_email,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+// TelegramProfile is the identity extracted from a Mini App launch payload
+// whose HMAC has already been verified against the bot token. Telegram user ids
+// are immutable; usernames can change and are never used as the identity key.
+type TelegramProfile struct {
+	ID           int64
+	FirstName    string
+	LastName     string
+	Username     string
+	LanguageCode string
+	PhotoURL     string
+}
+
+// DisplayName returns the name to store for a newly provisioned account.
+func (p TelegramProfile) DisplayName() string {
+	name := strings.TrimSpace(p.FirstName + " " + p.LastName)
+	if name != "" {
+		return name
+	}
+	if p.Username != "" {
+		return p.Username
+	}
+	return "KWIK Player"
 }
 
 // GoogleProfile is the verified identity extracted from Google's response. It

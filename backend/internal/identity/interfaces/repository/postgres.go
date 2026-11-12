@@ -68,7 +68,10 @@ func (r *UserRepo) Create(ctx context.Context, user *domain.User) error {
 	query := `INSERT INTO users (id, email, phone, full_name, avatar_url, password_hash, role, is_banned, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
 	// Optional profile fields must be NULL, not "". users.phone is UNIQUE, so
 	// storing '' makes every phone-less registration after the first fail.
-	_, err := r.db.ExecContext(ctx, query, user.ID, user.Email, nullIfEmpty(user.Phone), nullIfEmpty(user.FullName), nullIfEmpty(user.AvatarURL), nullIfEmpty(user.PasswordHash), user.Role, user.IsBanned, time.Now(), time.Now())
+	// Email is optional for accounts provisioned by an external identity
+	// provider (migration 27). A NULL, not "", keeps the unique index from
+	// rejecting every account after the first one without an address.
+	_, err := r.db.ExecContext(ctx, query, user.ID, nullIfEmpty(user.Email), nullIfEmpty(user.Phone), nullIfEmpty(user.FullName), nullIfEmpty(user.AvatarURL), nullIfEmpty(user.PasswordHash), user.Role, user.IsBanned, time.Now(), time.Now())
 	return err
 }
 
@@ -111,7 +114,7 @@ func (r *UserRepo) Update(ctx context.Context, user *domain.User) error {
 		banReason.Valid = true
 		banReason.String = *user.BanReason
 	}
-	_, err := r.db.ExecContext(ctx, query, user.Email, nullIfEmpty(user.Phone), nullIfEmpty(user.FullName), nullIfEmpty(user.AvatarURL), user.Role, user.IsBanned, banReason, time.Now(), user.ID)
+	_, err := r.db.ExecContext(ctx, query, nullIfEmpty(user.Email), nullIfEmpty(user.Phone), nullIfEmpty(user.FullName), nullIfEmpty(user.AvatarURL), user.Role, user.IsBanned, banReason, time.Now(), user.ID)
 	return err
 }
 

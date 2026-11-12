@@ -2,47 +2,227 @@
  * Telegram Mini App integration and deep-linking utilities.
  */
 
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp?: {
-        ready: () => void
-        expand: () => void
-        close: () => void
-        openLink: (url: string, options?: { try_instant_view?: boolean }) => void
-        openTelegramLink: (url: string) => void
-        isExpanded?: boolean
-        viewportHeight?: number
-        colorScheme?: 'light' | 'dark'
-        initDataUnsafe?: {
-          user?: {
-            id: number
-            first_name: string
-            last_name?: string
-            username?: string
-            language_code?: string
-          }
-          start_param?: string
-        }
-      }
+export type TelegramHapticStyle = 'light' | 'medium' | 'heavy' | 'rigid' | 'soft'
+export type TelegramNotificationType = 'error' | 'success' | 'warning'
+
+/** The subset of the official Telegram WebApp API KWIK uses. */
+export interface TelegramWebApp {
+  initData: string
+  platform: string
+  version: string
+  colorScheme: 'light' | 'dark'
+  themeParams?: Record<string, string>
+  isExpanded: boolean
+  viewportHeight?: number
+  viewportStableHeight?: number
+  safeAreaInset?: { top: number; bottom: number; left: number; right: number }
+  contentSafeAreaInset?: { top: number; bottom: number; left: number; right: number }
+  initDataUnsafe?: {
+    user?: {
+      id: number
+      first_name: string
+      last_name?: string
+      username?: string
+      language_code?: string
+      photo_url?: string
     }
+    start_param?: string
+  }
+  ready: () => void
+  expand: () => void
+  close: () => void
+  requestFullscreen?: () => void
+  disableVerticalSwipes?: () => void
+  openLink: (url: string, options?: { try_instant_view?: boolean }) => void
+  openTelegramLink: (url: string) => void
+  setHeaderColor?: (color: string) => void
+  setBackgroundColor?: (color: string) => void
+  setBottomBarColor?: (color: string) => void
+  isVersionAtLeast?: (version: string) => boolean
+  onEvent?: (event: string, handler: () => void) => void
+  offEvent?: (event: string, handler: () => void) => void
+  BackButton?: {
+    isVisible: boolean
+    show: () => void
+    hide: () => void
+    onClick: (handler: () => void) => void
+    offClick: (handler: () => void) => void
+  }
+  HapticFeedback?: {
+    impactOccurred: (style: TelegramHapticStyle) => void
+    notificationOccurred: (type: TelegramNotificationType) => void
+    selectionChanged: () => void
   }
 }
 
-/** Check if running inside Telegram WebApp */
-export function isTelegramWebApp(): boolean {
-  return typeof window !== 'undefined' && !!window.Telegram?.WebApp?.initDataUnsafe
+declare global {
+  interface Window {
+    Telegram?: { WebApp?: TelegramWebApp }
+  }
 }
 
-/** Initialize Telegram WebApp viewport */
-export function initTelegramWebApp(): void {
-  try {
-    if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.ready()
-      window.Telegram.WebApp.expand()
+/** The raw WebApp object, if the telegram.org script has loaded. */
+export function getTelegramWebApp(): TelegramWebApp | undefined {
+  if (typeof window === 'undefined') return undefined
+  return window.Telegram?.WebApp
+}
+
+/**
+ * The raw, signed initData string. This is the only Telegram value the backend
+ * accepts as proof of identity; initDataUnsafe is never sent or trusted.
+ *
+ * When the SDK has not populated `initData` yet (older clients, script timing)
+ * the launch parameters in the URL fragment are checked instead.
+ */
+export function getTelegramInitData(): string {
+  const webApp = getTelegramWebApp()
+  if (webApp?.initData) return webApp.initData
+
+  if (typeof window !== 'undefined') {
+    for (const source of [window.location.hash.replace(/^#/, ''), window.location.search.replace(/^\?/, '')]) {
+      if (!source) continue
+      const params = new URLSearchParams(source)
+      const raw = params.get('tgWebAppData')
+      if (raw) return raw
     }
+  }
+  return ''
+}
+
+/** Check if this page was launched inside Telegram with a signed payload. */
+export function isTelegramWebApp(): boolean {
+  if (getTelegramInitData() !== '') return true
+  // A payload is present but the SDK could not read it yet.
+  const webApp = getTelegramWebApp()
+  return !!webApp?.initDataUnsafe?.user
+}
+
+export function isTelegramDesktop(): boolean {
+  return getTelegramWebApp()?.platform === 'tdesktop'
+}
+
+const KWIK_CHROME = { dark: '#0a0a0b', light: '#f7f8fa' } as const
+
+/** Keep Telegram's header/background in step with KWIK's resolved theme. */
+export function syncTelegramChrome(isDark: boolean): void {
+  const webApp = getTelegramWebApp()
+  if (!webApp || !isTelegramWebApp()) return
+  const color = isDark ? KWIK_CHROME.dark : KWIK_CHROME.light
+  try {
+    webApp.setHeaderColor?.(color)
+    webApp.setBackgroundColor?.(color)
+    webApp.setBottomBarColor?.(color)
+  } catch {
+    // Unsupported in older clients; the CSS theme still applies.
+  }
+}
+
+function applyViewportVariables(webApp: TelegramWebApp): void {
+  if (typeof document === 'undefined') return
+  const root = document.documentElement
+  root.classList.add('tma')
+  if (webApp.viewportHeight) root.style.setProperty('--tg-viewport-height', `${webApp.viewportHeight}px`)
+  if (webApp.viewportStableHeight) {
+    root.style.setProperty('--tg-viewport-stable-height', `${webApp.viewportStableHeight}px`)
+  }
+  const inset = webApp.contentSafeAreaInset || webApp.safeAreaInset
+  if (inset) {
+    root.style.setProperty('--tg-safe-area-top', `${inset.top}px`)
+    root.style.setProperty('--tg-safe-area-bottom', `${inset.bottom}px`)
+    root.style.setProperty('--tg-safe-area-left', `${inset.left}px`)
+    root.style.setProperty('--tg-safe-area-right', `${inset.right}px`)
+  }
+}
+
+/**
+ * Subscribe to viewport/theme changes. Returns an unsubscribe function.
+ * Called from the shell so the layout follows expansion, rotation and the
+ * Telegram keyboard without a reload.
+ */
+export function subscribeTelegramViewport(onChange?: () => void): () => void {
+  const webApp = getTelegramWebApp()
+  if (!webApp || !isTelegramWebApp() || !webApp.onEvent) return () => undefined
+
+  const update = () => {
+    applyViewportVariables(webApp)
+    onChange?.()
+  }
+  update()
+  webApp.onEvent('viewportChanged', update)
+  webApp.onEvent('themeChanged', update)
+  webApp.onEvent('safeAreaChanged', update)
+  webApp.onEvent('contentSafeAreaChanged', update)
+
+  return () => {
+    webApp.offEvent?.('viewportChanged', update)
+    webApp.offEvent?.('themeChanged', update)
+    webApp.offEvent?.('safeAreaChanged', update)
+    webApp.offEvent?.('contentSafeAreaChanged', update)
+  }
+}
+
+/**
+ * Initialize the Telegram Mini App shell. Runs before React paints so the app
+ * never renders at Telegram's collapsed height first.
+ */
+export function initTelegramWebApp(): void {
+  const webApp = getTelegramWebApp()
+  if (!webApp) return
+  try {
+    webApp.ready()
+    webApp.expand()
+
+    // Fullscreen is available on mobile clients from Bot API 8.0. On desktop it
+    // is not meaningful, and older clients ignore the call.
+    if (
+      isTelegramWebApp() &&
+      !isTelegramDesktop() &&
+      webApp.requestFullscreen &&
+      (webApp.isVersionAtLeast?.('8.0') ?? false)
+    ) {
+      try {
+        webApp.requestFullscreen()
+        webApp.disableVerticalSwipes?.()
+      } catch {
+        // Fullscreen can be disabled by the user or the bot's settings.
+      }
+    }
+
+    applyViewportVariables(webApp)
+    const isDark = webApp.colorScheme !== 'light' || document.documentElement.classList.contains('dark')
+    syncTelegramChrome(isDark)
   } catch {
     // Ignore when not in Telegram
+  }
+}
+
+/** Light haptic tap for selection changes. No-op outside Telegram. */
+export function hapticSelection(): void {
+  if (!isTelegramWebApp()) return
+  try {
+    getTelegramWebApp()?.HapticFeedback?.selectionChanged()
+  } catch {
+    // Haptics are best effort.
+  }
+}
+
+/** Haptic impact for moves and drops. */
+export function hapticImpact(style: TelegramHapticStyle = 'light'): void {
+  if (!isTelegramWebApp()) return
+  try {
+    getTelegramWebApp()?.HapticFeedback?.impactOccurred(style)
+  } catch {
+    // Haptics are best effort.
+  }
+}
+
+/** Haptic notification for wins, losses and errors. */
+export function hapticNotification(type: TelegramNotificationType): void {
+  if (!isTelegramWebApp()) return
+  try {
+    getTelegramWebApp()?.HapticFeedback?.notificationOccurred(type)
+  } catch {
+    // Haptics are best effort.
   }
 }
 

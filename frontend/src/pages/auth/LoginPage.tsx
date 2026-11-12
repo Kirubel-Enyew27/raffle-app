@@ -6,7 +6,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { ArrowRight, Eye, EyeOff, Loader2, Lock, Mail } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, Loader2, Lock, Mail, Send } from 'lucide-react'
 import { AuthShell } from '@/features/auth/AuthShell'
 import { GoogleSignInButton } from '@/features/auth/GoogleSignInButton'
 import { googleErrorKey } from '@/features/auth/google'
@@ -21,6 +21,7 @@ import {
 } from '@/features/auth/authStyles'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { isTelegramWebApp } from '@/lib/telegram'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
@@ -36,8 +37,10 @@ export function Component() {
   // messages follow the active locale instead of freezing at first render.
   const schema = useMemo(() => makeSchema(t), [t])
   usePageTitle(t('auth.signIn'))
-  const { login } = useAuth()
+  const { login, loginWithTelegram, telegramError } = useAuth()
   const navigate = useNavigate()
+  const inTelegram = isTelegramWebApp()
+  const [telegramPending, setTelegramPending] = useState(false)
   const [searchParams] = useSearchParams()
   const redirectParam = searchParams.get('redirect')
   const pendingRedirect = readPendingRedirect(redirectParam)
@@ -84,8 +87,52 @@ export function Component() {
     },
   })
 
+  const handleTelegramSignIn = async () => {
+    setTelegramPending(true)
+    try {
+      // On success AuthLayout redirects to the role's landing page.
+      await loginWithTelegram()
+    } finally {
+      setTelegramPending(false)
+    }
+  }
+
   return (
     <AuthShell>
+      {inTelegram && (
+        <div className="mb-6 space-y-4">
+          {telegramError && (
+            <p role="alert" className={authAlertClass}>
+              {telegramError}
+            </p>
+          )}
+          <Button
+            type="button"
+            onClick={() => void handleTelegramSignIn()}
+            disabled={telegramPending}
+            aria-busy={telegramPending}
+            className={authPrimaryButtonClass}
+          >
+            {telegramPending ? (
+              <Loader2 className="h-[18px] w-[18px] animate-spin" />
+            ) : (
+              <Send className="h-[18px] w-[18px]" strokeWidth={2} />
+            )}
+            {telegramPending ? t('auth.telegramSigningIn') : t('auth.telegramContinue')}
+          </Button>
+          <p className="text-center text-xs text-muted-foreground">
+            {t('auth.telegramContinueNote')}
+          </p>
+          <div className="flex items-center gap-4">
+            <span aria-hidden="true" className="h-px flex-1 bg-border" />
+            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              {t('auth.orSignInWithPassword')}
+            </span>
+            <span aria-hidden="true" className="h-px flex-1 bg-border" />
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit(d => mutate(d))} noValidate className="space-y-5">
         {sessionExpired && (
           <p role="alert" className={authAlertClass}>

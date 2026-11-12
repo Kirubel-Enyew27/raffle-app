@@ -13,6 +13,7 @@ import {
   ANIMATION_MS,
   animationDelay,
 } from '@/lib/sound/animationCueTimeline'
+import { hapticImpact } from '@/lib/telegram'
 import { useAnimationCues } from './useAnimationCues'
 import { ConnectFourToken } from './ConnectFourToken'
 import {
@@ -168,6 +169,7 @@ export function ConnectFourBoard({
     // A committed move ends the touch preview immediately. Desktop hover is
     // left untouched because it follows the pointer independently.
     setTouchPreviewCol(null)
+    hapticImpact('medium')
     onMove(column)
   }
 

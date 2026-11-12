@@ -89,7 +89,8 @@ export const sessionRefresher = installAuthInterceptors(api, {
     url.includes('/auth/register') ||
     url.includes('/auth/refresh') ||
     url.includes('/auth/logout') ||
-    url.includes('/auth/google'),
+    url.includes('/auth/google') ||
+    url.includes('/auth/telegram'),
 })
 
 // Allow the SSE connection manager to proactively refresh an expired token

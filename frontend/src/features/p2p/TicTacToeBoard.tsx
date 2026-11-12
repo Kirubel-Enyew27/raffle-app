@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAnimationCues } from './useAnimationCues'
 import { TicTacToeMarker } from './TicTacToeMarkers'
+import { hapticSelection } from '@/lib/telegram'
 import { EMPTY_CELL, markerLabel, seatForCell, seatForSymbol } from './ticTacToe'
 
 interface TicTacToeBoardProps {
@@ -92,6 +93,7 @@ export function TicTacToeBoard({
 
   const handleClick = (index: number) => {
     if (disabled || !isMyTurn || isGameOver || cells[index] !== 0) return
+    hapticSelection()
     onMove(index)
   }
 

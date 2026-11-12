@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 
 import { Button } from '@/components/ui/button'
+import { hapticSelection } from '@/lib/telegram'
 import { RpsChoiceIcon } from './RockPaperScissorsIcons'
 import { useAnimationCues } from './useAnimationCues'
 import {
@@ -218,6 +219,7 @@ export function RockPaperScissorsBoard({
   const handlePick = (choice: RpsChoice) => {
     if (!canSelect) return
     setDraft({ round: roundNumber, choice })
+    hapticSelection()
     cues.emit('select')
   }
 

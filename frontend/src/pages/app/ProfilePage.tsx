@@ -13,7 +13,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { FormField } from '@/components/forms/FormField'
-import { Loader2, CheckCircle2, AlertCircle, KeyRound, Link2, User as UserIcon, Camera, X } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, KeyRound, Link2, Send, User as UserIcon, Camera, X } from 'lucide-react'
+import { getTelegramInitData, hapticNotification, isTelegramWebApp } from '@/lib/telegram'
 import type { User } from '@/types/api'
 import { cn } from '@/lib/utils'
 
@@ -57,6 +58,31 @@ export function Component() {
     onSuccess: ({ url }) => window.location.assign(url),
   })
   const googleLinked = googleStatus.data?.linked === true
+
+  // Telegram linking requires a fresh signed launch payload, so it is only
+  // available inside Telegram. The backend re-verifies the payload and asks for
+  // the account password as proof that a stolen session is not adding an
+  // identity.
+  const inTelegram = isTelegramWebApp()
+  const telegramStatus = useQuery({
+    queryKey: ['auth', 'telegram-link'],
+    queryFn: authApi.telegramLinkStatus,
+    enabled: inTelegram,
+    retry: 0,
+    staleTime: 60_000,
+  })
+  const [confirmingTelegram, setConfirmingTelegram] = useState(false)
+  const [telegramPassword, setTelegramPassword] = useState('')
+  const linkTelegramMutation = useMutation({
+    mutationFn: (password: string) => authApi.linkTelegram(getTelegramInitData(), password),
+    onSuccess: () => {
+      setConfirmingTelegram(false)
+      setTelegramPassword('')
+      hapticNotification('success')
+      void queryClient.invalidateQueries({ queryKey: ['auth', 'telegram-link'] })
+    },
+  })
+  const telegramLinked = telegramStatus.data?.linked === true
 
   const { register, handleSubmit, formState: { errors, isDirty } } = useForm<ProfileForm>({
     defaultValues: { full_name: user?.full_name || '', phone: user?.phone || '' },
@@ -333,6 +359,91 @@ export function Component() {
                 </Button>
               )}
             </div>
+          )}
+
+          {telegramLinked && linkTelegramMutation.isSuccess && (
+            <p role="status" className="flex items-center gap-2 text-sm text-success">
+              <CheckCircle2 className="h-4 w-4" />
+              {t('profile.telegramLinked')}
+            </p>
+          )}
+
+          {inTelegram && !telegramStatus.isError && telegramStatus.data && (
+            <div className="flex flex-col gap-3 rounded-md border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2.5">
+                <Send className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="text-sm font-medium">Telegram</p>
+                  <p className="text-xs text-muted-foreground">
+                    {telegramLinked ? t('profile.telegramConnected') : t('profile.telegramNotConnected')}
+                  </p>
+                </div>
+              </div>
+              {telegramLinked ? (
+                <span className="self-start rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success sm:self-auto">
+                  {t('profile.connected')}
+                </span>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="self-start sm:self-auto"
+                  disabled={confirmingTelegram || linkTelegramMutation.isPending}
+                  onClick={() => setConfirmingTelegram(true)}
+                >
+                  {t('profile.connectTelegram')}
+                </Button>
+              )}
+            </div>
+          )}
+
+          {inTelegram && telegramStatus.isError && (
+            <p className="text-sm text-muted-foreground">{t('profile.telegramUnavailable')}</p>
+          )}
+
+          {confirmingTelegram && !telegramLinked && (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault()
+                linkTelegramMutation.mutate(telegramPassword)
+              }}
+              className="space-y-3 rounded-md border border-border bg-muted/30 p-3"
+            >
+              <label htmlFor="telegram-link-password" className="block text-sm text-muted-foreground">
+                {t('profile.telegramLinkPrompt')}
+              </label>
+              <Input
+                id="telegram-link-password"
+                type="password"
+                autoComplete="current-password"
+                value={telegramPassword}
+                onChange={(event) => setTelegramPassword(event.target.value)}
+              />
+              {linkTelegramMutation.isError && (
+                <p role="alert" className="text-sm text-destructive">
+                  {linkTelegramMutation.error?.message || t('profile.telegramLinkFailed')}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" size="sm" disabled={!telegramPassword || linkTelegramMutation.isPending}>
+                  {linkTelegramMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {linkTelegramMutation.isPending ? t('profile.connecting') : t('profile.connectTelegram')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setConfirmingTelegram(false)
+                    setTelegramPassword('')
+                    linkTelegramMutation.reset()
+                  }}
+                >
+                  {t('profile.cancel')}
+                </Button>
+              </div>
+            </form>
           )}
 
           {confirmingGoogle && !googleLinked && (

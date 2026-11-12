@@ -8,8 +8,13 @@ import { ToastProvider } from '@/contexts/ToastContext'
 import { RealtimeProvider } from '@/contexts/RealtimeContext'
 import { queryClient } from '@/lib/queryClient'
 import { router } from '@/routes'
+import { initTelegramWebApp } from '@/lib/telegram'
 import '@/lib/i18n'
 import './index.css'
+
+// Call ready()/expand() before the first paint so the Mini App does not render
+// at Telegram's collapsed viewport height.
+initTelegramWebApp()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

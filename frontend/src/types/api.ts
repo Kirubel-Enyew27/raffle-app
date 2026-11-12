@@ -14,7 +14,8 @@ export interface PaginatedResponse<T> {
 // Auth
 export interface User {
   id: string
-  email: string
+  /** Absent for accounts provisioned by Telegram (Telegram has no email). */
+  email?: string
   full_name?: string
   phone?: string
   avatar_url?: string

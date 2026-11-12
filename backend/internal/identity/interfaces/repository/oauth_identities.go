@@ -110,7 +110,7 @@ func (r *OAuthIdentityRepo) CreateUserWithIdentity(ctx context.Context, user *do
 		VALUES ($1, $2, $3, $4, $5, NULL, $6, $7, $8, $9)`
 	if _, err := tx.ExecContext(ctx, insertUser,
 		user.ID,
-		user.Email,
+		nullIfEmpty(user.Email),
 		nullIfEmpty(user.Phone),
 		nullIfEmpty(user.FullName),
 		nullIfEmpty(user.AvatarURL),

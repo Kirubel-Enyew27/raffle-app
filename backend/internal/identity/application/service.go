@@ -41,6 +41,9 @@ type IdentityService struct {
 	oauthIdentities domain.OAuthIdentityRepository
 	oauthStates     domain.OAuthStateStore
 	loginHandoffs   domain.LoginHandoffStore
+
+	// Telegram Mini App sign-in. Nil unless SetTelegramAuth was called.
+	telegramVerifier TelegramInitDataVerifier
 }
 
 // Session is the credential pair returned by login and refresh. AccessToken is

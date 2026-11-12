@@ -7,6 +7,7 @@ import {
   DAMA_HOP_CLEANUP_GRACE_MS,
   animationDelay,
 } from '@/lib/sound/animationCueTimeline'
+import { hapticImpact, hapticSelection } from '@/lib/telegram'
 import { DamaPiece } from './DamaPiece'
 import { useAnimationCues } from './useAnimationCues'
 import {
@@ -205,6 +206,7 @@ export function DamaBoard({
     const maySelect = side === myPlayerIndex && (chainFrom === null || index === chainFrom)
 
     if (maySelect) {
+      hapticSelection()
       setSelected(index)
       return
     }
@@ -216,6 +218,7 @@ export function DamaBoard({
       return
     }
 
+    hapticImpact('medium')
     onMove({ from: activeSelection, to: index, turn_seq: turnSeq })
     setSelected(null)
   }

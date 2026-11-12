@@ -32,7 +32,8 @@ func NewGoogleAuthHandler(service *application.IdentityService, frontendURL stri
 // instead of offering a button that cannot work.
 func (h *GoogleAuthHandler) Providers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": "success", "data": gin.H{
-		"google": h.service.GoogleEnabled(),
+		"google":   h.service.GoogleEnabled(),
+		"telegram": h.service.TelegramEnabled(),
 	}})
 }
 

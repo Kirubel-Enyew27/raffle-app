@@ -30,6 +30,7 @@ import (
 	identityapp "github.com/raffle-app/backend/internal/identity/application"
 	identitydomain "github.com/raffle-app/backend/internal/identity/domain"
 	identitygoogle "github.com/raffle-app/backend/internal/identity/infrastructure/google"
+	identitytelegram "github.com/raffle-app/backend/internal/identity/infrastructure/telegram"
 	identityhttp "github.com/raffle-app/backend/internal/identity/interfaces/http"
 	identityrepo "github.com/raffle-app/backend/internal/identity/interfaces/repository"
 	notificationapp "github.com/raffle-app/backend/internal/notification/application"
@@ -51,6 +52,7 @@ import (
 	smsinfra "github.com/raffle-app/backend/internal/sms/infrastructure"
 	smshttp "github.com/raffle-app/backend/internal/sms/interfaces/http"
 	smsrepo "github.com/raffle-app/backend/internal/sms/interfaces/repository"
+	telegrambot "github.com/raffle-app/backend/internal/telegram/bot"
 	ticketapp "github.com/raffle-app/backend/internal/ticket/application"
 	tickethttp "github.com/raffle-app/backend/internal/ticket/interfaces/http"
 	ticketrepo "github.com/raffle-app/backend/internal/ticket/interfaces/repository"
@@ -159,6 +161,21 @@ func main() {
 		identityrepo.NewOAuthStateStore(rdb),
 		identityrepo.NewLoginHandoffStore(rdb),
 	)
+
+	// Telegram Mini App sign-in. The bot token never leaves the server: initData
+	// is verified here, and the browser only ever receives KWIK's own session.
+	if cfg.Telegram.Enabled() {
+		identitySvc.SetTelegramAuth(
+			&identitytelegram.Verifier{
+				BotToken: cfg.Telegram.BotToken,
+				MaxAge:   cfg.Telegram.AuthMaxAge,
+			},
+			identityrepo.NewOAuthIdentityRepo(db),
+		)
+		logger.Info("Telegram Mini App authentication enabled")
+	} else {
+		logger.Warn("KWIK_BOT_TOKEN is not set: Telegram sign-in and the bot are disabled")
+	}
 	if cfg.FrontendURL == "" {
 		logger.Warn("FRONTEND_URL is not set: OAuth callbacks will redirect to localhost")
 	}
@@ -354,6 +371,11 @@ func main() {
 		identityhttp.NewGoogleAuthHandler(identitySvc, cfg.FrontendURL),
 		middleware.RateLimiter(rdb, 30, time.Minute),
 	)
+	identityhttp.RegisterTelegramAuthRoutes(
+		api,
+		identityhttp.NewTelegramAuthHandler(identitySvc),
+		middleware.RateLimiter(rdb, 30, time.Minute),
+	)
 	wallethttp.RegisterWalletRoutes(api, wallethttp.NewWalletHandler(walletSvc))
 	rafflehttp.RegisterRaffleRoutes(api, rafflehttp.NewRaffleHandler(raffleSvc))
 	tickethttp.RegisterTicketRoutes(api, tickethttp.NewTicketHandler(ticketSvc))
@@ -375,6 +397,23 @@ func main() {
 
 	realtimeHandler := realtime.NewHandler(realtimeSvc, cfg.JWT.Secret, logger.With())
 	api.GET("/realtime/stream", realtimeHandler.Stream)
+
+	// Telegram bot: configure the PLAY KWIK menu button and answer commands.
+	// Long polling needs no public webhook, so the existing deployment gains no
+	// new unauthenticated endpoint.
+	if cfg.Telegram.Enabled() && cfg.Telegram.BotEnabled {
+		if !strings.HasPrefix(cfg.Telegram.MiniAppURL, "https://") {
+			logger.Warn("KWIK_MINI_APP_URL must be an https URL; Telegram will not accept the menu button",
+				zap.String("mini_app_url", cfg.Telegram.MiniAppURL))
+		}
+		tgBot := telegrambot.New(telegrambot.Config{
+			Token:      cfg.Telegram.BotToken,
+			MiniAppURL: cfg.Telegram.MiniAppURL,
+			Logger:     logger.With(),
+		})
+		go tgBot.Run(context.Background())
+		logger.Info("Telegram bot polling started", zap.String("mini_app_url", cfg.Telegram.MiniAppURL))
+	}
 
 	// Metrics endpoint (admin-only): exposes operational health counters.
 	api.GET("/metrics", middleware.AuthMiddleware(), middleware.AdminMiddleware(), func(c *gin.Context) {

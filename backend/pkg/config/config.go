@@ -19,6 +19,7 @@ type Config struct {
 	Redis    RedisConfig
 	JWT      JWTConfig
 	Google   GoogleConfig
+	Telegram TelegramConfig
 	// FrontendURL is where the browser returns after an OAuth callback.
 	FrontendURL         string
 	Crash               CrashConfig
@@ -71,6 +72,26 @@ type GoogleConfig struct {
 // Enabled reports whether Google sign-in can be offered.
 func (g GoogleConfig) Enabled() bool {
 	return g.ClientID != "" && g.ClientSecret != "" && g.RedirectURL != ""
+}
+
+// TelegramConfig holds the Telegram Mini App / bot integration. The bot token
+// is a server-only secret: it must never be exposed through a VITE_ variable,
+// an API response or a log line.
+type TelegramConfig struct {
+	// BotToken authenticates the Bot API and verifies Mini App initData.
+	BotToken string
+	// MiniAppURL is the HTTPS page the bot opens.
+	MiniAppURL string
+	// AuthMaxAge is how old a Mini App launch payload may be. Telegram treats
+	// initData as short-lived; 24h is the documented upper bound.
+	AuthMaxAge time.Duration
+	// BotEnabled starts the long-polling bot worker when a token is present.
+	BotEnabled bool
+}
+
+// Enabled reports whether Telegram authentication and bot features can run.
+func (t TelegramConfig) Enabled() bool {
+	return t.BotToken != ""
 }
 
 type JWTConfig struct {
@@ -212,6 +233,11 @@ func Load() (*Config, error) {
 	// Where the browser is sent after a provider callback. In production this
 	// is the deployed frontend origin.
 	viper.SetDefault("FRONTEND_URL", "http://localhost:5173")
+	// Telegram Mini App. KWIK_BOT_TOKEN is server-only (never VITE_-prefixed).
+	viper.SetDefault("KWIK_BOT_TOKEN", "")
+	viper.SetDefault("KWIK_MINI_APP_URL", "https://raffle-app-eosin-phi.vercel.app")
+	viper.SetDefault("TELEGRAM_AUTH_MAX_AGE", 24*time.Hour)
+	viper.SetDefault("TELEGRAM_BOT_ENABLED", true)
 	viper.SetDefault("JWT_SECRET", "change-me-in-production")
 	viper.SetDefault("JWT_ACCESS_EXPIRY", 15*time.Minute)
 	viper.SetDefault("JWT_REFRESH_EXPIRY", 7*24*time.Hour)
@@ -303,7 +329,13 @@ func Load() (*Config, error) {
 			ClientSecret: viper.GetString("GOOGLE_CLIENT_SECRET"),
 			RedirectURL:  viper.GetString("GOOGLE_REDIRECT_URL"),
 		},
-		FrontendURL:         viper.GetString("FRONTEND_URL"),
+		FrontendURL: viper.GetString("FRONTEND_URL"),
+		Telegram: TelegramConfig{
+			BotToken:   strings.TrimSpace(viper.GetString("KWIK_BOT_TOKEN")),
+			MiniAppURL: strings.TrimRight(viper.GetString("KWIK_MINI_APP_URL"), "/"),
+			AuthMaxAge: positiveDuration("TELEGRAM_AUTH_MAX_AGE", 24*time.Hour),
+			BotEnabled: viper.GetBool("TELEGRAM_BOT_ENABLED"),
+		},
 		SMSAPIKey:           viper.GetString("SMS_API_KEY"),
 		TeleVerifyURL:       viper.GetString("TELE_VERIFY_URL"),
 		TeleVerifyKey:       viper.GetString("TELE_VERIFY_KEY"),

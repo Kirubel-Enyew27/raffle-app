@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import type { P2PMatch } from '@/types/api'
+import { hapticNotification } from '@/lib/telegram'
 import { extractMatchOutcome } from './outcomeExtractor'
 import type { OutcomePhase } from './outcomeTypes'
 
@@ -57,6 +58,8 @@ export function useGameOutcomeController({
       }, 0)
       return () => clearTimeout(timer)
     }
+
+    hapticNotification(outcome.type === 'win' ? 'success' : outcome.type === 'draw' ? 'warning' : 'error')
 
     const t0 = setTimeout(() => {
       setStagedPhase('decisive')

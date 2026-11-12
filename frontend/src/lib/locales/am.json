@@ -130,7 +130,11 @@
     "googleEmailUnverified": "የGoogle መለያዎ የተረጋገጠ ኢሜይል የለውም፣ ስለዚህ ለመግባት ሊያገለግል አይችልም።",
     "googleUnavailable": "በGoogle መግባት አሁን አይገኝም። እባክዎ ኢሜይልዎን እና የይለፍ ቃልዎን ይጠቀሙ።",
     "googleAccountDisabled": "ይህ መለያ ተሰናክሏል።",
-    "googleMissingCode": "ይህ የመግቢያ አገናኝ ከእንግዲህ አይሰራም። እባክዎ እንደገና ይሞክሩ።"
+    "googleMissingCode": "ይህ የመግቢያ አገናኝ ከእንግዲህ አይሰራም። እባክዎ እንደገና ይሞክሩ።",
+    "telegramContinue": "በቴሌግራም ይቀጥሉ",
+    "telegramSigningIn": "በቴሌግራም በመግባት ላይ…",
+    "telegramContinueNote": "የቴሌግራም መለያዎ የ KWIK መገለጫዎን በራስ-ሰር ይከፍታል ወይም ይፈጥራል።",
+    "orSignInWithPassword": "ወይም በይፈለግ ቃል ይግቡ"
   },
   "dashboard": {
     "title": "ዳሽቦርድ",
@@ -417,6 +421,14 @@
     "googleLinkExpired": "ያ ሙከራ ጊዜው አልፏል። እባክዎ እንደገና ይሞክሩ።",
     "googleLinkDisabled": "ይህ መለያ አይገኝም።",
     "googleLinkFailed": "Google ማገናኘት አልተቻለም። እባክዎ እንደገና ይሞክሩ።",
+    "telegramConnected": "ተገናኝቷል — በቴሌግራም መግባት ይችላሉ።",
+    "telegramNotConnected": "አልተገናኘም",
+    "connectTelegram": "ቴሌግራም አገናኝ",
+    "telegramLinkPrompt": "እርስዎ መሆንዎን ለማረጋገጥ የይፈለግ ቃልዎን ያስገቡ፣ ከዚያ ይህን መገለጫ በቴሌግራም ውስጥ ይክፈቱ።",
+    "telegramLaunchRequired": "ቴሌግራምን ለማገናኘት KWIKን ከቴሌግራም ቦትዎ ይክፈቱ።",
+    "telegramLinked": "ቴሌግራም አሁን ተገናኝቷል። በሚቀጥለው ጊዜ በቴሌግራም መግባት ይችላሉ።",
+    "telegramLinkFailed": "ቴሌግራምን ማገናኘት አልተቻለም። እባክዎ እንደገና ይሞክሩ።",
+    "telegramUnavailable": "የቴሌግራም መግቢያ አሁን አይገኝም።",
     "title": "መገለጫ",
     "settings": "የመገለጫ ቅንብሮች",
     "settingsSubtitle": "የግል መረጃዎን እና ምስልዎን ያዘምኑ",
