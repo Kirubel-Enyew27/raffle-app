@@ -161,6 +161,11 @@ func TestMultiCaptureChainKeepsTurn(t *testing.T) {
 	if first == nil || !first.Continues {
 		t.Fatalf("expected first hop 35->17 to continue, got %+v", steps)
 	}
+	// The whole turn's captures must be advertised before the first hop is
+	// submitted, so clients can mark every victim at once.
+	if !reflect.DeepEqual(first.ChainCaptures, []int{10, 26}) {
+		t.Fatalf("expected chain captures [10 26], got %+v", first.ChainCaptures)
+	}
 
 	step, complete, err := g.ApplyStep(35, 17)
 	if err != nil || complete {
@@ -168,6 +173,12 @@ func TestMultiCaptureChainKeepsTurn(t *testing.T) {
 	}
 	if step == nil || !step.Continues {
 		t.Fatalf("expected continues=true, got %+v", step)
+	}
+	if !reflect.DeepEqual(step.ChainCaptures, []int{10, 26}) {
+		t.Fatalf("expected applied step chain captures [10 26], got %+v", step.ChainCaptures)
+	}
+	if len(g.History) != 1 || !reflect.DeepEqual(g.History[0].ChainCaptures, []int{10, 26}) {
+		t.Fatalf("expected history to publish chain captures, got %+v", g.History)
 	}
 	if g.Turn != Light {
 		t.Fatalf("turn must stay with light during the chain")
@@ -203,6 +214,42 @@ func TestMultiCaptureChainKeepsTurn(t *testing.T) {
 	}
 	if len(g.History) != 2 {
 		t.Fatalf("expected two history entries, got %d", len(g.History))
+	}
+}
+
+func TestThreeCaptureChainPublishesCompleteSet(t *testing.T) {
+	g := emptyGame(DefaultRuleset())
+	g.Turn = Light
+	place(g, 35, Light, false) // r4c3
+	place(g, 26, Dark, false)  // r3c2, first victim
+	place(g, 10, Dark, false)  // r1c2, second victim
+	place(g, 12, Dark, false)  // r1c4, third victim after the backward hop from r0c3
+	place(g, 62, Dark, false)  // keeps dark alive
+
+	steps := g.LegalSteps()
+	first := stepTo(steps, 35, 17)
+	if first == nil {
+		t.Fatalf("expected first hop 35->17, got %+v", steps)
+	}
+	if !reflect.DeepEqual(first.ChainCaptures, []int{10, 12, 26}) {
+		t.Fatalf("expected all three victims up front, got %+v", first.ChainCaptures)
+	}
+
+	if _, complete, err := g.ApplyStep(35, 17); err != nil || complete {
+		t.Fatalf("first hop failed: complete=%v err=%v", complete, err)
+	}
+	if !reflect.DeepEqual(g.History[0].ChainCaptures, []int{10, 12, 26}) {
+		t.Fatalf("expected history chain captures, got %+v", g.History[0].ChainCaptures)
+	}
+
+	if _, complete, err := g.ApplyStep(17, 3); err != nil || complete {
+		t.Fatalf("second hop failed: complete=%v err=%v", complete, err)
+	}
+	if _, complete, err := g.ApplyStep(3, 21); err != nil || !complete {
+		t.Fatalf("third hop failed: complete=%v err=%v", complete, err)
+	}
+	if !g.Board.At(10).IsEmpty() || !g.Board.At(12).IsEmpty() || !g.Board.At(26).IsEmpty() {
+		t.Fatalf("all three captured pieces must be removed")
 	}
 }
 

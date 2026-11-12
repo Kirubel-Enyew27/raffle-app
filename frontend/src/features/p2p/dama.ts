@@ -16,6 +16,12 @@ export interface DamaStep {
   captures?: number[]
   promotion?: boolean
   continues?: boolean
+  /**
+   * Every square captured by this multi-capture turn. The server sets it on the
+   * first hop only when the continuation is unambiguous, so clients can show
+   * the whole set together instead of waiting for each hop.
+   */
+  chain_captures?: number[]
 }
 
 export interface DamaLastMove {
@@ -23,6 +29,7 @@ export interface DamaLastMove {
   to: number
   captures?: number[]
   promotion?: boolean
+  chain_captures?: number[]
 }
 
 export interface DamaHistoryEntry {
@@ -32,6 +39,7 @@ export interface DamaHistoryEntry {
   to: number
   captures?: number[]
   promotion?: boolean
+  chain_captures?: number[]
 }
 
 export interface DamaResult {

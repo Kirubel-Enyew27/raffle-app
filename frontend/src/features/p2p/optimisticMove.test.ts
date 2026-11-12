@@ -187,6 +187,36 @@ describe('Ethiopian Dama optimistic move', () => {
     assert.equal(next.board_state.move_history.at(-1).promotion, true)
   })
 
+  test('carries the complete multi-capture set into the optimistic history', () => {
+    const cells = new Array(64).fill(0)
+    cells[35] = 1
+    cells[26] = 3
+    cells[10] = 3
+    const current = match({
+      game_slug: 'ethiopian-dama',
+      board_state: {
+        cells,
+        turn: 0,
+        turn_seq: 0,
+        move_count: 0,
+        legal_moves: [
+          { from: 35, to: 17, captures: [26], continues: true, chain_captures: [10, 26] },
+        ],
+        move_history: [],
+      },
+    })
+    const next = applyOptimisticMove(current, {
+      game: 'ethiopian-dama',
+      playerIndex: 0,
+      from: 35,
+      to: 17,
+    })
+    const entry = next.board_state.move_history.at(-1) as {
+      chain_captures?: number[]
+    }
+    assert.deepEqual(entry.chain_captures, [10, 26])
+  })
+
   test('is idempotent after the authoritative history contains the hop', () => {
     const cells = new Array(64).fill(0)
     cells[33] = 1

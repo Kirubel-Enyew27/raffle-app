@@ -13,6 +13,7 @@ package dama
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -171,6 +172,11 @@ type Step struct {
 	Promotion bool  `json:"promotion,omitempty"`
 	// Continues is true when the same piece must keep capturing.
 	Continues bool `json:"continues,omitempty"`
+	// ChainCaptures is the complete set of squares captured by this turn. It is
+	// set on the first hop of a multi-capture chain when every legal
+	// continuation captures the same pieces, which lets clients show the whole
+	// capture set at once instead of one victim per hop.
+	ChainCaptures []int `json:"chain_captures,omitempty"`
 }
 
 // HistoryEntry records one accepted hop for replay and notation.
@@ -181,6 +187,9 @@ type HistoryEntry struct {
 	To        int   `json:"to"`
 	Captures  []int `json:"captures,omitempty"`
 	Promotion bool  `json:"promotion,omitempty"`
+	// ChainCaptures mirrors Step.ChainCaptures on the first hop of a
+	// multi-capture turn so every client can animate the full set together.
+	ChainCaptures []int `json:"chain_captures,omitempty"`
 }
 
 // Result is the terminal outcome of a game.
@@ -333,6 +342,13 @@ func (g *Game) LegalSteps() []Step {
 		if !step.Continues {
 			piece := g.Board.At(path.from)
 			step.Promotion = !piece.IsEmpty() && !piece.King && promotes(piece.Player, first.to/BoardSize)
+		} else if clone := g.Clone(); clone != nil {
+			// Simulate the hop so the client receives the whole capture set
+			// before it even submits the first step (needed for optimistic
+			// rendering and for every observer of this turn).
+			if applied, _, err := clone.ApplyStep(path.from, first.to); err == nil && applied != nil {
+				step.ChainCaptures = append([]int(nil), applied.ChainCaptures...)
+			}
 		}
 		steps = append(steps, step)
 	}
@@ -421,6 +437,13 @@ func (g *Game) ApplyStep(from, to int) (*Step, bool, error) {
 	if !lastHop {
 		next := to
 		g.ChainFrom = &next
+		// Publish the whole turn's capture set when the remaining route is
+		// unambiguous. Branching chains keep the per-hop list so the UI never
+		// marks a piece that a later choice might spare.
+		if chainCaptures := g.unambiguousChainCaptures(); len(chainCaptures) > 0 {
+			step.ChainCaptures = chainCaptures
+			g.History[len(g.History)-1].ChainCaptures = append([]int(nil), chainCaptures...)
+		}
 		return step, false, nil
 	}
 
@@ -436,6 +459,54 @@ func (g *Game) ApplyStep(from, to int) (*Step, bool, error) {
 	g.recordPosition()
 	g.evaluateEnd(mover)
 	return step, true, nil
+}
+
+// unambiguousChainCaptures returns every square captured by the rest of the
+// current chain plus the hop already applied, but only when all legal
+// continuations capture the same pieces. Ambiguous branches return nil.
+func (g *Game) unambiguousChainCaptures() []int {
+	if g == nil || g.ChainFrom == nil {
+		return nil
+	}
+	paths := g.capturePathsFrom(*g.ChainFrom)
+	if len(paths) == 0 {
+		return nil
+	}
+
+	all := make([]int, 0, 4)
+	if g.LastMove != nil {
+		all = append(all, g.LastMove.Captures...)
+	}
+	var want []int
+	for index, path := range paths {
+		captured := make([]int, 0, len(path.hops))
+		for _, hop := range path.hops {
+			if hop.hasCapture {
+				captured = append(captured, hop.captured)
+			}
+		}
+		sort.Ints(captured)
+		if index == 0 {
+			want = captured
+			continue
+		}
+		if len(captured) != len(want) {
+			return nil
+		}
+		for i := range captured {
+			if captured[i] != want[i] {
+				return nil
+			}
+		}
+	}
+
+	all = append(all, want...)
+	sort.Ints(all)
+	// A chain hop always captures; guard against a malformed continuation.
+	if len(all) < 2 {
+		return nil
+	}
+	return all
 }
 
 // IsTurnComplete reports whether the current turn has no outstanding capture

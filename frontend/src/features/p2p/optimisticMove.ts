@@ -154,6 +154,7 @@ export function applyOptimisticMove(match: P2PMatch, move: OptimisticMove | null
           from: move.from,
           to: move.to,
           ...(step.captures?.length ? { captures: step.captures } : {}),
+          ...(step.chain_captures?.length ? { chain_captures: step.chain_captures } : {}),
           ...(step.promotion ? { promotion: true } : {}),
         },
         move_history: [
@@ -164,6 +165,7 @@ export function applyOptimisticMove(match: P2PMatch, move: OptimisticMove | null
             from: move.from,
             to: move.to,
             ...(step.captures?.length ? { captures: step.captures } : {}),
+            ...(step.chain_captures?.length ? { chain_captures: step.chain_captures } : {}),
             ...(step.promotion ? { promotion: true } : {}),
           },
         ],

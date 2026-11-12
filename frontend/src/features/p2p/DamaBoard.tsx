@@ -43,6 +43,14 @@ interface DamaVisualMove {
   to: number
   player: number
   captures: number[]
+  /** Complete capture set for the turn; only present on a chain's first hop. */
+  chainCaptures: number[]
+  /** First hop of the turn, shared by every hop in a multi-capture chain. */
+  turnKey: number
+  /** True for the second and later hops of the same turn. */
+  continuation: boolean
+  /** True when this turn's first hop published the complete capture set. */
+  chainAnimated: boolean
   king: boolean
   promotion: boolean
 }
@@ -77,6 +85,7 @@ export function DamaBoard({
   const [movingPiece, setMovingPiece] = useState<DamaVisualMove | null>(null)
   const [moveQueue, setMoveQueue] = useState<DamaVisualMove[]>([])
   const [moveArrived, setMoveArrived] = useState(false)
+  const [captureBurst, setCaptureBurst] = useState<{ id: string; squares: number[] } | null>(null)
   const seenMoveSeq = useRef(0)
   const initializedMoveHistory = useRef(false)
   const cues = useAnimationCues()
@@ -123,24 +132,42 @@ export function DamaBoard({
       seenMoveSeq.current = latestSeq
       setMoveQueue([])
       setMovingPiece(null)
+      setCaptureBurst(null)
       // The rejected move never happened: cancel its capture/promotion cues and
       // forget its keys so a legitimate retry can still sound.
       cues.reset()
       return
     }
 
-    const newMoves = (boardState?.move_history ?? []).filter((move) => move.seq > seenMoveSeq.current)
+    const history = boardState?.move_history ?? []
+    const newMoves = history.filter((move) => move.seq > seenMoveSeq.current)
     if (newMoves.length === 0) return
     seenMoveSeq.current = newMoves[newMoves.length - 1].seq
-    setMoveQueue((queue) => queue.concat(newMoves.map((move) => ({
-      seq: move.seq,
-      from: move.from,
-      to: move.to,
-      player: move.player,
-      captures: move.captures ?? [],
-      king: !move.promotion && pieceIsKing(cells[move.to] ?? 0),
-      promotion: !!move.promotion,
-    }))))
+    setMoveQueue((queue) => queue.concat(newMoves.map((move) => {
+      const index = history.findIndex((entry) => entry.seq === move.seq)
+      // Consecutive entries by the same player are hops of one multi-capture
+      // turn. Walk back to that turn's first hop so all hops share one cue key.
+      let turnKey = move.seq
+      let turnStart = index
+      for (let i = index - 1; i >= 0 && history[i].player === move.player; i--) {
+        turnKey = history[i].seq
+        turnStart = i
+      }
+      const chainAnimated = (history[turnStart]?.chain_captures?.length ?? 0) > 1
+      return {
+        seq: move.seq,
+        from: move.from,
+        to: move.to,
+        player: move.player,
+        captures: move.captures ?? [],
+        chainCaptures: move.chain_captures ?? [],
+        turnKey,
+        continuation: turnKey !== move.seq,
+        chainAnimated,
+        king: !move.promotion && pieceIsKing(cells[move.to] ?? 0),
+        promotion: !!move.promotion,
+      }
+    })))
   }, [latestHistoryMove?.seq, boardState?.move_history, cells, cues])
 
   useEffect(() => {
@@ -163,8 +190,19 @@ export function DamaBoard({
     // king crown only appears on arrival, so promotion waits for that milestone.
     const frame = requestAnimationFrame(() => {
       cues.playOnce(`${key}:move`, 'move')
+      // A capture chain is one audible/turn event, not one per hop. Later hops
+      // reuse the first hop's key, so playOnce makes them silent.
+      const captureKey = movingPiece.chainAnimated
+        ? `dama:turn:${movingPiece.player}:${movingPiece.turnKey}:capture`
+        : `${key}:capture`
       if (movingPiece.captures.length > 0) {
-        cues.playOnce(`${key}:capture`, 'capture')
+        cues.playOnce(captureKey, 'capture')
+      }
+      if (movingPiece.chainCaptures.length > 1) {
+        setCaptureBurst({
+          id: `dama:${movingPiece.player}:${movingPiece.turnKey}`,
+          squares: movingPiece.chainCaptures,
+        })
       }
       setMoveArrived(true)
     })
@@ -238,11 +276,11 @@ export function DamaBoard({
         )}
       </div>
 
-      {chainFrom !== null && (
+      {/* {chainFrom !== null && (
         <div className="w-full rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-center text-[11px] font-semibold text-destructive">
           {t('p2p.capturesMandatory', { square: squareName(chainFrom), defaultValue: `Captures are mandatory: continue from ${squareName(chainFrom)}` })}
         </div>
-      )}
+      )} */}
 
       {/* Piece Counts Bar */}
       <div className="flex w-full items-center justify-between px-2 text-xs font-bold text-muted-foreground">
@@ -282,7 +320,17 @@ export function DamaBoard({
             const captureTarget = isTarget && isCaptureStep(targetStep)
             const isLastFrom = lastMove?.from === index
             const isLastTo = lastMove?.to === index
-            const wasCaptured = !!lastMove?.captures?.includes(index) || !!movingPiece?.captures.includes(index)
+            // During a multi-capture chain, mark the whole known set on the
+            // first hop and stay quiet on later hops; the burst already played.
+            const visualCaptures = movingPiece
+              ? movingPiece.continuation && movingPiece.chainAnimated
+                ? []
+                : movingPiece.chainCaptures.length > 0
+                  ? movingPiece.chainCaptures
+                  : movingPiece.captures
+              : (lastMove?.captures ?? [])
+            const wasCaptured = visualCaptures.includes(index)
+            const burstHere = captureBurst?.squares.includes(index) ?? false
             const selectable = canInteract && side === myPlayerIndex && (chainFrom === null || chainFrom === index)
 
             // Winning / decisive states:
@@ -387,9 +435,19 @@ export function DamaBoard({
                 {/* Final Move / Capture Indicator */}
                 {wasCaptured && (
                   <span
-                    key={`capture-${movingPiece?.seq ?? moveNumber}`}
+                    key={`capture-${movingPiece?.turnKey ?? moveNumber}`}
                     aria-hidden="true"
                     className="pointer-events-none absolute inset-1 rounded-md ring-4 ring-rose-400/90 motion-safe:animate-ping motion-reduce:hidden"
+                  />
+                )}
+
+                {/* One synchronized burst for every victim of a multi-capture,
+                    mounted on the first hop and left to finish on its own. */}
+                {burstHere && (
+                  <span
+                    key={`capture-burst-${captureBurst?.id}-${index}`}
+                    aria-hidden="true"
+                    className="dama-capture-burst pointer-events-none absolute inset-0 z-20 rounded-md motion-reduce:hidden"
                   />
                 )}
 

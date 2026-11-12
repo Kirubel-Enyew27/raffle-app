@@ -282,6 +282,9 @@ func encodeDamaGame(game *dama.Game) map[string]interface{} {
 		if len(step.Captures) > 0 {
 			encoded["captures"] = step.Captures
 		}
+		if len(step.ChainCaptures) > 0 {
+			encoded["chain_captures"] = step.ChainCaptures
+		}
 		if step.Promotion {
 			encoded["promotion"] = true
 		}
@@ -302,6 +305,9 @@ func encodeDamaGame(game *dama.Game) map[string]interface{} {
 		}
 		if len(entry.Captures) > 0 {
 			encoded["captures"] = entry.Captures
+		}
+		if len(entry.ChainCaptures) > 0 {
+			encoded["chain_captures"] = entry.ChainCaptures
 		}
 		if entry.Promotion {
 			encoded["promotion"] = true
@@ -395,6 +401,13 @@ func decodeDamaStep(raw interface{}) (*dama.Step, error) {
 			}
 			step.Captures = captures
 		}
+		if v, ok := value["chain_captures"]; ok && v != nil {
+			captures, err := extractIntSlice(v)
+			if err != nil {
+				return nil, err
+			}
+			step.ChainCaptures = captures
+		}
 		if v, ok := value["promotion"].(bool); ok {
 			step.Promotion = v
 		}
@@ -453,6 +466,11 @@ func decodeDamaHistory(raw interface{}) ([]dama.HistoryEntry, error) {
 			if v, ok := encoded["captures"]; ok && v != nil {
 				if captures, err := extractIntSlice(v); err == nil {
 					entry.Captures = captures
+				}
+			}
+			if v, ok := encoded["chain_captures"]; ok && v != nil {
+				if captures, err := extractIntSlice(v); err == nil {
+					entry.ChainCaptures = captures
 				}
 			}
 			if v, ok := encoded["promotion"].(bool); ok {

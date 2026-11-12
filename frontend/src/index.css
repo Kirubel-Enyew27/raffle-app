@@ -284,6 +284,16 @@ select option:checked {
 }
 .dama-piece-promote { animation: dama-piece-promote 260ms ease-out both; }
 
+/* All victims of one Dama multi-capture burst together on the first hop. */
+@keyframes dama-capture-burst {
+  0% { opacity: 0; transform: scale(0.9); box-shadow: inset 0 0 0 0 rgb(244 63 94 / 0); }
+  30% { opacity: 1; transform: scale(1); box-shadow: inset 0 0 0 4px rgb(244 63 94 / 0.85); background: rgb(244 63 94 / 0.28); }
+  100% { opacity: 0; transform: scale(1.08); box-shadow: inset 0 0 0 1px rgb(244 63 94 / 0); background: rgb(244 63 94 / 0); }
+}
+.dama-capture-burst {
+  animation: dama-capture-burst 420ms ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ttt-marker-place,
   .ttt-win-cell,
@@ -299,4 +309,5 @@ select option:checked {
   }
   .dama-piece-slide { transition: none; }
   .dama-piece-promote { animation: none; }
+  .dama-capture-burst { animation: none; }
 }
