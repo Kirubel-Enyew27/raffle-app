@@ -105,7 +105,7 @@ function MatchHistoryModal({
       onClick={onClose}
     >
       <Card
-        className="flex h-screen h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-none border-0 bg-card pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-2xl sm:h-auto sm:max-h-[85vh] sm:rounded-2xl sm:border sm:border-border/80 sm:pb-0 sm:pt-0"
+        className="kwik-fullscreen-panel flex h-screen h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-none border-0 bg-card pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-2xl sm:h-auto sm:max-h-[85vh] sm:rounded-2xl sm:border sm:border-border/80 sm:pb-0 sm:pt-0"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/70 px-4 py-3.5 sm:px-5">

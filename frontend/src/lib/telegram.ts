@@ -31,14 +31,11 @@ export interface TelegramWebApp {
   ready: () => void
   expand: () => void
   close: () => void
-  requestFullscreen?: () => void
-  disableVerticalSwipes?: () => void
   openLink: (url: string, options?: { try_instant_view?: boolean }) => void
   openTelegramLink: (url: string) => void
   setHeaderColor?: (color: string) => void
   setBackgroundColor?: (color: string) => void
   setBottomBarColor?: (color: string) => void
-  isVersionAtLeast?: (version: string) => boolean
   onEvent?: (event: string, handler: () => void) => void
   offEvent?: (event: string, handler: () => void) => void
   BackButton?: {
@@ -97,10 +94,6 @@ export function isTelegramWebApp(): boolean {
   return !!webApp?.initDataUnsafe?.user
 }
 
-export function isTelegramDesktop(): boolean {
-  return getTelegramWebApp()?.platform === 'tdesktop'
-}
-
 const KWIK_CHROME = { dark: '#0a0a0b', light: '#f7f8fa' } as const
 
 /** Keep Telegram's header/background in step with KWIK's resolved theme. */
@@ -117,20 +110,70 @@ export function syncTelegramChrome(isDark: boolean): void {
   }
 }
 
+type TelegramInsets = { top: number; bottom: number; left: number; right: number }
+
+function safeInsets(value?: Partial<TelegramInsets> | null): TelegramInsets {
+  return {
+    top: value?.top ?? 0,
+    bottom: value?.bottom ?? 0,
+    left: value?.left ?? 0,
+    right: value?.right ?? 0,
+  }
+}
+
+/**
+ * Combine device and Telegram UI insets. Exported so the sum can be tested
+ * without a Telegram client; the layout depends on it being a sum, not a
+ * choice between the two measurements.
+ */
+export function computeTelegramInsets(webApp: Pick<TelegramWebApp, 'safeAreaInset' | 'contentSafeAreaInset'>): {
+  safe: TelegramInsets
+  content: TelegramInsets
+  total: TelegramInsets
+} {
+  const safe = safeInsets(webApp.safeAreaInset)
+  const content = safeInsets(webApp.contentSafeAreaInset)
+  return {
+    safe,
+    content,
+    total: {
+      top: safe.top + content.top,
+      bottom: safe.bottom + content.bottom,
+      left: safe.left + content.left,
+      right: safe.right + content.right,
+    },
+  }
+}
+
+/**
+ * Publish the viewport and both Telegram safe areas as CSS variables.
+ *
+ * They are two different measurements and must be added together:
+ * - safeAreaInset covers device UI (status bar, notch, gesture bar);
+ * - contentSafeAreaInset covers Telegram's own controls drawn over the WebView
+ *   (the Close / expand header in fullscreen mode).
+ *
+ * Older clients (pre Bot API 8.0) do not expose either object, so both fall
+ * back to zero and the Mini App keeps the regular viewport. The `tma` class is
+ * the switch that tells the stylesheet to consume these values, so normal
+ * browser sessions are untouched.
+ */
 function applyViewportVariables(webApp: TelegramWebApp): void {
-  if (typeof document === 'undefined') return
+  if (typeof document === 'undefined' || !isTelegramWebApp()) return
   const root = document.documentElement
   root.classList.add('tma')
   if (webApp.viewportHeight) root.style.setProperty('--tg-viewport-height', `${webApp.viewportHeight}px`)
   if (webApp.viewportStableHeight) {
     root.style.setProperty('--tg-viewport-stable-height', `${webApp.viewportStableHeight}px`)
   }
-  const inset = webApp.contentSafeAreaInset || webApp.safeAreaInset
-  if (inset) {
-    root.style.setProperty('--tg-safe-area-top', `${inset.top}px`)
-    root.style.setProperty('--tg-safe-area-bottom', `${inset.bottom}px`)
-    root.style.setProperty('--tg-safe-area-left', `${inset.left}px`)
-    root.style.setProperty('--tg-safe-area-right', `${inset.right}px`)
+
+  const { safe, content, total } = computeTelegramInsets(webApp)
+  const sides = ['top', 'bottom', 'left', 'right'] as const
+
+  for (const side of sides) {
+    root.style.setProperty(`--tg-safe-area-inset-${side}`, `${safe[side]}px`)
+    root.style.setProperty(`--tg-content-safe-area-inset-${side}`, `${content[side]}px`)
+    root.style.setProperty(`--tg-total-inset-${side}`, `${total[side]}px`)
   }
 }
 
@@ -152,12 +195,14 @@ export function subscribeTelegramViewport(onChange?: () => void): () => void {
   webApp.onEvent('themeChanged', update)
   webApp.onEvent('safeAreaChanged', update)
   webApp.onEvent('contentSafeAreaChanged', update)
+  webApp.onEvent('fullscreenChanged', update)
 
   return () => {
     webApp.offEvent?.('viewportChanged', update)
     webApp.offEvent?.('themeChanged', update)
     webApp.offEvent?.('safeAreaChanged', update)
     webApp.offEvent?.('contentSafeAreaChanged', update)
+    webApp.offEvent?.('fullscreenChanged', update)
   }
 }
 
@@ -167,26 +212,17 @@ export function subscribeTelegramViewport(onChange?: () => void): () => void {
  */
 export function initTelegramWebApp(): void {
   const webApp = getTelegramWebApp()
-  if (!webApp) return
+  // The SDK script is loaded on every page, including regular browsers, where
+  // it exposes a WebApp object with no initData. Only enter Mini App mode when
+  // Telegram actually launched the page.
+  if (!webApp || !isTelegramWebApp()) return
   try {
     webApp.ready()
+    // Expanded — not fullscreen. Fullscreen lets the WebView paint underneath
+    // Telegram's Close/expand controls, and KWIK has its own sticky header and
+    // bottom navigation that need a predictable viewport. The safe-area code
+    // below still keeps the layout correct if the client hands us insets.
     webApp.expand()
-
-    // Fullscreen is available on mobile clients from Bot API 8.0. On desktop it
-    // is not meaningful, and older clients ignore the call.
-    if (
-      isTelegramWebApp() &&
-      !isTelegramDesktop() &&
-      webApp.requestFullscreen &&
-      (webApp.isVersionAtLeast?.('8.0') ?? false)
-    ) {
-      try {
-        webApp.requestFullscreen()
-        webApp.disableVerticalSwipes?.()
-      } catch {
-        // Fullscreen can be disabled by the user or the bot's settings.
-      }
-    }
 
     applyViewportVariables(webApp)
     const isDark = webApp.colorScheme !== 'light' || document.documentElement.classList.contains('dark')

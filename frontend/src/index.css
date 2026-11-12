@@ -128,6 +128,45 @@ body {
 }
 button { cursor: pointer; }
 
+/* ── Telegram Mini App viewport ────────────────────────────────────────────
+   `html.tma` is added by lib/telegram.ts only when the page was launched with
+   signed Telegram initData, so these rules never affect browser sessions.
+
+   --tg-total-inset-* is device safe area + Telegram content safe area, summed
+   in JS. In fullscreen the WebView reaches the status bar and Telegram draws
+   its Close/expand controls over the page, so the app header must reserve both
+   or it renders underneath them. */
+html.tma .kwik-app-shell {
+  min-height: var(--tg-viewport-stable-height, var(--tg-viewport-height, 100dvh));
+}
+
+html.tma .kwik-app-header {
+  padding-top: var(--tg-total-inset-top, 0px);
+  padding-left: var(--tg-total-inset-left, 0px);
+  padding-right: var(--tg-total-inset-right, 0px);
+}
+
+html.tma .kwik-auth-screen {
+  padding-top: calc(1.5rem + var(--tg-total-inset-top, 0px));
+  padding-bottom: calc(1.5rem + var(--tg-total-inset-bottom, 0px));
+}
+
+html.tma .kwik-tabbar {
+  /* max() keeps the browser env() fallback without adding the gesture bar twice. */
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--tg-total-inset-bottom, 0px));
+}
+
+@media (max-width: 639px) {
+  html.tma .kwik-app-main {
+    padding-bottom: calc(5rem + max(env(safe-area-inset-bottom, 0px), var(--tg-total-inset-bottom, 0px)));
+  }
+
+  html.tma .kwik-fullscreen-panel {
+    padding-top: var(--tg-total-inset-top, 0px);
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--tg-total-inset-bottom, 0px));
+  }
+}
+
 /* Native select dropdown options — ensure all items are visible and clickable */
 select option {
   color: var(--color-foreground);

@@ -6,7 +6,23 @@ import {
   buildWebInviteUrl,
   buildInviteMessage,
   shareViaTelegram,
+  computeTelegramInsets,
 } from './telegram.ts'
+
+test('Telegram insets sum device safe area and Telegram content safe area', () => {
+  const { safe, content, total } = computeTelegramInsets({
+    safeAreaInset: { top: 44, bottom: 34, left: 0, right: 0 },
+    contentSafeAreaInset: { top: 56, bottom: 0, left: 0, right: 0 },
+  })
+  assert.deepEqual(safe, { top: 44, bottom: 34, left: 0, right: 0 })
+  assert.deepEqual(content, { top: 56, bottom: 0, left: 0, right: 0 })
+  assert.deepEqual(total, { top: 100, bottom: 34, left: 0, right: 0 })
+})
+
+test('Telegram insets fall back to zero on older clients', () => {
+  const { total } = computeTelegramInsets({})
+  assert.deepEqual(total, { top: 0, bottom: 0, left: 0, right: 0 })
+})
 
 test('buildWebInviteUrl builds standard url with code', () => {
   const url = buildWebInviteUrl('abc9x2')

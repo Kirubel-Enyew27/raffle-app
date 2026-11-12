@@ -127,7 +127,7 @@ function Navbar() {
   ]
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/95 text-foreground backdrop-blur">
+    <header className="kwik-app-header sticky top-0 z-40 border-b border-border bg-background/95 text-foreground backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
 
         {/* ── Left: logo + desktop nav ── */}
@@ -284,7 +284,7 @@ function MobileTabBar() {
   return (
     <nav
       aria-label={t('nav.primaryNavigation')}
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
+      className="kwik-tabbar fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
     >
       <div className="mx-auto flex max-w-md items-stretch justify-between px-2">
         {tabs.map(({ to, label, icon: Icon }) => (
@@ -331,9 +331,9 @@ export function AppLayout() {
     return <Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace />
   }
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="kwik-app-shell flex min-h-screen flex-col">
       <Navbar />
-      <main className="flex-1 pb-20 sm:pb-0">
+      <main className="kwik-app-main flex-1 pb-20 sm:pb-0">
         <Outlet />
       </main>
       <MobileTabBar />

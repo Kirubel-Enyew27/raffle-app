@@ -19,7 +19,7 @@ export function AuthLayout() {
     return <Navigate to={redirect} replace />
   }
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40">
+    <div className="kwik-auth-screen flex min-h-screen items-center justify-center bg-muted/40">
       <Outlet />
     </div>
   )
