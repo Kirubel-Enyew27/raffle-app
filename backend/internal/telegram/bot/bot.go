@@ -39,6 +39,7 @@ const (
 		"• /wallet – check your balance and transactions\n\n" +
 		"Tap the PLAY KWIK button below to launch the app. Signed-in matches, " +
 		"wallets and history are the same as on the web."
+	adminOnlyText = "Only group administrators can use this command."
 )
 
 // Config configures the bot. APIBaseURL and HTTPClient are injectable so the
@@ -192,17 +193,24 @@ type update struct {
 	Message  *message `json:"message"`
 }
 
+// Chat carries the fields needed to identify a group and its type.
+type Chat struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+	Type  string `json:"type"`
+}
+
+type user struct {
+	ID        int64  `json:"id"`
+	FirstName string `json:"first_name"`
+	Username  string `json:"username"`
+}
+
 type message struct {
 	MessageID int64  `json:"message_id"`
 	Text      string `json:"text"`
-	Chat      struct {
-		ID int64 `json:"id"`
-	} `json:"chat"`
-	From *struct {
-		ID        int64  `json:"id"`
-		FirstName string `json:"first_name"`
-		Username  string `json:"username"`
-	} `json:"from"`
+	Chat      Chat   `json:"chat"`
+	From      *user  `json:"from"`
 }
 
 type webAppInfo struct {
@@ -287,6 +295,11 @@ func (b *Bot) HandleUpdate(ctx context.Context, u update) {
 		command = command[:at]
 	}
 
+	if command == "/groupid" {
+		b.handleGroupID(ctx, u.Message)
+		return
+	}
+
 	var body, path, button string
 	switch command {
 	case "/start":
@@ -304,6 +317,40 @@ func (b *Bot) HandleUpdate(ctx context.Context, u update) {
 	}
 
 	_ = b.sendMessage(ctx, u.Message.Chat.ID, body, path, button)
+}
+
+// handleGroupID reports a group's identity to its administrators. It only
+// runs in group chats and confirms the sender's role with getChatMember, which
+// is a Bot API method unavailable to ordinary members.
+func (b *Bot) handleGroupID(ctx context.Context, msg *message) {
+	if msg.Chat.Type != "group" && msg.Chat.Type != "supergroup" {
+		return
+	}
+	if msg.From == nil {
+		_ = b.sendMessage(ctx, msg.Chat.ID, adminOnlyText, "", "")
+		return
+	}
+
+	var member struct {
+		Status string `json:"status"`
+	}
+	err := b.call(ctx, "getChatMember", map[string]any{
+		"chat_id": msg.Chat.ID,
+		"user_id": msg.From.ID,
+	}, &member)
+	if err != nil {
+		// APIError never carries the request URL, so the bot token cannot leak.
+		b.logger.Warn("telegram getChatMember failed", zap.String("error", err.Error()))
+		_ = b.sendMessage(ctx, msg.Chat.ID, "Could not verify administrator status. Please try again.", "", "")
+		return
+	}
+	if member.Status != "administrator" && member.Status != "creator" {
+		_ = b.sendMessage(ctx, msg.Chat.ID, adminOnlyText, "", "")
+		return
+	}
+
+	body := fmt.Sprintf("Group name: %s\nChat ID: %d\nChat type: %s", msg.Chat.Title, msg.Chat.ID, msg.Chat.Type)
+	_ = b.sendMessage(ctx, msg.Chat.ID, body, "", "")
 }
 
 func (b *Bot) sendMessage(ctx context.Context, chatID int64, text, path, button string) error {
