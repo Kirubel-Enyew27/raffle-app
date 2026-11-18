@@ -56,7 +56,14 @@ func (w *Worker) dispatch(ctx context.Context, n *domain.Notification) {
 
 	// Exponential back-off before re-enqueue: 2^retries seconds.
 	delay := time.Duration(1<<uint(n.Retries)) * time.Second
-	time.Sleep(delay)
+	timer := time.NewTimer(delay)
+
+	select {
+	case <-ctx.Done():
+		timer.Stop()
+		return
+	case <-timer.C:
+	}
 
 	_ = w.repo.IncrRetries(ctx, n.ID)
 	n.Retries++

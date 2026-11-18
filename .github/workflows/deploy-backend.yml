@@ -1,0 +1,117 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kwik-production-backend
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build and deploy backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Build production binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p dist
+
+          VERSION="${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          printf '%s\n' "$VERSION" > dist/VERSION
+
+          cd backend
+
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -trimpath -ldflags="-s -w" \
+            -o ../dist/kwik-backend ./cmd/server
+
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -trimpath -ldflags="-s -w" \
+            -o ../dist/kwik-migrate ./cmd/migrate
+
+          cp -a migrations ../dist/migrations
+
+          echo "Built release: $VERSION"
+
+      - name: Package release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tar -czf kwik-release.tar.gz \
+            -C dist VERSION kwik-backend kwik-migrate migrations
+
+          SIZE="$(stat -c '%s' kwik-release.tar.gz)"
+
+          echo "Release archive size: ${SIZE} bytes"
+
+          if (( SIZE == 0 || SIZE > 100000000 )); then
+            echo "Release archive exceeds the VPS upload limit." >&2
+            exit 1
+          fi
+
+      - name: Configure restricted deployment SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.KWIK_DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.KWIK_DEPLOY_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+
+          KEY_FILE="$RUNNER_TEMP/kwik_deploy_key"
+          KNOWN_HOSTS_FILE="$RUNNER_TEMP/kwik_known_hosts"
+
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$KEY_FILE"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$KNOWN_HOSTS_FILE"
+
+          chmod 600 "$KEY_FILE" "$KNOWN_HOSTS_FILE"
+
+          ssh-keygen -y -f "$KEY_FILE" >/dev/null
+
+          echo "Restricted deployment SSH configuration ready."
+
+      - name: Upload and deploy release
+        env:
+          DEPLOY_HOST: ${{ secrets.KWIK_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.KWIK_DEPLOY_USER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+
+          ssh -T \
+            -i "$RUNNER_TEMP/kwik_deploy_key" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$RUNNER_TEMP/kwik_known_hosts" \
+            -o ConnectTimeout=20 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=3 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            < kwik-release.tar.gz

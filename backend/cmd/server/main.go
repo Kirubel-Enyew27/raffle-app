@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"os/signal"
 	"runtime"
 	runtimemetrics "runtime/metrics"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -82,6 +86,13 @@ func main() {
 		panic(err)
 	}
 
+	// rootCtx is cancelled on SIGINT/SIGTERM. Background workers (realtime
+	// listener, crash/P2P engines, Telegram bot) stop with it, and the HTTP
+	// server drains before the process exits, so a container restart does not
+	// cut an in-flight settlement in half.
+	rootCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+
 	// Receipt OCR and the Telebirr proxy are optional, but when they are missing
 	// deposits degrade quietly (screenshots cannot be read at all). Say so once
 	// at startup instead of failing later with a vague extraction error.
@@ -111,14 +122,9 @@ func main() {
 	}
 	cancelRedisProbe()
 
-	// Run database migrations (safe to run every startup — tracks applied in schema_migrations)
-	if err := database.RunMigrations(db, "migrations"); err != nil {
-		panic(fmt.Errorf("failed to run migrations: %w", err))
-	}
-
 	// Real-time Service
 	realtimeSvc := realtime.NewService(rdb, logger.With())
-	go realtimeSvc.Start(context.Background())
+	go realtimeSvc.Start(rootCtx)
 
 	// Services
 	auditSvc := auditapp.NewAuditService(auditrepo.NewAuditRepo(db))
@@ -297,7 +303,7 @@ func main() {
 	)
 	crashEngine.SetAuditService(auditSvc)
 	crashEngine.SetRealtimeService(realtimeSvc)
-	go crashEngine.Run(context.Background())
+	go crashEngine.Run(rootCtx)
 
 	userRepo := identityrepo.NewUserRepo(db)
 	smsSvc := smsapp.NewSMSService(
@@ -346,7 +352,7 @@ func main() {
 		realtimeSvc,
 		logger.With(),
 	)
-	go p2pEngine.Run(context.Background())
+	go p2pEngine.Run(rootCtx)
 
 	// Router
 	r := gin.New()
@@ -411,7 +417,7 @@ func main() {
 			MiniAppURL: cfg.Telegram.MiniAppURL,
 			Logger:     logger.With(),
 		})
-		go tgBot.Run(context.Background())
+		go tgBot.Run(rootCtx)
 		logger.Info("Telegram bot polling started", zap.String("mini_app_url", cfg.Telegram.MiniAppURL))
 	}
 
@@ -464,9 +470,38 @@ func main() {
 		})
 	})
 
-	if err := r.Run(fmt.Sprintf(":%d", cfg.AppPort)); err != nil {
-		panic(err)
+	srv := &http.Server{
+		Addr:              fmt.Sprintf(":%d", cfg.AppPort),
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
+
+	serverErr := make(chan error, 1)
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
+		}
+	}()
+
+	select {
+	case err := <-serverErr:
+		panic(err)
+	case <-rootCtx.Done():
+	}
+
+	logger.Info("Shutdown signal received; draining connections")
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancelShutdown()
+
+	// Close SSE client channels first: long-lived streams would otherwise keep
+	// srv.Shutdown waiting until its deadline. Unsubscribe is a no-op for these
+	// clients because Shutdown already removed them from the routing maps.
+	realtimeSvc.Shutdown(shutdownCtx)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Warn("HTTP server did not shut down cleanly", zap.Error(err))
+		_ = srv.Close()
+	}
+	logger.Info("Shutdown complete")
 }
 
 func readGoCPUTime() (total, idle float64) {

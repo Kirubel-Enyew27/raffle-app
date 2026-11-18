@@ -118,10 +118,20 @@ func RunMigrations(db *sql.DB, migrationsDir string) error {
 		}
 		if tableCount > 0 {
 			log.Printf("🔍 Detected pre-existing database (%d tables). Recording %d migrations as applied without re-executing.", tableCount, len(files))
+			// Record the whole baseline in one transaction so an interrupted run
+			// cannot leave a partially seeded tracking table.
+			tx, err := conn.BeginTx(ctx, nil)
+			if err != nil {
+				return fmt.Errorf("failed to start transaction for migration baseline: %w", err)
+			}
+			defer func() { _ = tx.Rollback() }()
 			for _, f := range files {
-				if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING`, f.Name()); err != nil {
+				if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING`, f.Name()); err != nil {
 					return fmt.Errorf("failed to record migration %s: %w", f.Name(), err)
 				}
+			}
+			if err := tx.Commit(); err != nil {
+				return fmt.Errorf("failed to commit migration baseline: %w", err)
 			}
 			return nil
 		}
@@ -142,15 +152,43 @@ func RunMigrations(db *sql.DB, migrationsDir string) error {
 			return fmt.Errorf("failed to read migration %s: %w", f.Name(), err)
 		}
 
-		if _, err := conn.ExecContext(ctx, string(content)); err != nil {
-			return fmt.Errorf("failed to apply migration %s: %w", f.Name(), err)
-		}
-
-		if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING`, f.Name()); err != nil {
-			return fmt.Errorf("failed to record migration %s: %w", f.Name(), err)
+		if err := applyMigration(ctx, conn, f.Name(), string(content)); err != nil {
+			return err
 		}
 
 		log.Printf("✅ Applied migration: %s", f.Name())
+	}
+
+	return nil
+}
+
+// applyMigration executes one migration file and records its version in a
+// single transaction, so the schema and the schema_migrations row become
+// visible together and a failure rolls back both.
+//
+// The advisory lock taken by RunMigrations is session-scoped and held on conn,
+// which is also the connection this transaction runs on, so no other process
+// can apply migrations while this one is in flight.
+//
+// Migration files must therefore be transaction-safe: no CREATE INDEX
+// CONCURRENTLY, VACUUM, CREATE DATABASE or explicit BEGIN/COMMIT.
+func applyMigration(ctx context.Context, conn *sql.Conn, version, script string) error {
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to start transaction for migration %s: %w", version, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, script); err != nil {
+		return fmt.Errorf("failed to apply migration %s: %w", version, err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, version); err != nil {
+		return fmt.Errorf("failed to record migration %s: %w", version, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit migration %s: %w", version, err)
 	}
 
 	return nil

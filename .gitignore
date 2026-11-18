@@ -1,5 +1,60 @@
-docs
-backend/.env
+
+# Documentation: keep only the Ethiopian Dama rules document
+docs/*
+!docs/ETHIOPIAN_DAMA.md
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Certificates and private keys
 backend/certs
 certs
 keys
+
+# Database backups
+backups/
+*.dump
+*.dump.gz
+*.sql.gz
+**/*.dump
+**/*.dump.gz
+**/*.sql.gz
+
+# Local dependencies and generated files
+node_modules/
+**/node_modules/
+tmp/
+**/tmp/
+.tma-libs/
+home/
+
+# Downloaded installers and Windows metadata
+*.deb
+*.Zone.Identifier
+
+# Windows / WSL NTFS metadata files
+*:Zone.Identifier
+
+# Screenshots & local image assets
+Bingo Screenshot 2026-11-16 144727.png
+Bingo Screenshot 2026-11-16 144739.png
+cbe.jpg
+games.png
+kwik-logo-for-dark-theme.png
+kwik-logo-for-light-theme.png
+kwik-mini-app.jpg
+login-page.png
+page1.png
+telebirr.jpg
+
+# Local docs, scripts, and dev configs
+DEPLOYMENT.md
+I18N_PROGRESS.md
+docker-compose.dev.yml
+load-tests/
+scripts/
