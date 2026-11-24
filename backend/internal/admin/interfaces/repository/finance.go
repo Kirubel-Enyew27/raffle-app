@@ -40,7 +40,7 @@ func (r *AdminRepo) Deposits(ctx context.Context, filter domain.FinanceFilter) (
 	queryArgs := append(append([]interface{}{}, args...), filter.Limit, filter.Offset)
 	query := `
 SELECT
-  t.id, t.user_id, u.email, COALESCE(u.full_name, ''),
+  t.id, t.user_id, COALESCE(u.email, ''), COALESCE(u.full_name, ''),
   t.amount, t.currency, t.payment_method, t.status,
   COALESCE(t.external_reference, ''), COALESCE(t.receipt_url, ''),
   t.created_at, t.credited_at, COUNT(*) OVER ()
@@ -81,7 +81,7 @@ func (r *AdminRepo) Withdrawals(ctx context.Context, filter domain.FinanceFilter
 	queryArgs := append(append([]interface{}{}, args...), filter.Limit, filter.Offset)
 	query := `
 SELECT
-  t.id, t.user_id, u.email, COALESCE(u.full_name, ''),
+  t.id, t.user_id, COALESCE(u.email, ''), COALESCE(u.full_name, ''),
   t.amount, COALESCE(w.currency, 'ETB'), t.status,
   COALESCE(t.reference, ''), COALESCE(t.description, ''),
   t.created_at, t.updated_at, COUNT(*) OVER ()

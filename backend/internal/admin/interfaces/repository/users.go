@@ -14,7 +14,7 @@ import (
 const userSelect = `
 SELECT
   u.id,
-  u.email,
+  COALESCE(u.email, ''),
   COALESCE(u.phone, ''),
   COALESCE(u.full_name, ''),
   COALESCE(u.avatar_url, ''),
