@@ -1131,6 +1131,11 @@
     "unexpectedError": "An unexpected error occurred",
     "somethingWentWrong": "Something went wrong",
     "tryAgain": "Try again",
+    "unexpectedErrorDesc": "Please try again. If the problem continues, return to your dashboard.",
+    "pageLoadTitle": "This page couldn't be loaded",
+    "pageLoadDescription": "A part of KWIK didn't download. This can happen after an update or a brief network interruption.",
+    "refreshApplication": "Refresh application",
+    "backToDashboard": "Back to dashboard",
     "networkErrorDesc": "Unable to reach the server. Please check your internet connection."
   },
   "validation": {

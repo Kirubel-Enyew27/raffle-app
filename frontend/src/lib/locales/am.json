@@ -1136,6 +1136,11 @@
     "unexpectedError": "ያልተጠበቀ ስህተት ተከስቷል",
     "somethingWentWrong": "የሆነ ችግር ተፈጥሯል",
     "tryAgain": "እንደገና ይሞክሩ",
+    "unexpectedErrorDesc": "እንደገና ይሞክሩ። ችግሩ ከቀጠለ ወደ ዳሽቦርድዎ ይመለሱ።",
+    "pageLoadTitle": "ይህ ገጽ ሊጫን አልቻለም",
+    "pageLoadDescription": "የKWIK አንድ ክፍል አልወረደም። ይህ ከዝመና በኋላ ወይም በአጭር የአውታረ መረብ መቆራረጥ ጊዜ ሊከሰት ይችላል።",
+    "refreshApplication": "መተግበሪያውን አድስ",
+    "backToDashboard": "ወደ ዳሽቦርድ ተመለስ",
     "networkErrorDesc": "ከአገልጋዩ ጋር መገናኘት አልተቻለም። እባክዎ የበይነመረብ ግንኙነትዎን ያረጋግጡ።"
   },
   "validation": {

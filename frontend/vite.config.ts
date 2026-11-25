@@ -3,8 +3,18 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
+// Unique per deployment so an old build's failed-chunk guard cannot suppress
+// recovery after the user receives a newer entry point.
+const buildId =
+  process.env.VERCEL_DEPLOYMENT_ID ??
+  process.env.GITHUB_SHA ??
+  Date.now().toString(36)
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: {
+    __KWIK_BUILD_ID__: JSON.stringify(buildId),
+  },
   resolve: {
     alias: { '@': path.resolve(import.meta.dirname, './src') },
   },
@@ -21,6 +31,9 @@ export default defineConfig({
     },
   },
   build: {
+    // Used by scripts/check-build-assets.mjs to verify every emitted chunk and
+    // stylesheet actually made it into the deployment artifact.
+    manifest: true,
     rollupOptions: {
       output: {
         manualChunks(id) {
