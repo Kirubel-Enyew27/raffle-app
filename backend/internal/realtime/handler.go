@@ -36,7 +36,7 @@ func NewHandler(svc *Service, jwtSecret string, log *zap.Logger) *Handler {
 //   - Authorization: Bearer <jwt> header
 //
 // Optional query params:
-//   - ?channel=<name>  — subscribe to a shared game-room channel (e.g. "crash")
+//   - ?channel=<name>  — subscribe to a shared game-room channel
 func (h *Handler) Stream(c *gin.Context) {
 	// ── 1. Resolve token ───────────────────────────────────────────────────────
 	tokenString := c.Query("token")

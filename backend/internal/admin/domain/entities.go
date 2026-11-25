@@ -33,8 +33,10 @@ type Overview struct {
 	PendingWithdrawals int64   `json:"pending_withdrawals"`
 	PlatformRevenue    float64 `json:"platform_revenue"`
 	P2PServiceFees     float64 `json:"p2p_service_fees"`
-	CrashServiceFees   float64 `json:"crash_service_fees"`
-	RaffleProfit       float64 `json:"raffle_profit"`
+	// CrashServiceFees is historical-only: Crash is retired, but its settled
+	// service fees remain part of platform revenue and must stay auditable.
+	CrashServiceFees float64 `json:"crash_service_fees"`
+	RaffleProfit     float64 `json:"raffle_profit"`
 
 	// Comparisons against the immediately preceding window of equal length.
 	// They are nil when the previous window had no base to compare against.
@@ -72,8 +74,10 @@ type FinancePoint struct {
 }
 
 type RevenuePoint struct {
-	Period       string  `json:"period"`
-	P2PFees      float64 `json:"p2p_fees"`
+	Period  string  `json:"period"`
+	P2PFees float64 `json:"p2p_fees"`
+	// CrashFees is historical-only revenue from rounds settled before the game
+	// was retired. It still contributes to Total.
 	CrashFees    float64 `json:"crash_fees"`
 	RaffleProfit float64 `json:"raffle_profit"`
 	Total        float64 `json:"total"`
@@ -232,28 +236,8 @@ type WithdrawalRow struct {
 }
 
 type LiveSnapshot struct {
-	GeneratedAt     time.Time        `json:"generated_at"`
-	LivePlayers     int64            `json:"live_players"`
-	ActiveMatches   int64            `json:"active_matches"`
-	ActiveCrashBets int64            `json:"active_crash_bets"`
-	Matches         []MatchRow       `json:"matches"`
-	CrashRounds     []LiveCrashRound `json:"crash_rounds"`
-}
-
-type LiveCrashRound struct {
-	ID              string         `json:"id"`
-	RoundNumber     int64          `json:"round_number"`
-	State           string         `json:"state"`
-	Players         int64          `json:"players"`
-	TotalStake      float64        `json:"total_stake"`
-	CrashMultiplier *float64       `json:"crash_multiplier,omitempty"`
-	CreatedAt       time.Time      `json:"created_at"`
-	Bets            []LiveCrashBet `json:"bets"`
-}
-
-type LiveCrashBet struct {
-	UserID      string  `json:"user_id"`
-	DisplayName string  `json:"display_name"`
-	AvatarURL   string  `json:"avatar_url"`
-	StakeAmount float64 `json:"stake_amount"`
+	GeneratedAt   time.Time  `json:"generated_at"`
+	LivePlayers   int64      `json:"live_players"`
+	ActiveMatches int64      `json:"active_matches"`
+	Matches       []MatchRow `json:"matches"`
 }

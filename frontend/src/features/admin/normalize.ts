@@ -64,11 +64,6 @@ export function normalizeLive(snapshot: AdminLiveSnapshot): AdminLiveSnapshot {
         ...match,
         players: asArray(match.players, `live.matches.${match.id}.players`),
       })),
-    crash_rounds: asArray<AdminLiveSnapshot['crash_rounds'][number]>(snapshot.crash_rounds, 'live.crash_rounds')
-      .map(round => ({
-        ...round,
-        bets: asArray(round.bets, `live.crash_rounds.${round.id}.bets`),
-      })),
   }
 }
 

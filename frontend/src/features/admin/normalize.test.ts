@@ -73,7 +73,7 @@ test('normalizeOverview makes chart collections safe without touching real data'
 test('normalizeOverview keeps populated trends and normalizes each game trend', () => {
   const payload = {
     ...overviewPayload,
-    revenue_trend: [{ period: '2026-11-08', p2p_fees: 10, crash_fees: 0, raffle_profit: 0, total: 10 }],
+    revenue_trend: [{ period: '2026-11-08', p2p_fees: 10, raffle_profit: 0, total: 10 }],
     games: [{ slug: 'dama', title: 'Dama', total_matches: 4, trend: null }],
   } as unknown as AdminOverview
 
@@ -85,21 +85,18 @@ test('normalizeOverview keeps populated trends and normalizes each game trend', 
   assert.equal(normalized.games[0].total_matches, 4)
 })
 
-test('normalizeLive guards live matches, players and crash bets', () => {
+test('normalizeLive guards live matches and players', () => {
   const snapshot = {
     generated_at: '2026-11-09T10:00:00Z',
     live_players: 7,
     active_matches: 2,
-    active_crash_bets: 1,
     matches: [{ id: 'm-1', game_title: 'Dama', players: null }],
-    crash_rounds: null,
   } as unknown as AdminLiveSnapshot
 
   const normalized = normalizeLive(snapshot)
 
   assert.equal(normalized.matches.length, 1)
   assert.deepEqual(normalized.matches[0].players, [])
-  assert.deepEqual(normalized.crash_rounds, [])
   assert.equal(normalized.live_players, 7)
 })
 

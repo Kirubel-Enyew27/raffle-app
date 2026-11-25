@@ -22,11 +22,6 @@ import (
 	audithttp "github.com/raffle-app/backend/internal/audit/interfaces/http"
 	auditmw "github.com/raffle-app/backend/internal/audit/interfaces/http/middleware"
 	auditrepo "github.com/raffle-app/backend/internal/audit/interfaces/repository"
-	crashapp "github.com/raffle-app/backend/internal/crash/application"
-	crashdomain "github.com/raffle-app/backend/internal/crash/domain"
-	crashinfra "github.com/raffle-app/backend/internal/crash/infrastructure"
-	crashhttp "github.com/raffle-app/backend/internal/crash/interfaces/http"
-	crashrepo "github.com/raffle-app/backend/internal/crash/interfaces/repository"
 	drawapp "github.com/raffle-app/backend/internal/draw/application"
 	drawinfra "github.com/raffle-app/backend/internal/draw/infrastructure"
 	drawhttp "github.com/raffle-app/backend/internal/draw/interfaces/http"
@@ -73,7 +68,6 @@ import (
 	"github.com/raffle-app/backend/pkg/idempotency"
 	"github.com/raffle-app/backend/pkg/logger"
 	"github.com/raffle-app/backend/pkg/middleware"
-	"github.com/raffle-app/backend/pkg/money"
 	"go.uber.org/zap"
 )
 
@@ -87,7 +81,7 @@ func main() {
 	}
 
 	// rootCtx is cancelled on SIGINT/SIGTERM. Background workers (realtime
-	// listener, crash/P2P engines, Telegram bot) stop with it, and the HTTP
+	// listener, P2P engine, Telegram bot) stop with it, and the HTTP
 	// server drains before the process exits, so a container restart does not
 	// cut an in-flight settlement in half.
 	rootCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -250,61 +244,6 @@ func main() {
 	reportSvc := reportapp.NewReportService(reportrepo.NewReportRepo(db))
 	adminSvc := adminapp.NewAdminService(adminrepo.NewAdminRepo(db))
 
-	// Multiplayer crash game: shared authoritative round engine + player service.
-	crashCfg := crashdomain.RoundConfig{
-		Room:              cfg.Crash.Room,
-		WaitingSeconds:    cfg.Crash.WaitingSeconds,
-		BettingSeconds:    cfg.Crash.BettingSeconds,
-		CrashedSeconds:    cfg.Crash.CrashedSeconds,
-		NextRoundSeconds:  cfg.Crash.NextRoundSeconds,
-		GrowthRate:        cfg.Crash.GrowthRate,
-		HouseEdgeBP:       cfg.Crash.HouseEdgeBP,
-		MaxMultiplierBP:   cfg.Crash.MaxMultiplierBP,
-		MinBetCents:       money.FromFloat(cfg.Crash.MinBet),
-		MaxBetCents:       money.FromFloat(cfg.Crash.MaxBet),
-		TickInterval:      cfg.Crash.TickInterval,
-		BroadcastInterval: cfg.Crash.BroadcastInterval,
-		Enabled:           cfg.Crash.Enabled,
-		ServiceFeeBP:      cfg.Crash.ServiceFeeBP,
-		MinParticipants:   cfg.Crash.MinParticipants,
-		MaxParticipants:   cfg.Crash.MaxParticipants,
-		PlatformUserID:    cfg.Crash.PlatformUserID,
-	}
-	if err := crashCfg.Validate(); err != nil {
-		panic(err)
-	}
-
-	crashRoundRepo := crashrepo.NewRoundRepo(db)
-	crashBetRepo := crashrepo.NewBetRepo(db)
-	crashPointSource := crashinfra.NewCrashPointSource(crashCfg.HouseEdgeBP, crashCfg.MaxMultiplierBP)
-	crashSettingsRepo := crashrepo.NewSettingsRepo(db)
-
-	crashSvc := crashapp.NewCrashService(
-		crashRoundRepo,
-		crashBetRepo,
-		crashrepo.NewWalletRepo(db),
-		crashPointSource,
-		crashCfg,
-	)
-	crashSvc.SetPlayerRepository(crashrepo.NewPlayerRepo(db))
-	crashSvc.SetSettingsRepository(crashSettingsRepo)
-	crashSvc.SetAuditService(auditSvc)
-	crashSvc.SetRealtimeService(realtimeSvc)
-	crashSvc.SetIdempotencyStore(idempotencyStore)
-
-	crashEngine := crashapp.NewEngine(
-		crashRoundRepo,
-		crashBetRepo,
-		crashPointSource,
-		crashSvc,
-		crashrepo.NewAdvisoryLocker(db),
-		crashCfg,
-		logger.With(),
-	)
-	crashEngine.SetAuditService(auditSvc)
-	crashEngine.SetRealtimeService(realtimeSvc)
-	go crashEngine.Run(rootCtx)
-
 	userRepo := identityrepo.NewUserRepo(db)
 	smsSvc := smsapp.NewSMSService(
 		db,
@@ -321,7 +260,7 @@ func main() {
 	p2pPlayerRepo := p2prepo.NewPlayerRepo(db)
 	p2pMoveRepo := p2prepo.NewMoveRepo(db)
 	p2pSettingsRepo := p2prepo.NewSettingsRepo(db)
-	p2pEscrowRepo := p2prepo.NewEscrowRepo(db, cfg.Crash.PlatformUserID)
+	p2pEscrowRepo := p2prepo.NewEscrowRepo(db, cfg.P2P.PlatformUserID)
 
 	p2pSvc := p2papp.NewP2PService(
 		p2pGameRepo,
@@ -392,10 +331,6 @@ func main() {
 	reporthttp.RegisterReportRoutes(api, reporthttp.NewReportHandler(reportSvc))
 	adminhttp.RegisterAdminRoutes(api, adminhttp.NewAdminHandler(adminSvc))
 	smshttp.RegisterSMSRoutes(api, smshttp.NewSMSHandler(smsSvc), cfg.SMSAPIKey)
-
-	crashHandler := crashhttp.NewCrashHandler(crashSvc)
-	crashHandler.SetRateLimiter(crashinfra.NewRateLimiter(rdb, cfg.Crash.RateLimitPerSecond, time.Second))
-	crashhttp.RegisterCrashRoutes(api, crashHandler)
 
 	p2pHandler := p2phttp.NewP2PHandlerWithLogger(p2pSvc, logger.With())
 	p2pRateLimiter := p2phttp.NewP2PRateLimiter(rdb)

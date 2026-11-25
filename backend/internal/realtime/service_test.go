@@ -188,21 +188,21 @@ func TestBroadcastLocalBroadcastsToAll(t *testing.T) {
 func TestBroadcastLocalDeliversByChannel(t *testing.T) {
 	svc := newTestService()
 
-	crash := svc.SubscribeChannel("user1", "player", "crash")
+	room := svc.SubscribeChannel("user1", "player", "game-room")
 	other := svc.SubscribeChannel("user2", "player", "p2p")
-	defer svc.Unsubscribe(crash)
+	defer svc.Unsubscribe(room)
 	defer svc.Unsubscribe(other)
 
-	ev := Event{Type: "tick", Channel: "crash", Payload: 1.5}
+	ev := Event{Type: "tick", Channel: "game-room", Payload: 1.5}
 	svc.broadcastLocal(ev)
 
 	select {
-	case got := <-crash.Ch:
-		if got.Channel != "crash" {
-			t.Fatalf("expected channel=crash, got %s", got.Channel)
+	case got := <-room.Ch:
+		if got.Channel != "game-room" {
+			t.Fatalf("expected channel=game-room, got %s", got.Channel)
 		}
 	case <-time.After(100 * time.Millisecond):
-		t.Fatal("timed out waiting for crash channel event")
+		t.Fatal("timed out waiting for game-room channel event")
 	}
 
 	select {

@@ -15,7 +15,7 @@ import { UserMenu } from '@/components/ui/UserMenu'
  * Section groups for the navbar. Pages that only make sense as part of a
  * section hang off its menu instead of sitting as separate top-level entries:
  * the raffle section owns the raffle list, the tickets a user holds and the
- * prizes a user has won; the games section owns the match lobby, crash and the
+ * prizes a user has won; the games section owns the match lobby and the
  * leaderboard.
  */
 function useSectionNav() {
@@ -25,10 +25,7 @@ function useSectionNav() {
     { to: '/tickets', label: t('nav.myTickets') },
     { to: '/winners', label: t('nav.winners') },
   ]
-  const gameItems = [
-    { to: '/games', label: t('nav.allGames') },
-    // Crash is hidden from the Games menu for now; the /crash route is still live.
-    // { to: '/crash', label: t('nav.crash') },
+  const gameItems = [	{ to: '/games', label: t('nav.allGames') },
     { to: '/leaderboard', label: t('nav.leaderboard') },
   ]
   return { raffleItems, gameItems }

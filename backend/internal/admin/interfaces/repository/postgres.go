@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"sort"
 	"time"
 
@@ -378,49 +377,6 @@ ORDER BY 2 ASC`, from, to, period)
 		}
 	}
 
-	var crash domain.GameSummary
-	crash.Slug = "crash"
-	crash.Title = "Crash"
-	crash.Description = "P2P multiplier rounds with server-authoritative crash points."
-	crash.Trend = []domain.GameTrendPoint{}
-	err = r.db.QueryRowContext(ctx, `
-SELECT
-  COUNT(r.id),
-  COUNT(r.id) FILTER (WHERE r.state IN ('WAITING','BETTING','RUNNING')),
-  COUNT(r.id) FILTER (WHERE r.state IN ('SETTLEMENT','NEXT_ROUND')),
-  COUNT(DISTINCT b.user_id)
-FROM game_rounds r
-LEFT JOIN game_bets b ON b.round_id = r.id
-WHERE r.created_at >= $1 AND r.created_at < $2`, from, to).Scan(
-		&crash.TotalMatches, &crash.ActiveMatches, &crash.CompletedMatches, &crash.UniquePlayers,
-	)
-	if err != nil {
-		return nil, err
-	}
-	crash.PaidMatches = crash.TotalMatches
-
-	crashTrendRows, err := r.db.QueryContext(ctx, `
-SELECT TO_CHAR(DATE_TRUNC($3::text, created_at), 'YYYY-MM-DD'), COUNT(*)
-FROM game_rounds
-WHERE created_at >= $1 AND created_at < $2
-GROUP BY 1
-ORDER BY 1 ASC`, from, to, period)
-	if err != nil {
-		return nil, err
-	}
-	defer crashTrendRows.Close()
-	for crashTrendRows.Next() {
-		var point domain.GameTrendPoint
-		if err := crashTrendRows.Scan(&point.Period, &point.Matches); err != nil {
-			return nil, err
-		}
-		crash.Trend = append(crash.Trend, point)
-	}
-	if err := crashTrendRows.Err(); err != nil {
-		return nil, err
-	}
-	games = append(games, crash)
-
 	sort.SliceStable(games, func(i, j int) bool {
 		return games[i].TotalMatches > games[j].TotalMatches
 	})
@@ -442,84 +398,20 @@ LIMIT 50`)
 	snapshot := &domain.LiveSnapshot{
 		GeneratedAt: time.Now().UTC(),
 		Matches:     matches,
-		CrashRounds: []domain.LiveCrashRound{},
 	}
 
-	rows, err := r.db.QueryContext(ctx, `
-SELECT
-  r.id,
-  r.round_number,
-  r.state,
-  COUNT(*) FILTER (WHERE b.status = 'active'),
-  COALESCE(SUM(b.stake_amount) FILTER (WHERE b.status = 'active'), 0),
-  r.crash_multiplier_bp / 10000.0,
-  r.created_at,
-  COALESCE(json_agg(json_build_object(
-    'user_id', b.user_id,
-    'display_name', COALESCE(NULLIF(u.full_name, ''), u.email, 'Player'),
-    'avatar_url', COALESCE(u.avatar_url, ''),
-    'stake_amount', b.stake_amount
-  ) ORDER BY b.created_at) FILTER (WHERE b.id IS NOT NULL AND b.status = 'active'), '[]'::json)
-FROM game_rounds r
-LEFT JOIN game_bets b ON b.round_id = r.id
-LEFT JOIN users u ON u.id = b.user_id
-WHERE r.state IN ('WAITING','BETTING','RUNNING')
-GROUP BY r.id
-ORDER BY r.created_at DESC
-LIMIT 20`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var round domain.LiveCrashRound
-		var raw []byte
-		var multiplier sql.NullFloat64
-		if err := rows.Scan(
-			&round.ID, &round.RoundNumber, &round.State, &round.Players,
-			&round.TotalStake, &multiplier, &round.CreatedAt, &raw,
-		); err != nil {
-			return nil, err
-		}
-		if multiplier.Valid {
-			value := multiplier.Float64
-			round.CrashMultiplier = &value
-		}
-		if len(raw) > 0 {
-			_ = json.Unmarshal(raw, &round.Bets)
-		}
-		if round.Bets == nil {
-			round.Bets = []domain.LiveCrashBet{}
-		}
-		snapshot.CrashRounds = append(snapshot.CrashRounds, round)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	// The match and round arrays are capped for display. Aggregate the live
-	// totals over every active session so the headline counts are not silently
-	// truncated to the first page of cards.
+	// The match array is capped for display. Aggregate the live totals over
+	// every active match so the headline counts are not silently truncated to
+	// the first page of cards.
 	if err := r.db.QueryRowContext(ctx, `
 SELECT
   (SELECT COUNT(*) FROM p2p_matches
     WHERE game_slug NOT LIKE '%test%' AND status IN ('waiting','ready','in_progress')),
-  (SELECT COUNT(*) FROM game_bets b
-     JOIN game_rounds cr ON cr.id = b.round_id
-    WHERE cr.state IN ('WAITING','BETTING','RUNNING') AND b.status = 'active'),
-  (SELECT COUNT(DISTINCT user_id) FROM (
-     SELECT p.user_id
-       FROM p2p_match_players p
-       JOIN p2p_matches m ON m.id = p.match_id
-      WHERE m.game_slug NOT LIKE '%test%' AND m.status IN ('waiting','ready','in_progress')
-     UNION ALL
-     SELECT b.user_id
-       FROM game_bets b
-       JOIN game_rounds cr ON cr.id = b.round_id
-      WHERE cr.state IN ('WAITING','BETTING','RUNNING') AND b.status = 'active'
-   ) live_users)`).Scan(
-		&snapshot.ActiveMatches, &snapshot.ActiveCrashBets, &snapshot.LivePlayers,
+  (SELECT COUNT(DISTINCT p.user_id)
+     FROM p2p_match_players p
+     JOIN p2p_matches m ON m.id = p.match_id
+    WHERE m.game_slug NOT LIKE '%test%' AND m.status IN ('waiting','ready','in_progress'))`).Scan(
+		&snapshot.ActiveMatches, &snapshot.LivePlayers,
 	); err != nil {
 		return nil, err
 	}

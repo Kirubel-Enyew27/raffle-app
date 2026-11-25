@@ -6,7 +6,6 @@ const GAME_NAMES: Record<string, string> = {
   'connect-four': 'Connect Four',
   'rock-paper-scissors': 'Rock Paper Scissors',
   'ethiopian-dama': 'Ethiopian Dama',
-  'crash': 'Crash',
 }
 
 const GAME_NAME_KEYS: Record<string, string> = {
@@ -14,7 +13,6 @@ const GAME_NAME_KEYS: Record<string, string> = {
   'connect-four': 'p2p.connectFour',
   'rock-paper-scissors': 'p2p.rockPaperScissors',
   'ethiopian-dama': 'p2p.ethiopianDama',
-  'crash': 'p2p.crash',
 }
 
 export const TERMINAL_MATCH_STATUSES: P2PMatch['status'][] = [

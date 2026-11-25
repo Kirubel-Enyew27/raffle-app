@@ -10,7 +10,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { adminApi, defaultRange, type AdminGame } from '@/features/admin/api'
 import { DateRangeBar, EmptyState, ErrorState, KpiCard, PageHeader, Panel } from '@/features/admin/AdminUi'
 import { chartTooltipStyle, formatNumber } from '@/features/admin/AdminUtils'
-import { CrashArtwork, GameArtwork } from '@/features/p2p/GameArtwork'
+import { GameArtwork } from '@/features/p2p/GameArtwork'
 import { cn } from '@/lib/utils'
 
 const ACCENTS: Record<string, string> = {
@@ -18,13 +18,12 @@ const ACCENTS: Record<string, string> = {
   'tic-tac-toe': 'from-primary/20',
   'rock-paper-scissors': 'from-violet-400/20',
   'connect-four': 'from-emerald-400/20',
-  crash: 'from-primary/25',
 }
 
 function GameArt({ slug }: { slug: string }) {
   return (
     <div className="h-full w-full">
-      {slug === 'crash' ? <CrashArtwork /> : <GameArtwork slug={slug} />}
+      <GameArtwork slug={slug} />
     </div>
   )
 }

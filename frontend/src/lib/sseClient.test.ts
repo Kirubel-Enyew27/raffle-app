@@ -132,8 +132,8 @@ function makeClient() {
 test('subscribe creates exactly one EventSource per (channel, token) pair', () => {
   const client = makeClient()
   try {
-    const unsub1 = client.subscribe('crash', 'tok1', () => {})
-    const unsub2 = client.subscribe('crash', 'tok1', () => {})
+    const unsub1 = client.subscribe('game-room', 'tok1', () => {})
+    const unsub2 = client.subscribe('game-room', 'tok1', () => {})
 
     assert.equal(MockEventSource.instances.length, 1, 'only one EventSource for the same channel+token')
     assert.equal(client._channelCount(), 1, 'client tracks one channel')
@@ -173,7 +173,7 @@ test('two subscribers on the same channel share the connection', () => {
 test('different channels open separate EventSources', () => {
   const client = makeClient()
   try {
-    const unsub1 = client.subscribe('crash', 'tok', () => {})
+    const unsub1 = client.subscribe('game-room', 'tok', () => {})
     const unsub2 = client.subscribe('p2p_match:xyz', 'tok', () => {})
 
     assert.equal(MockEventSource.instances.length, 2, 'one EventSource per distinct channel')
@@ -228,14 +228,14 @@ test('removing one of two subscribers keeps the connection open', () => {
 test('status starts as connecting and transitions to live after connected event', () => {
   const client = makeClient()
   try {
-    const unsub = client.subscribe('crash', 'tok', () => {})
+    const unsub = client.subscribe('game-room', 'tok', () => {})
 
-    assert.equal(client.getStatus('crash'), 'connecting')
+    assert.equal(client.getStatus('game-room'), 'connecting')
 
     const src = MockEventSource.instances[0]
     src.emitConnected()
 
-    assert.equal(client.getStatus('crash'), 'live')
+    assert.equal(client.getStatus('game-room'), 'live')
     unsub()
   } finally {
     client.dispose()
@@ -246,14 +246,14 @@ test('status starts as connecting and transitions to live after connected event'
 test('status transitions to reconnecting on error', () => {
   const client = makeClient()
   try {
-    const unsub = client.subscribe('crash', 'tok', () => {})
+    const unsub = client.subscribe('game-room', 'tok', () => {})
     const src = MockEventSource.instances[0]
     src.emitConnected()
 
     src.emitError()
 
     // After error the channel should be reconnecting (not failed yet: attempt < MAX)
-    const status = client.getStatus('crash')
+    const status = client.getStatus('game-room')
     assert.ok(
       status === 'reconnecting' || status === 'connecting',
       `expected reconnecting/connecting, got ${status}`,
@@ -276,7 +276,7 @@ test('status transitions to failed after MAX_ATTEMPTS errors', async () => {
     // @ts-expect-error — the test stub is narrower than the DOM type
     global.setTimeout = (fn: () => void) => { void Promise.resolve().then(fn); return 0 }
 
-    const unsub = client.subscribe('crash', 'tok2', () => {})
+    const unsub = client.subscribe('game-room', 'tok2', () => {})
     const src0 = MockEventSource.instances[0]
     src0.emitConnected()
 
@@ -290,7 +290,7 @@ test('status transitions to failed after MAX_ATTEMPTS errors', async () => {
       await new Promise((r) => origSetTimeout(r, 0))
     }
 
-    const status = client.getStatus('crash')
+    const status = client.getStatus('game-room')
     assert.equal(status, 'failed', `expected failed after exhausted retries, got ${status}`)
 
     global.setTimeout = origSetTimeout

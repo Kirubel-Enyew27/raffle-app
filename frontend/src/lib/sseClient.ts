@@ -20,7 +20,7 @@
  *    token on each retry and re-ran every token-dependent subscription.
  *
  * Usage:
- *   const unsub = sseClient.subscribe('crash', token, handler)
+ *   const unsub = sseClient.subscribe('game-room', token, handler)
  *   // later:
  *   unsub()
  */
@@ -69,7 +69,7 @@ interface ChannelListeners {
 }
 
 interface ChannelState {
-  /** The channel name (e.g. 'crash', 'p2p_match:abc'). */
+  /** The channel name (e.g. 'game-room', 'p2p_match:abc'). */
   channel: string
   /** Token used to open the current EventSource. */
   token: string

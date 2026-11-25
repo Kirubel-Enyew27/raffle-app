@@ -2,7 +2,7 @@
 //
 // The rest of the application stores balances as DECIMAL(15,2) and moves them
 // around as float64. Game math (stake debits, multiplier payouts) must never be
-// computed in floating point, so the crash game performs every calculation with
+// computed in floating point, so money-moving code performs every calculation with
 // Cents (int64 minor units) and only converts to float64 at the wallet boundary.
 package money
 

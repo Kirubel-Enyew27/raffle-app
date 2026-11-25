@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate, Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
   Activity, BarChart2, Coins, LayoutDashboard, Menu, ScrollText,
-  Settings2, Swords, Ticket, Trophy, Users, WalletCards, Gamepad2, X,
+  Swords, Ticket, Trophy, Users, WalletCards, Gamepad2, X,
   PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -51,7 +51,6 @@ function useAdminNav(): NavGroup[] {
     {
       label: t('admin.configuration', 'Configuration'),
       items: [
-        { to: '/admin/crash-settings', icon: Settings2, label: t('admin.crashSettings', 'Crash Settings') },
         { to: '/admin/p2p-settings', icon: Coins, label: t('admin.p2pEarnings', 'P2P Earnings') },
       ],
     },

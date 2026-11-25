@@ -169,58 +169,6 @@ function ConnectFourArtwork() {
   )
 }
 
-/* ── Crash ───────────────────────────────────────────────────────────────── */
-
-export function CrashArtwork({ className = FRAME }: { className?: string }) {
-  const id = useId().replace(/:/g, '')
-  return (
-    <svg viewBox="0 0 240 128" className={className} role="presentation" aria-hidden="true">
-      <defs>
-        <linearGradient id={`${id}-curve`} x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0%" stopColor="#7d1418" />
-          <stop offset="45%" stopColor="#ff5b55" />
-          <stop offset="100%" stopColor="#ffb3a3" />
-        </linearGradient>
-        <linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#ff5b55" stopOpacity="0.35" />
-          <stop offset="100%" stopColor="#ff5b55" stopOpacity="0" />
-        </linearGradient>
-        <filter id={`${id}-glow`} x="-30%" y="-30%" width="160%" height="160%">
-          <feGaussianBlur stdDeviation="3.2" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-
-      <g stroke="#ffffff" strokeOpacity="0.06" strokeWidth="1">
-        <line x1="18" y1="34" x2="222" y2="34" />
-        <line x1="18" y1="62" x2="222" y2="62" />
-        <line x1="18" y1="90" x2="222" y2="90" />
-        <line x1="60" y1="16" x2="60" y2="112" />
-        <line x1="120" y1="16" x2="120" y2="112" />
-        <line x1="180" y1="16" x2="180" y2="112" />
-      </g>
-
-      <path d="M24 110 H216 V34 C176 40 150 58 128 76 C108 92 78 104 24 110 Z" fill={`url(#${id}-fill)`} />
-      <path
-        d="M24 110 C74 106 108 96 132 74 C156 52 176 34 212 26"
-        fill="none"
-        stroke={`url(#${id}-curve)`}
-        strokeWidth="4"
-        strokeLinecap="round"
-        filter={`url(#${id}-glow)`}
-      />
-      <circle cx="212" cy="26" r="4.5" fill="#fff" />
-      <circle cx="212" cy="26" r="11" fill="#ff5b55" opacity="0.25" />
-      <text x="132" y="46" fill="#fff" fontSize="20" fontWeight="800" fontFamily="ui-monospace, monospace">
-        3.42×
-      </text>
-    </svg>
-  )
-}
-
 /* ── Public switch ───────────────────────────────────────────────────────── */
 
 export function GameArtwork({ slug, className = FRAME }: { slug: string; className?: string }) {

@@ -268,18 +268,7 @@ export interface AdminLiveSnapshot {
   generated_at: string
   live_players: number
   active_matches: number
-  active_crash_bets: number
   matches: AdminMatch[]
-  crash_rounds: {
-    id: string
-    round_number: number
-    state: string
-    players: number
-    total_stake: number
-    crash_multiplier?: number
-    created_at: string
-    bets: { user_id: string; display_name: string; avatar_url: string; stake_amount: number }[]
-  }[]
 }
 
 export interface Page<T> { items: T[]; total: number; limit: number; offset: number }

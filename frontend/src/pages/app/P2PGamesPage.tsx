@@ -566,38 +566,6 @@ export function Component() {
         </div>
       </section>
 
-      {/* Crash arena is hidden from the lobby for now. The `/crash` route still
-          works for anyone with a direct link; restore this block to surface it.
-      <section className="relative overflow-hidden rounded-2xl border border-[#23252b] bg-[linear-gradient(115deg,#151317_0%,#121317_55%,#0f1013_100%)] p-4 sm:p-5">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-[#ff5b55]/12 blur-3xl"
-        />
-        <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center">
-          <div className="h-24 w-full shrink-0 overflow-hidden rounded-xl border border-[#2a1c1e] bg-[#0c0d10] sm:w-56">
-            <CrashArtwork />
-          </div>
-          <div className="min-w-0 flex-1">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#ff5b55]/25 bg-[#ff5b55]/10 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-[#ff8a80]">
-              <Zap className="h-3 w-3" />
-              Shared round
-            </span>
-            <h3 className="mt-2 text-lg font-bold text-white">Crash</h3>
-            <p className="mt-1 text-xs text-[#9ca1a8]">
-              Ride the multiplier. Cash out before the round crashes.
-            </p>
-          </div>
-          <Button
-            onClick={() => navigate('/crash')}
-            className="h-10 shrink-0 gap-1.5 px-5 text-sm"
-          >
-            Play Crash
-            <ArrowUpRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </section>
-      */}
-
       {/* Lobby / history */}
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">

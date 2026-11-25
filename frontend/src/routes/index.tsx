@@ -13,7 +13,6 @@ import { AdminLayout } from '@/layouts/AdminLayout'
  * ├── /dashboard        AppLayout   → DashboardPage
  * ├── /raffles          AppLayout   → RaffleListPage
  * │   └── /:id          AppLayout   → RaffleDetailPage
- * ├── /crash            AppLayout   → CrashGamePage
  * ├── /tickets          AppLayout   → MyTicketsPage
  * ├── /wallet           AppLayout   → WalletPage
  * ├── /notifications    AppLayout   → NotificationsPage
@@ -52,7 +51,6 @@ export const router = createBrowserRouter([
           { path: '/games', lazy: () => import('@/pages/app/P2PGamesPage') },
           { path: '/games/match/:id', lazy: () => import('@/pages/app/P2PMatchPage') },
           { path: '/leaderboard', lazy: () => import('@/pages/app/LeaderboardPage') },
-          { path: '/crash', lazy: () => import('@/pages/app/CrashGamePage') },
           { path: '/tickets', lazy: () => import('@/pages/app/MyTicketsPage') },
           { path: '/profile', lazy: () => import('@/pages/app/ProfilePage') },
           { path: '/wallet', lazy: () => import('@/pages/app/WalletPage') },
@@ -76,7 +74,6 @@ export const router = createBrowserRouter([
           { path: '/admin/users/:id', lazy: () => import('@/pages/admin/AdminUserDetailPage') },
           { path: '/admin/reports', lazy: () => import('@/pages/admin/AdminReportsPage') },
           { path: '/admin/audit', lazy: () => import('@/pages/admin/AdminAuditPage') },
-          { path: '/admin/crash-settings', lazy: () => import('@/pages/admin/AdminCrashSettingsPage') },
           { path: '/admin/p2p-settings', lazy: () => import('@/pages/admin/AdminP2PSettingsPage') },
         ],
       },

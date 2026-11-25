@@ -17,7 +17,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { adminApi, defaultRange } from '@/features/admin/api'
 import { DateRangeBar, EmptyState, ErrorState, KpiCard, Panel, StatusBadge } from '@/features/admin/AdminUi'
 import { chartTooltipStyle, formatDate, formatMoney, formatNumber, relativeTime } from '@/features/admin/AdminUtils'
-import { GameArtwork, CrashArtwork } from '@/features/p2p/GameArtwork'
+import { GameArtwork } from '@/features/p2p/GameArtwork'
 import { cn } from '@/lib/utils'
 
 const CHART = {
@@ -75,7 +75,7 @@ function MatchChart({ data }: { data: { period: string; total: number; completed
   )
 }
 
-function RevenueChart({ data }: { data: { period: string; p2p_fees: number; crash_fees: number; raffle_profit: number; total: number }[] }) {
+function RevenueChart({ data }: { data: { period: string; p2p_fees: number; raffle_profit: number; total: number }[] }) {
   const { t } = useTranslation()
   return (
     <ResponsiveContainer width="100%" height={240}>
@@ -86,7 +86,6 @@ function RevenueChart({ data }: { data: { period: string; p2p_fees: number; cras
         <Tooltip contentStyle={chartTooltipStyle()} formatter={(value) => formatMoney(Number(value))} />
         <Legend wrapperStyle={{ fontSize: 11 }} />
         <Bar dataKey="p2p_fees" name={t('admin.p2pFees', 'P2P fees')} stackId="revenue" fill={CHART.brand} />
-        <Bar dataKey="crash_fees" name={t('admin.crashFees', 'Crash fees')} stackId="revenue" fill={CHART.amber} />
         <Bar dataKey="raffle_profit" name={t('admin.raffleProfit', 'Raffle profit')} stackId="revenue" fill={CHART.blue} radius={[3, 3, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
@@ -137,7 +136,6 @@ export function Component() {
 
   const revenueMix = data ? [
     { name: t('admin.p2pFees', 'P2P fees'), value: data.p2p_service_fees, color: CHART.brand },
-    { name: t('admin.crashFees', 'Crash fees'), value: data.crash_service_fees, color: CHART.amber },
     { name: t('admin.raffleProfit', 'Raffle profit'), value: Math.max(0, data.raffle_profit), color: CHART.blue },
   ].filter(item => item.value > 0) : []
 
@@ -191,7 +189,7 @@ export function Component() {
             <KpiCard label={t('admin.withdrawals', 'Withdrawals')} value={formatMoney(data?.total_withdrawals ?? 0)} icon={CircleDollarSign}
               detail={t('admin.pendingRequests', { count: formatNumber(data?.pending_withdrawals ?? 0), defaultValue: `${formatNumber(data?.pending_withdrawals ?? 0)} pending requests` })} change={data?.withdrawals_change} accent="amber" loading={isLoading} />
             <KpiCard label={t('admin.platformRevenue', 'Platform revenue')} value={formatMoney(data?.platform_revenue ?? 0)} icon={TrendingUp}
-              detail={t('admin.platformRevenueDesc', 'P2P + Crash fees + raffle profit')} change={data?.platform_revenue_change} accent="brand" loading={isLoading} />
+              detail={t('admin.platformRevenueDesc', 'P2P fees + raffle profit')} change={data?.platform_revenue_change} accent="brand" loading={isLoading} />
             <KpiCard label={t('admin.newUsers', 'New users')} value={formatNumber(data?.new_users ?? 0)} icon={UserPlus}
               detail={t('admin.registrationsInPeriod', 'Registrations in period')} accent="blue" loading={isLoading} />
             <KpiCard label={t('admin.pendingActions', 'Pending actions')} value={formatNumber((data?.pending_deposits ?? 0) + (data?.pending_withdrawals ?? 0))} icon={Clock3}
@@ -208,7 +206,7 @@ export function Component() {
             <Panel title={t('admin.moneyMovement', 'Money movement')} description={t('admin.moneyMovementDesc', 'Completed deposits and withdrawals')}>
               {isLoading ? <Skeleton className="m-4 h-[240px]" /> : data?.finance_trend.length ? <div className="p-2"><FinanceChart data={data.finance_trend} /></div> : <ChartEmpty />}
             </Panel>
-            <Panel title={t('admin.platformRevenue', 'Platform revenue')} description={t('admin.platformRevenuePanelDesc', 'Collected P2P fees, settled Crash fees, and fully paid raffle margin')} className="xl:col-span-2">
+            <Panel title={t('admin.platformRevenue', 'Platform revenue')} description={t('admin.platformRevenuePanelDesc', 'Collected P2P fees and fully paid raffle margin')} className="xl:col-span-2">
               {isLoading ? <Skeleton className="m-4 h-[240px]" /> : data?.revenue_trend.length ? <div className="p-2"><RevenueChart data={data.revenue_trend} /></div> : <ChartEmpty label={t('admin.noRealizedRevenue', 'No realized revenue in this period')} />}
             </Panel>
             <Panel title={t('admin.revenueMix', 'Revenue mix')} description={t('admin.revenueMixDesc', 'Service fees and raffle profit')}>
@@ -292,7 +290,7 @@ export function Component() {
                           {index + 1}
                         </span>
                         <div className="h-9 w-16 shrink-0 overflow-hidden rounded-md border border-border/60 bg-muted/30">
-                          {game.slug === 'crash' ? <CrashArtwork /> : <GameArtwork slug={game.slug} />}
+                          <GameArtwork slug={game.slug} />
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2 text-xs">
