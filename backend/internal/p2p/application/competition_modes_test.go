@@ -11,11 +11,41 @@ import (
 )
 
 // clearWaitingRooms isolates matchmaking assertions from rooms left behind by
-// earlier tests sharing the development database.
+// earlier tests sharing the development database. Cancelling a waiting room
+// must release its creator's stake, exactly like the production cancellation
+// path; otherwise every test run leaves an orphan reservation behind.
 func clearWaitingRooms(t *testing.T, db *sql.DB) {
 	t.Helper()
-	if _, err := db.Exec(`UPDATE p2p_matches SET status = 'cancelled' WHERE status = 'waiting'`); err != nil {
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("failed to begin clearing waiting rooms: %v", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`UPDATE wallets w
+		SET reserved_balance = GREATEST(0, w.reserved_balance - waiting.stake_amount),
+			reserved_cents = GREATEST(0, w.reserved_cents - waiting.stake_cents),
+			updated_at = NOW()
+		FROM (
+			SELECT created_by, SUM(stake_cents)::numeric / 100 AS stake_amount, SUM(stake_cents) AS stake_cents
+			FROM p2p_matches WHERE status = 'waiting' GROUP BY created_by
+		) waiting
+		WHERE w.user_id = waiting.created_by`); err != nil {
+		t.Fatalf("failed to release clearing waiting room stakes: %v", err)
+	}
+	if _, err := tx.Exec(`UPDATE wallet_transactions wt
+		SET status = 'refunded', updated_at = NOW()
+		WHERE wt.type = 'p2p_match_stake' AND wt.status = 'reserved'
+		  AND wt.reference IN (SELECT 'p2p_stake:' || id FROM p2p_matches WHERE status = 'waiting')`); err != nil {
+		t.Fatalf("failed to close clearing waiting room reservations: %v", err)
+	}
+	if _, err := tx.Exec(`UPDATE p2p_matches
+		SET status = 'cancelled', completed_at = NOW(), updated_at = NOW()
+		WHERE status = 'waiting'`); err != nil {
 		t.Fatalf("failed to clear waiting rooms: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("failed to commit clearing waiting rooms: %v", err)
 	}
 }
 
@@ -221,6 +251,93 @@ func TestCompetitionModes_InsufficientBalancePreventsParticipation(t *testing.T)
 	}
 	if reserved != 0 {
 		t.Fatalf("rejected stake must not reserve funds, got %.2f", reserved)
+	}
+}
+
+func TestCompetitionModes_LoserAt104CanStartAnotherFiftyMatch(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	clearWaitingRooms(t, db)
+
+	ctx := context.Background()
+	svc := newTestService(t, db, true)
+
+	loser := createTestUserWithWallet(t, db, 154)
+	winner := createTestUserWithWallet(t, db, 154)
+
+	first, err := svc.CreateMatch(ctx, loser, CreateMatchRequest{
+		GameSlug:        "tic-tac-toe",
+		MatchType:       p2pdomain.TypePrivateRoom,
+		CompetitionMode: p2pdomain.ModeEarn,
+		StakeAmount:     50,
+	})
+	if err != nil {
+		t.Fatalf("first paid match creation failed: %v", err)
+	}
+	if _, err := svc.JoinMatch(ctx, winner, first.ID, ""); err != nil {
+		t.Fatalf("joining first paid match failed: %v", err)
+	}
+	if _, err := svc.ReadyUp(ctx, loser, first.ID); err != nil {
+		t.Fatalf("loser ready-up failed: %v", err)
+	}
+	if _, err := svc.ReadyUp(ctx, winner, first.ID); err != nil {
+		t.Fatalf("winner ready-up failed: %v", err)
+	}
+
+	// The loser forfeits: balance 154 - 50 = 104, and the reservation must be
+	// released in the same transaction.
+	if _, err := svc.ResignMatch(ctx, loser, first.ID); err != nil {
+		t.Fatalf("first match settlement failed: %v", err)
+	}
+
+	var balance, reserved float64
+	if err := db.QueryRow(`SELECT balance, reserved_balance FROM wallets WHERE user_id = $1`, loser).
+		Scan(&balance, &reserved); err != nil {
+		t.Fatalf("failed to read loser wallet: %v", err)
+	}
+	if balance != 104 || reserved != 0 {
+		t.Fatalf("loser wallet after settlement = balance %.2f reserved %.2f, want 104/0", balance, reserved)
+	}
+
+	config, err := svc.GetConfig(ctx, loser)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	if config.AvailableBalance != 104 {
+		t.Fatalf("expected 104 available after settlement, got %.2f", config.AvailableBalance)
+	}
+
+	// A second 50 ETB match must be accepted with the same available balance
+	// the wallet reports.
+	second, err := svc.CreateMatch(ctx, loser, CreateMatchRequest{
+		GameSlug:        "tic-tac-toe",
+		MatchType:       p2pdomain.TypePrivateRoom,
+		CompetitionMode: p2pdomain.ModeEarn,
+		StakeAmount:     50,
+	})
+	if err != nil {
+		t.Fatalf("second 50 ETB match was rejected with 104 available: %v", err)
+	}
+	if second.StakeAmount != 50 || second.CompetitionMode != p2pdomain.ModeEarn {
+		t.Fatalf("unexpected second match: mode=%s stake=%.2f", second.CompetitionMode, second.StakeAmount)
+	}
+
+	if err := db.QueryRow(`SELECT balance, reserved_balance FROM wallets WHERE user_id = $1`, loser).
+		Scan(&balance, &reserved); err != nil {
+		t.Fatalf("failed to reread loser wallet: %v", err)
+	}
+	if balance != 104 || reserved != 50 {
+		t.Fatalf("second reservation = balance %.2f reserved %.2f, want 104/50", balance, reserved)
+	}
+
+	// A genuinely unaffordable 60 ETB stake must still be rejected.
+	if _, err := svc.CreateMatch(ctx, loser, CreateMatchRequest{
+		GameSlug:        "tic-tac-toe",
+		MatchType:       p2pdomain.TypePrivateRoom,
+		CompetitionMode: p2pdomain.ModeEarn,
+		StakeAmount:     60,
+	}); !errors.Is(err, p2pdomain.ErrInsufficientStake) {
+		t.Fatalf("expected ErrInsufficientStake for an unaffordable stake, got %v", err)
 	}
 }
 

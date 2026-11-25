@@ -100,17 +100,16 @@ func (e *P2PEngine) sweepDisconnectTimeouts(ctx context.Context) {
 	}
 }
 
-// escrowIncomplete reports whether the match is missing stake reservations for
-// one or more of its players. A prize pool above zero means both players were
-// expected to have reserved their stake when the match started, so a missing
-// ledger row can never be settled: the escrow layer refuses to move money
-// without the matching reservation, and the sweep would otherwise fail and
-// retry every second for ever while both players look at a board that never
-// finishes. Free matches (prize pool 0) reserve nothing and are never
-// incomplete.
-func (e *P2PEngine) escrowIncomplete(ctx context.Context, tx *sql.Tx, match *domain.Match, players []*domain.MatchPlayer) (bool, error) {
+// missingReservations reports which players have no stake reservation for the
+// match. A prize pool above zero means both players were expected to have
+// reserved their stake when the match started, so a missing ledger row can
+// never be settled: the escrow layer refuses to move money without the matching
+// reservation, and the sweep would otherwise fail and retry every second for
+// ever while both players look at a board that never finishes. Free matches
+// (prize pool 0) reserve nothing and are never incomplete.
+func (e *P2PEngine) missingReservations(ctx context.Context, tx *sql.Tx, match *domain.Match, players []*domain.MatchPlayer) ([]string, error) {
 	if match.PrizePoolCents <= 0 {
-		return false, nil
+		return nil, nil
 	}
 
 	userIDs := make([]string, 0, len(players))
@@ -120,17 +119,39 @@ func (e *P2PEngine) escrowIncomplete(ctx context.Context, tx *sql.Tx, match *dom
 
 	missing, err := e.escrowRepo.PlayersWithoutReservedStake(ctx, tx, match.ID, userIDs)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	if len(missing) == 0 {
-		return false, nil
+		return nil, nil
 	}
 
 	e.log.Error("P2P match has incomplete stake reservations; finishing it without settlement",
 		zap.String("match_id", match.ID),
 		zap.Strings("user_ids", missing),
 		zap.Int64("prize_pool_cents", int64(match.PrizePoolCents)))
-	return true, nil
+	return missing, nil
+}
+
+// releaseExistingReservationsTx refunds the stakes that do exist when a match
+// cannot be settled because another player's reservation is missing. Without
+// this, the terminal match leaves those funds reserved for ever. Players in the
+// missing list are skipped deliberately: releasing them would consume a
+// reservation belonging to a different match.
+func (e *P2PEngine) releaseExistingReservationsTx(ctx context.Context, tx *sql.Tx, match *domain.Match, players []*domain.MatchPlayer, missing []string) error {
+	missingSet := make(map[string]struct{}, len(missing))
+	for _, userID := range missing {
+		missingSet[userID] = struct{}{}
+	}
+
+	for _, player := range players {
+		if _, isMissing := missingSet[player.UserID]; isMissing {
+			continue
+		}
+		if err := e.escrowRepo.ReleaseReservedFundsTx(ctx, tx, player.UserID, match.StakeCents, match.ID, "match ended with incomplete escrow"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (e *P2PEngine) handleDisconnectTimeout(ctx context.Context, matchID string) error {
@@ -191,11 +212,14 @@ func (e *P2PEngine) handleDisconnectTimeout(ctx context.Context, matchID string)
 	// unreachable — and failing here would retry every second for ever while
 	// both players stay on a match that never ends. Finish it without touching
 	// a wallet instead.
-	incomplete, err := e.escrowIncomplete(ctx, tx, match, players)
+	missing, err := e.missingReservations(ctx, tx, match, players)
 	if err != nil {
 		return err
 	}
-	if incomplete {
+	if len(missing) > 0 {
+		if err := e.releaseExistingReservationsTx(ctx, tx, match, players, missing); err != nil {
+			return err
+		}
 		if err := e.matchRepo.MarkCompletedTx(ctx, tx, match, &winnerUserID, domain.StatusForfeited, 0, now, true); err != nil {
 			return err
 		}
@@ -325,11 +349,14 @@ func (e *P2PEngine) handleTurnTimeout(ctx context.Context, matchID string) error
 
 	// See handleDisconnectTimeout: an unsettleable match must still reach a
 	// terminal state, or the sweep retries it every second for ever.
-	incomplete, err := e.escrowIncomplete(ctx, tx, match, players)
+	missing, err := e.missingReservations(ctx, tx, match, players)
 	if err != nil {
 		return err
 	}
-	if incomplete {
+	if len(missing) > 0 {
+		if err := e.releaseExistingReservationsTx(ctx, tx, match, players, missing); err != nil {
+			return err
+		}
 		if err := e.matchRepo.MarkCompletedTx(ctx, tx, match, &winnerUserID, domain.StatusForfeited, 0, now, true); err != nil {
 			return err
 		}

@@ -32,7 +32,7 @@ func (r *WalletRepo) CreateTx(ctx context.Context, tx *sql.Tx, wallet *domain.Wa
 }
 
 func (r *WalletRepo) FindByUserID(ctx context.Context, userID string) (*domain.Wallet, error) {
-	query := `SELECT id, user_id, balance, reserved_balance, currency, created_at, updated_at FROM wallets WHERE user_id = $1`
+	query := `SELECT id, user_id, balance, reserved_balance, currency, created_at, updated_at FROM wallets WHERE user_id = $1 ORDER BY created_at ASC, id ASC LIMIT 1`
 	row := r.db.QueryRowContext(ctx, query, userID)
 	wallet := &domain.Wallet{}
 	err := row.Scan(&wallet.ID, &wallet.UserID, &wallet.Balance, &wallet.ReservedBalance, &wallet.Currency, &wallet.CreatedAt, &wallet.UpdatedAt)
@@ -47,7 +47,7 @@ func (r *WalletRepo) FindByUserID(ctx context.Context, userID string) (*domain.W
 }
 
 func (r *WalletRepo) FindByUserIDWithLock(ctx context.Context, tx *sql.Tx, userID string) (*domain.Wallet, error) {
-	query := `SELECT id, user_id, balance, reserved_balance, currency, created_at, updated_at FROM wallets WHERE user_id = $1 FOR UPDATE`
+	query := `SELECT id, user_id, balance, reserved_balance, currency, created_at, updated_at FROM wallets WHERE user_id = $1 ORDER BY created_at ASC, id ASC LIMIT 1 FOR UPDATE`
 	row := tx.QueryRowContext(ctx, query, userID)
 	wallet := &domain.Wallet{}
 	err := row.Scan(&wallet.ID, &wallet.UserID, &wallet.Balance, &wallet.ReservedBalance, &wallet.Currency, &wallet.CreatedAt, &wallet.UpdatedAt)

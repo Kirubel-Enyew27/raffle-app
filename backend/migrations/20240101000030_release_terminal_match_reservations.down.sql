@@ -1,0 +1,3 @@
+-- This reconciliation is intentionally irreversible: the released reservations
+-- were closed and audit rows were written. Re-reserving them would lock funds
+-- that belong to players again.

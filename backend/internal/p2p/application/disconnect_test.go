@@ -482,6 +482,103 @@ func TestHandlePlayerReconnect_LateReturnsAlreadyEnded(t *testing.T) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // newNopEngine returns a P2PEngine with a no-op logger for use in tests.
+// A terminal match with one missing reservation must not strand the other
+// player's reservation. The existing stake is refunded (balance is unchanged;
+// only reserved funds are released) and the missing player is skipped so no
+// other match's reservation is touched.
+func TestDisconnectTimeout_IncompleteEscrowReleasesExistingReservation(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	svc := newTestService(t, db, true)
+	creator, joiner, matchID := setupReadyMatch(t, db, svc, "tic-tac-toe", 50)
+	if _, err := svc.ReadyUp(ctx, creator, matchID); err != nil {
+		t.Fatalf("creator ready failed: %v", err)
+	}
+	if _, err := svc.ReadyUp(ctx, joiner, matchID); err != nil {
+		t.Fatalf("joiner ready failed: %v", err)
+	}
+
+	// Simulate the incomplete state that exists in production: one player's
+	// reservation is gone while the opponent's is still held in escrow.
+	if _, err := db.Exec(
+		`DELETE FROM wallet_transactions
+		 WHERE reference = $1 AND type = 'p2p_match_stake' AND user_id = $2`,
+		"p2p_stake:"+matchID, joiner,
+	); err != nil {
+		t.Fatalf("drop joiner reservation: %v", err)
+	}
+	if _, err := db.Exec(
+		`UPDATE wallets SET reserved_balance = 0, reserved_cents = 0 WHERE user_id = $1`, joiner,
+	); err != nil {
+		t.Fatalf("clear joiner reserved balance: %v", err)
+	}
+
+	past := time.Now().Add(-time.Second)
+	if _, err := db.Exec(
+		`UPDATE p2p_matches SET disconnect_user_id = $1, disconnect_deadline = $2 WHERE id = $3`,
+		creator, past, matchID,
+	); err != nil {
+		t.Fatalf("force disconnect deadline: %v", err)
+	}
+
+	engine := newNopEngine(
+		p2prepo.NewMatchRepo(db),
+		p2prepo.NewPlayerRepo(db),
+		p2prepo.NewEscrowRepo(db, ""),
+	)
+	engine.sweepDisconnectTimeouts(ctx)
+
+	var status string
+	var winner sql.NullString
+	if err := db.QueryRow(`SELECT status, winner_user_id FROM p2p_matches WHERE id = $1`, matchID).
+		Scan(&status, &winner); err != nil {
+		t.Fatalf("read match: %v", err)
+	}
+	if status != p2pdomain.StatusForfeited || !winner.Valid || winner.String != joiner {
+		t.Fatalf("expected forfeited with %s winning, got status=%s winner=%v", joiner, status, winner)
+	}
+
+	var creatorBalance, creatorReserved, joinerBalance, joinerReserved float64
+	if err := db.QueryRow(`SELECT balance, reserved_balance FROM wallets WHERE user_id = $1`, creator).
+		Scan(&creatorBalance, &creatorReserved); err != nil {
+		t.Fatalf("read creator wallet: %v", err)
+	}
+	if err := db.QueryRow(`SELECT balance, reserved_balance FROM wallets WHERE user_id = $1`, joiner).
+		Scan(&joinerBalance, &joinerReserved); err != nil {
+		t.Fatalf("read joiner wallet: %v", err)
+	}
+	if creatorBalance != 500 || creatorReserved != 0 {
+		t.Fatalf("creator wallet must be fully released: balance=%.2f reserved=%.2f", creatorBalance, creatorReserved)
+	}
+	if joinerBalance != 500 || joinerReserved != 0 {
+		t.Fatalf("missing-reservation player must be untouched: balance=%.2f reserved=%.2f", joinerBalance, joinerReserved)
+	}
+
+	var stakeStatus string
+	if err := db.QueryRow(
+		`SELECT status FROM wallet_transactions
+		 WHERE reference = $1 AND type = 'p2p_match_stake' AND user_id = $2`,
+		"p2p_stake:"+matchID, creator,
+	).Scan(&stakeStatus); err != nil {
+		t.Fatalf("read creator stake row: %v", err)
+	}
+	if stakeStatus != "refunded" {
+		t.Fatalf("expected existing reservation to be refunded, got %s", stakeStatus)
+	}
+
+	// The released funds must be usable immediately, not just visible.
+	if _, err := svc.CreateMatch(ctx, creator, CreateMatchRequest{
+		GameSlug:        "tic-tac-toe",
+		MatchType:       p2pdomain.TypePrivateRoom,
+		CompetitionMode: p2pdomain.ModeEarn,
+		StakeAmount:     50,
+	}); err != nil {
+		t.Fatalf("released player could not start another 50 ETB match: %v", err)
+	}
+}
+
 func newNopEngine(matchRepo p2pdomain.MatchRepository, playerRepo p2pdomain.PlayerRepository, escrowRepo p2pdomain.EscrowRepository) *P2PEngine {
 	e := NewP2PEngine(matchRepo, playerRepo, escrowRepo, nil, zap.NewNop())
 	return e

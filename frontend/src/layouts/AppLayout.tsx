@@ -172,7 +172,7 @@ function Navbar() {
           {wallet && (
             <div className="mr-1 hidden items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-2.5 py-1 text-xs font-semibold text-foreground sm:flex">
               <Wallet className="h-3.5 w-3.5 text-primary" />
-              <span>{wallet.balance.toLocaleString()} {wallet.currency || t('common.currency')}</span>
+              <span>{(wallet.available_balance ?? wallet.balance).toLocaleString()} {wallet.currency || t('common.currency')}</span>
             </div>
           )}
 
@@ -204,7 +204,7 @@ function Navbar() {
           {wallet && (
             <div className="mx-4 mt-3 flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm font-semibold">
               <Wallet className="h-4 w-4 text-primary" />
-              <span>{wallet.balance.toLocaleString()} {wallet.currency || t('common.currency')}</span>
+              <span>{(wallet.available_balance ?? wallet.balance).toLocaleString()} {wallet.currency || t('common.currency')}</span>
             </div>
           )}
 

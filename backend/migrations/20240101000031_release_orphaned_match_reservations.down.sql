@@ -1,0 +1,2 @@
+-- The orphaned reservations are closed and their audit rows were written;
+-- re-opening them would lock funds with no match that could ever release them.

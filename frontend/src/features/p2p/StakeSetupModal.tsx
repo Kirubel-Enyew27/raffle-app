@@ -85,7 +85,12 @@ export function StakeSetupModal({
 
   if (!open || !game) return null
 
-  const insufficient = !!config && validNumber && numericStake > config.available_balance
+  // The quote is fetched for the exact stake the player is entering and carries
+  // the same authoritative available balance. Prefer it over the longer-lived
+  // config query, which may have been cached while an earlier stake was held.
+  const availableBalance = quote?.available_balance ?? config?.available_balance
+  const insufficient =
+    availableBalance !== undefined && validNumber && numericStake > availableBalance
   const canSubmit = !!quote && !quoteError && !insufficient && !pending
 
   return (
@@ -139,7 +144,7 @@ export function StakeSetupModal({
               {t('p2p.stakeSetup.availableBalance', 'Available balance')}
             </span>
             <span className="font-bold tabular-nums text-foreground">
-              {config ? formatCurrency(config.available_balance) : '—'}
+              {availableBalance !== undefined ? formatCurrency(availableBalance) : '—'}
             </span>
           </div>
 

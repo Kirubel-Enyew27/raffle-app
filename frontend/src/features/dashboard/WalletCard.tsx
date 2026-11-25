@@ -17,7 +17,7 @@ export function WalletCard() {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{t('wallet.balance')}</CardTitle>
+        <CardTitle className="text-sm font-medium text-muted-foreground">{t('wallet.availableBalance')}</CardTitle>
         <Wallet className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
@@ -26,7 +26,7 @@ export function WalletCard() {
         {data && (
           <>
             <p className="text-3xl font-bold">
-              {formatCurrency(data.balance, data.currency)}
+              {formatCurrency(data.available_balance ?? data.balance, data.currency)}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">{t('wallet.etbCurrencyName', 'ETB • Ethiopian Birr')}</p>
           </>

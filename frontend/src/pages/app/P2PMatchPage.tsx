@@ -439,6 +439,10 @@ export function Component() {
     void queryClient.invalidateQueries({ queryKey: ['p2p-my-matches'] })
     if (isPaidMatch) {
       void queryClient.invalidateQueries({ queryKey: ['wallet'] })
+      // The lobby and stake modal use this backend-authoritative available
+      // balance. Without invalidation it can keep a pre-settlement value for
+      // up to its staleTime and falsely block the next paid match.
+      void queryClient.invalidateQueries({ queryKey: ['p2p-config'] })
     }
   }, [isPaidMatch, isTerminalMatch, queryClient])
 

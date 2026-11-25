@@ -77,6 +77,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       switch (raw.type) {
         case 'wallet_update': {
           queryClient.invalidateQueries({ queryKey: ['wallet'] })
+          // Paid-match availability is a wallet projection; refresh it with
+          // the wallet so the lobby never validates against a stale figure.
+          queryClient.invalidateQueries({ queryKey: ['p2p-config'] })
           const balance = (raw.payload as { balance: unknown }).balance
           const currency = (raw.payload as { currency?: string }).currency ?? 'ETB'
           toast({

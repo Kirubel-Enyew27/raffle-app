@@ -62,6 +62,12 @@ func (s *WalletService) GetWallet(ctx context.Context, userID string) (*domain.W
 				UpdatedAt: time.Now(),
 			}
 			if err := s.repo.Create(ctx, wallet); err != nil {
+				// Another request may have created the wallet between the lookup and
+				// this insert. With uq_wallets_user_id one insert wins; re-read the
+				// winner instead of returning a constraint error to the caller.
+				if existing, findErr := s.repo.FindByUserID(ctx, userID); findErr == nil {
+					return existing, nil
+				}
 				return nil, err
 			}
 			return wallet, nil
