@@ -16,6 +16,7 @@ export function DecisiveBanner({ outcome, phase, onSkip }: DecisiveBannerProps) 
 
   const isWin = outcome.type === 'win'
   const isLoss = outcome.type === 'loss'
+  const isCancelled = outcome.type === 'cancelled'
   const subtitle = getOutcomeSubtitle(outcome, t)
 
   return (
@@ -28,7 +29,9 @@ export function DecisiveBanner({ outcome, phase, onSkip }: DecisiveBannerProps) 
           ? 'border-emerald-500/50 bg-emerald-500/15 text-success ring-1 ring-emerald-500/30'
           : isLoss
             ? 'border-destructive/50 bg-destructive/15 text-destructive ring-1 ring-destructive/30'
-            : 'border-warning/50 bg-warning/15 text-warning ring-1 ring-warning/30',
+            : isCancelled
+              ? 'border-border bg-muted/60 text-muted-foreground'
+              : 'border-warning/50 bg-warning/15 text-warning ring-1 ring-warning/30',
       ].join(' ')}
     >
       <div className="flex items-center gap-2 text-xs font-bold">

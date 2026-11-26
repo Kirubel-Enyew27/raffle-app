@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom'
-import { Trophy, Frown, Handshake, Eye, ArrowLeft, Loader2, RotateCcw } from 'lucide-react'
+import { Trophy, Frown, Handshake, Ban, Eye, ArrowLeft, Loader2, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -32,6 +32,8 @@ export function GameOutcomeOverlay({
   const { t } = useTranslation()
   const isWin = outcome.type === 'win'
   const isLoss = outcome.type === 'loss'
+  const isCancelled = outcome.type === 'cancelled'
+  const allowRematch = canRematch && !isCancelled
 
   const title = getOutcomeTitle(outcome, t)
   const subtitle = getOutcomeSubtitle(outcome, t)
@@ -45,8 +47,8 @@ export function GameOutcomeOverlay({
         className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+4.25rem)] sm:bottom-6 left-1/2 z-50 -translate-x-1/2 flex items-center justify-between sm:justify-center gap-2 sm:gap-3 rounded-full border border-border/80 bg-background/95 px-3 py-1.5 sm:px-5 sm:py-2.5 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-3 w-[calc(100%-1.5rem)] max-w-md sm:w-auto"
       >
         <div className="flex items-center gap-1.5 sm:gap-2 font-bold text-xs shrink-0">
-          <span className="text-sm sm:text-base">{isWin ? '🏆' : isLoss ? '💀' : '🤝'}</span>
-          <span className={isWin ? 'text-success' : isLoss ? 'text-destructive' : 'text-warning'}>
+          <span className="text-sm sm:text-base">{isWin ? '🏆' : isLoss ? '💀' : isCancelled ? '🚫' : '🤝'}</span>
+          <span className={isWin ? 'text-success' : isLoss ? 'text-destructive' : isCancelled ? 'text-muted-foreground' : 'text-warning'}>
             {title}
           </span>
           <span className="text-muted-foreground hidden md:inline">· {subtitle}</span>
@@ -66,7 +68,7 @@ export function GameOutcomeOverlay({
             <span>{t('p2p.outcome.viewResults', 'View Results')}</span>
           </Button>
 
-          {canRematch && (
+          {allowRematch && (
             <Button
               size="sm"
               onClick={onRematch}
@@ -126,7 +128,9 @@ export function GameOutcomeOverlay({
               ? 'border-success/40 shadow-success/10'
               : isLoss
                 ? 'border-destructive/40 shadow-destructive/10'
-                : 'border-warning/40 shadow-warning/10',
+                : isCancelled
+                  ? 'border-border shadow-none'
+                  : 'border-warning/40 shadow-warning/10',
           ].join(' ')}
         >
           <div className="flex flex-col items-center text-center space-y-3">
@@ -138,13 +142,17 @@ export function GameOutcomeOverlay({
                   ? 'border-success/40 bg-success/15 text-success shadow-success/20'
                   : isLoss
                     ? 'border-destructive/40 bg-destructive/15 text-destructive shadow-destructive/20'
-                    : 'bg-warning/15 border-warning/40 text-warning shadow-warning/20',
+                    : isCancelled
+                      ? 'bg-muted border-border text-muted-foreground shadow-none'
+                      : 'bg-warning/15 border-warning/40 text-warning shadow-warning/20',
               ].join(' ')}
             >
               {isWin ? (
                 <Trophy className="h-7 w-7 animate-bounce" />
               ) : isLoss ? (
                 <Frown className="h-7 w-7" />
+              ) : isCancelled ? (
+                <Ban className="h-7 w-7" />
               ) : (
                 <Handshake className="h-7 w-7" />
               )}
@@ -164,14 +172,18 @@ export function GameOutcomeOverlay({
                     ? 'border-success/40 text-success bg-success/10'
                     : isLoss
                       ? 'border-destructive/40 text-destructive bg-destructive/10'
-                      : 'border-warning/40 text-warning bg-warning/10',
+                      : isCancelled
+                        ? 'border-border text-muted-foreground bg-muted/60'
+                        : 'border-warning/40 text-warning bg-warning/10',
                 ].join(' ')}
               >
                 {isWin
                   ? t('p2p.outcome.matchWon', 'Match Won')
                   : isLoss
                     ? t('p2p.outcome.matchLost', 'Match Lost')
-                    : t('p2p.outcome.matchTied', 'Match Tied')}
+                    : isCancelled
+                      ? t('p2p.history.cancelled', 'Cancelled')
+                      : t('p2p.outcome.matchTied', 'Match Tied')}
               </Badge>
               <h2 id="outcome-title" className="text-xl sm:text-2xl font-black tracking-tight">
                 {title}
@@ -207,7 +219,7 @@ export function GameOutcomeOverlay({
                   <span>{t('p2p.outcome.reviewBoard', 'Review Board')}</span>
                 </Button>
 
-                {canRematch ? (
+                {allowRematch ? (
                   <Button
                     size="sm"
                     onClick={onRematch}

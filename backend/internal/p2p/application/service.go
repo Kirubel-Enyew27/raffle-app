@@ -826,8 +826,12 @@ func (s *P2PService) tryAutoMatch(ctx context.Context, userID, gameSlug, mode st
 
 	// ListWaiting returns newest first: prefer the room whose host just opened
 	// it, so an opponent who is still on the page is picked over an old room.
+	now := time.Now()
 	for _, room := range rooms {
 		if room.CreatedBy == userID || room.StakeCents != stakeCents || room.CompetitionMode != mode {
+			continue
+		}
+		if room.CreatedAt.Before(now.Add(-idleRoomTTL(room.MatchType))) {
 			continue
 		}
 		// JoinMatch re-checks the room under a row lock, so a room filled or
@@ -840,6 +844,9 @@ func (s *P2PService) tryAutoMatch(ctx context.Context, userID, gameSlug, mode st
 
 	for _, room := range rooms {
 		if room.CreatedBy != userID || room.StakeCents != stakeCents || room.CompetitionMode != mode {
+			continue
+		}
+		if room.CreatedAt.Before(now.Add(-idleRoomTTL(room.MatchType))) {
 			continue
 		}
 		players, err := s.playerRepo.ListByMatch(ctx, room.ID)
@@ -988,7 +995,26 @@ func (s *P2PService) CancelMatch(ctx context.Context, userID, matchID string) (*
 		return nil, domain.ErrNotParticipant
 	}
 
-	if match.Status != domain.StatusWaiting {
+	players, err := s.playerRepo.ListByMatchTx(ctx, tx, match.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Idempotent: a retried cancel (or one racing with the idle-room sweeper)
+	// returns the canonical cancelled state without releasing escrow twice.
+	if match.Status == domain.StatusCancelled {
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		match.Players = players
+		return s.buildView(match, userID), nil
+	}
+
+	if match.Finished() {
+		return nil, domain.ErrMatchAlreadyEnded
+	}
+
+	if match.Status != domain.StatusWaiting && match.Status != domain.StatusReady {
 		return nil, domain.ErrMatchNotJoinable
 	}
 
@@ -998,8 +1024,16 @@ func (s *P2PService) CancelMatch(ctx context.Context, userID, matchID string) (*
 	}
 
 	if match.StakeCents > 0 {
-		if err := s.escrowRepo.ReleaseReservedFundsTx(ctx, tx, match.CreatedBy, match.StakeCents, match.ID, "room cancelled by host"); err != nil {
-			return nil, err
+		if len(players) > 0 {
+			for _, p := range players {
+				if err := s.escrowRepo.ReleaseReservedFundsTx(ctx, tx, p.UserID, match.StakeCents, match.ID, "room cancelled by host"); err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			if err := s.escrowRepo.ReleaseReservedFundsTx(ctx, tx, match.CreatedBy, match.StakeCents, match.ID, "room cancelled by host"); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -1007,10 +1041,6 @@ func (s *P2PService) CancelMatch(ctx context.Context, userID, matchID string) (*
 		return nil, err
 	}
 
-	match.Status = domain.StatusCancelled
-	match.CompletedAt = &now
-
-	players, _ := s.playerRepo.ListByMatch(ctx, match.ID)
 	match.Players = players
 
 	if s.realtime != nil {
@@ -1701,6 +1731,9 @@ func (s *P2PService) RequestRematch(ctx context.Context, userID, matchID string)
 	}
 	if findPlayer(players, userID) == nil {
 		return nil, domain.ErrNotParticipant
+	}
+	if match.Status == domain.StatusCancelled {
+		return nil, fmt.Errorf("%w: cannot rematch a cancelled match", domain.ErrMatchNotFinished)
 	}
 	if !match.Finished() {
 		return nil, fmt.Errorf("%w: cannot rematch a match in status %s", domain.ErrMatchNotFinished, match.Status)

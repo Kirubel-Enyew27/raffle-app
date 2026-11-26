@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { extractMatchOutcome } from './outcomeExtractor.ts'
+import { extractMatchOutcome, getOutcomeTitle } from './outcomeExtractor.ts'
 import type { P2PMatch } from '@/types/api'
 
 const baseMatch: P2PMatch = {
@@ -210,3 +210,32 @@ test('Resignation/forfeit produces clear surrender explanation without fake winn
   assert.equal(resignerView.reason, 'forfeited')
   assert.match(resignerView.subtitle, /You surrendered/i)
 })
+
+test('Cancelled match never produces a win or loss for either player', () => {
+  const match: P2PMatch = {
+    ...baseMatch,
+    status: 'cancelled',
+    winner_user_id: undefined,
+  }
+
+  const dummyT = ((key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key) as any
+
+  const outcomeCreator = extractMatchOutcome(match, 'user-0')
+  assert.ok(outcomeCreator)
+  assert.equal(outcomeCreator.type, 'cancelled')
+  assert.equal(outcomeCreator.reason, 'cancelled')
+  assert.equal(outcomeCreator.winnerUserId, null)
+  assert.notEqual(outcomeCreator.type, 'loss')
+  assert.notEqual(outcomeCreator.type, 'win')
+  assert.equal(getOutcomeTitle(outcomeCreator, dummyT), 'Match Cancelled')
+
+  const outcomeOpponent = extractMatchOutcome(match, 'user-1')
+  assert.ok(outcomeOpponent)
+  assert.equal(outcomeOpponent.type, 'cancelled')
+  assert.equal(outcomeOpponent.reason, 'cancelled')
+  assert.equal(outcomeOpponent.winnerUserId, null)
+  assert.notEqual(outcomeOpponent.type, 'loss')
+  assert.notEqual(outcomeOpponent.type, 'win')
+  assert.equal(getOutcomeTitle(outcomeOpponent, dummyT), 'Match Cancelled')
+})
+

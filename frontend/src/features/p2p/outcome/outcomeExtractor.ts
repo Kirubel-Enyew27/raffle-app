@@ -36,6 +36,7 @@ export function getOutcomeTitle(outcome: GameOutcome, t: TFunction): string {
   if (outcome.titleKey) return t(outcome.titleKey, { defaultValue: outcome.title })
   if (outcome.type === 'win') return t('p2p.outcome.youWin', { defaultValue: outcome.title })
   if (outcome.type === 'loss') return t('p2p.outcome.youLose', { defaultValue: outcome.title })
+  if (outcome.type === 'cancelled') return t('p2p.match.cancelledTitle', { defaultValue: outcome.title })
   return t('p2p.outcome.draw', { defaultValue: outcome.title })
 }
 
@@ -75,6 +76,27 @@ export function extractMatchOutcome(
   const opponentName = opponentPlayer?.display_name || (opponentPlayer ? 'Opponent' : 'Challenger')
   const opponentAvatar = opponentPlayer?.avatar_url
 
+  // A cancelled match or invitation has no winner or loser and must never fall
+  // through to the win/loss classification below.
+  if (match.status === 'cancelled') {
+    return {
+      matchId: match.id,
+      gameSlug: match.game_slug,
+      type: 'cancelled',
+      reason: 'cancelled',
+      title: 'Match Cancelled',
+      subtitle: 'Match was cancelled',
+      detail: 'Session terminated',
+      titleKey: 'p2p.match.cancelledTitle',
+      subtitleKey: 'p2p.outcome.cancelledSubtitle',
+      detailKey: 'p2p.outcome.cancelledDetail',
+      winnerUserId: null,
+      winnerPlayerIndex: null,
+      opponentName,
+      opponentAvatar,
+    }
+  }
+
   const isTie = match.status === 'tied' || (!match.winner_user_id && match.status === 'completed')
   const isWinner = !isTie && match.winner_user_id === currentUserId
   const outcomeType: OutcomeType = isTie ? 'draw' : isWinner ? 'win' : 'loss'
@@ -112,30 +134,6 @@ export function extractMatchOutcome(
       detailKey,
       winnerUserId: match.winner_user_id ?? null,
       winnerPlayerIndex: isWinner ? myPlayerIndex : 1 - myPlayerIndex,
-      opponentName,
-      opponentAvatar,
-    }
-  }
-
-  if (match.status === 'cancelled') {
-    reason = 'cancelled'
-    subtitle = 'Match was cancelled'
-    subtitleKey = 'p2p.outcome.cancelledSubtitle'
-    detail = 'Session terminated'
-    detailKey = 'p2p.outcome.cancelledDetail'
-    return {
-      matchId: match.id,
-      gameSlug: match.game_slug,
-      type: outcomeType,
-      reason,
-      title,
-      subtitle,
-      detail,
-      titleKey,
-      subtitleKey,
-      detailKey,
-      winnerUserId: match.winner_user_id ?? null,
-      winnerPlayerIndex: null,
       opponentName,
       opponentAvatar,
     }

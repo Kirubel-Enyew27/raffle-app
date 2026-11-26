@@ -110,6 +110,9 @@ export class SoundEventTracker {
     if (this.playedEndSoundFor === match.id) return
     this.playedEndSoundFor = match.id
 
+    if (match.status === 'cancelled') {
+      return
+    }
     if (match.status === 'tied') {
       this.play(() => this.sink.playDraw())
     } else if (match.winner_user_id && match.winner_user_id === this.userId) {

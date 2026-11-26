@@ -482,7 +482,7 @@ func (r *MatchRepo) MarkCompletedTx(ctx context.Context, tx *sql.Tx, match *doma
 		disconnect_deadline = NULL,
 		updated_at = GREATEST(clock_timestamp(), updated_at + INTERVAL '1 microsecond'),
 		state_version = state_version + CASE WHEN $6 THEN 1 ELSE 0 END
-		WHERE id = $1 RETURNING updated_at, state_version`,
+		WHERE id = $1 AND status <> 'cancelled' RETURNING updated_at, state_version`,
 		match.ID, status, nullIfEmpty(ptrStr(winnerUserID)), int64(totalFeeCents), completedAt, incrementVersion).Scan(&match.UpdatedAt, &match.StateVersion)
 	if err == nil {
 		match.Status = status
@@ -500,16 +500,24 @@ func (r *MatchRepo) MarkCompletedTx(ctx context.Context, tx *sql.Tx, match *doma
 func (r *MatchRepo) MarkCancelledTx(ctx context.Context, tx *sql.Tx, match *domain.Match, cancelledAt time.Time) error {
 	err := tx.QueryRowContext(ctx, `UPDATE p2p_matches SET
 		status = 'cancelled',
+		winner_user_id = NULL,
 		completed_at = $2,
 		current_turn_user_id = NULL,
 		turn_deadline = NULL,
+		disconnect_user_id = NULL,
+		disconnect_deadline = NULL,
 		updated_at = GREATEST(clock_timestamp(), updated_at + INTERVAL '1 microsecond'),
 		state_version = state_version + 1
-		WHERE id = $1 AND status = 'waiting' RETURNING updated_at, state_version`,
+		WHERE id = $1 AND status NOT IN ('completed', 'forfeited', 'tied', 'cancelled') RETURNING updated_at, state_version`,
 		match.ID, cancelledAt).Scan(&match.UpdatedAt, &match.StateVersion)
 	if err == nil {
 		match.Status = domain.StatusCancelled
+		match.WinnerUserID = nil
 		match.CompletedAt = &cancelledAt
+		match.CurrentTurnUserID = nil
+		match.TurnDeadline = nil
+		match.DisconnectUserID = nil
+		match.DisconnectDeadline = nil
 	}
 	return err
 }

@@ -59,7 +59,9 @@ export function useGameOutcomeController({
       return () => clearTimeout(timer)
     }
 
-    hapticNotification(outcome.type === 'win' ? 'success' : outcome.type === 'draw' ? 'warning' : 'error')
+    if (outcome.type !== 'cancelled') {
+      hapticNotification(outcome.type === 'win' ? 'success' : outcome.type === 'draw' ? 'warning' : 'error')
+    }
 
     const t0 = setTimeout(() => {
       setStagedPhase('decisive')

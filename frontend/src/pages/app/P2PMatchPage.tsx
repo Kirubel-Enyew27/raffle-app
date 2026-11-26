@@ -778,7 +778,7 @@ export function Component() {
   // Tic-Tac-Toe identifies seats by shape; every other game keeps its symbol text.
   const isTicTacToe = match.game_slug === 'tic-tac-toe'
   const mySeat = isTicTacToe ? seatForPlayerIndex(myPlayer?.player_index) : null
-  const isGameOver = ['completed', 'tied', 'forfeited', 'cancelled'].includes(match.status)
+  const isGameOver = ['completed', 'tied', 'forfeited'].includes(match.status)
   // Presentation-only overlay. The cached `match` remains the authoritative
   // snapshot used by version checks, settlement and reconnect recovery.
   const boardMatch = activePendingMove ? applyOptimisticMove(match, activePendingMove) : match
@@ -991,7 +991,7 @@ export function Component() {
 
       {/* The stream gave up. Keep polling the authoritative state and offer a
           real retry instead of forcing a page reload (which lost the match UI). */}
-      {connection.state === 'failed' && !isGameOver && (
+      {connection.state === 'failed' && !isTerminalMatch && (
         <div
           role="alert"
           className="flex items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive"

@@ -1,4 +1,4 @@
-export type OutcomeType = 'win' | 'loss' | 'draw'
+export type OutcomeType = 'win' | 'loss' | 'draw' | 'cancelled'
 
 export type DecisiveReason =
   | 'line_completion'
