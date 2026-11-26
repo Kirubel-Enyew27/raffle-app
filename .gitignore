@@ -57,4 +57,5 @@ DEPLOYMENT.md
 I18N_PROGRESS.md
 docker-compose.dev.yml
 load-tests/
-scripts/
+# Root-only: frontend/scripts/ contains tracked build validation scripts.
+/scripts/
