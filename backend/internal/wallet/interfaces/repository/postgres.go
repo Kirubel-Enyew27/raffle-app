@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/raffle-app/backend/internal/wallet/domain"
@@ -106,6 +107,8 @@ func (r *WalletRepo) FindTransactionsByWalletID(ctx context.Context, walletID st
 	var err error
 	if txType == "deposit" {
 		rows, err = r.db.QueryContext(ctx, `SELECT id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at FROM wallet_transactions WHERE wallet_id = $1 AND type IN ('deposit', 'sms_deposit') ORDER BY created_at DESC LIMIT $2 OFFSET $3`, walletID, limit, offset)
+	} else if txType == "withdraw" || txType == "withdrawal" {
+		rows, err = r.db.QueryContext(ctx, `SELECT id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at FROM wallet_transactions WHERE wallet_id = $1 AND type IN ('withdrawal', 'withdraw') ORDER BY created_at DESC LIMIT $2 OFFSET $3`, walletID, limit, offset)
 	} else if txType != "" {
 		rows, err = r.db.QueryContext(ctx, `SELECT id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at FROM wallet_transactions WHERE wallet_id = $1 AND type = $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4`, walletID, txType, limit, offset)
 	} else {
@@ -152,6 +155,8 @@ func (r *WalletRepo) CountTransactionsByWalletID(ctx context.Context, walletID s
 	var err error
 	if txType == "deposit" {
 		err = r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM wallet_transactions WHERE wallet_id = $1 AND type IN ('deposit', 'sms_deposit')`, walletID).Scan(&count)
+	} else if txType == "withdraw" || txType == "withdrawal" {
+		err = r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM wallet_transactions WHERE wallet_id = $1 AND type IN ('withdrawal', 'withdraw')`, walletID).Scan(&count)
 	} else if txType != "" {
 		err = r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM wallet_transactions WHERE wallet_id = $1 AND type = $2`, walletID, txType).Scan(&count)
 	} else {
@@ -211,8 +216,101 @@ func (r *WalletRepo) UpdateTransactionStatus(ctx context.Context, id, status str
 	return err
 }
 
+// RequestWithdrawal atomically locks the wallet, validates available funds,
+// increases reserved_balance (escrow), and creates a pending withdrawal transaction.
+func (r *WalletRepo) RequestWithdrawal(ctx context.Context, userID string, amount float64, reference, description string) (*domain.WalletTransaction, *domain.Wallet, error) {
+	if amount <= 0 {
+		return nil, nil, errors.ErrValidationFailed
+	}
+
+	dbTx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer dbTx.Rollback()
+
+	wallet := &domain.Wallet{}
+	err = dbTx.QueryRowContext(ctx,
+		`SELECT id, user_id, balance, reserved_balance, currency, created_at, updated_at
+		 FROM wallets WHERE user_id = $1 ORDER BY created_at ASC, id ASC LIMIT 1 FOR UPDATE`, userID).Scan(
+		&wallet.ID, &wallet.UserID, &wallet.Balance, &wallet.ReservedBalance,
+		&wallet.Currency, &wallet.CreatedAt, &wallet.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil, errors.ErrNotFound
+		}
+		return nil, nil, err
+	}
+
+	// Funds reserved for active P2P stakes or pending withdrawals cannot be spent or withdrawn.
+	if wallet.Balance-wallet.ReservedBalance < amount {
+		return nil, nil, errors.ErrInsufficientFunds
+	}
+
+	now := time.Now()
+	amtCents := int64(math.Round(amount * 100))
+	newReserved := wallet.ReservedBalance + amount
+
+	if _, err := dbTx.ExecContext(ctx,
+		`UPDATE wallets
+		 SET reserved_balance = reserved_balance + $1,
+		     reserved_cents = reserved_cents + $2,
+		     updated_at = $3
+		 WHERE id = $4`,
+		amount, amtCents, now, wallet.ID); err != nil {
+		return nil, nil, err
+	}
+
+	walletTx := &domain.WalletTransaction{
+		WalletID:      wallet.ID,
+		UserID:        userID,
+		Type:          "withdrawal",
+		Status:        "pending",
+		Amount:        amount,
+		BalanceBefore: wallet.Balance,
+		BalanceAfter:  wallet.Balance,
+		Reference:     reference,
+		Description:   description,
+		Metadata:      map[string]interface{}{"reserved_amount": amount},
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+
+	metaJSON, err := marshalMetadata(walletTx.Metadata)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	err = dbTx.QueryRowContext(ctx,
+		`INSERT INTO wallet_transactions (
+			wallet_id, user_id, type, status, amount,
+			balance_before, balance_after, reference, description, metadata,
+			created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12)
+		RETURNING id`,
+		walletTx.WalletID, walletTx.UserID, walletTx.Type, walletTx.Status,
+		walletTx.Amount, walletTx.BalanceBefore, walletTx.BalanceAfter, walletTx.Reference,
+		walletTx.Description, metaJSON, walletTx.CreatedAt, walletTx.UpdatedAt,
+	).Scan(&walletTx.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := dbTx.Commit(); err != nil {
+		return nil, nil, err
+	}
+
+	wallet.ReservedBalance = newReserved
+	wallet.AvailableBalance = wallet.Balance - newReserved
+	wallet.UpdatedAt = now
+
+	return walletTx, wallet, nil
+}
+
 // ApproveWithdrawal locks the withdrawal and wallet rows before changing either
-// one. Two admins approving the same request therefore cannot both debit the
+// one. It releases the reserved escrow funds and debits the total balance.
+// Two admins approving the same request therefore cannot both debit the
 // wallet, and a database failure rolls the whole action back.
 func (r *WalletRepo) ApproveWithdrawal(ctx context.Context, id string) (*domain.WalletTransaction, *domain.Wallet, error) {
 	dbTx, err := r.db.BeginTx(ctx, nil)
@@ -258,14 +356,24 @@ func (r *WalletRepo) ApproveWithdrawal(ctx context.Context, id string) (*domain.
 		}
 		return nil, nil, err
 	}
-	if wallet.Balance-wallet.ReservedBalance < walletTx.Amount {
+	if wallet.Balance < walletTx.Amount {
 		return nil, nil, errors.ErrInsufficientFunds
 	}
 
 	now := time.Now()
+	amtCents := int64(math.Round(walletTx.Amount * 100))
 	newBalance := wallet.Balance - walletTx.Amount
+	newReserved := math.Max(0, wallet.ReservedBalance - walletTx.Amount)
+
+	// Consume reserved funds and debit balance
 	if _, err := dbTx.ExecContext(ctx,
-		`UPDATE wallets SET balance = $1, updated_at = $2 WHERE id = $3`, newBalance, now, wallet.ID); err != nil {
+		`UPDATE wallets
+		 SET balance = balance - $1,
+		     reserved_balance = GREATEST(0, reserved_balance - $1),
+		     reserved_cents = GREATEST(0, reserved_cents - $2),
+		     updated_at = $3
+		 WHERE id = $4`,
+		walletTx.Amount, amtCents, now, wallet.ID); err != nil {
 		return nil, nil, err
 	}
 	if _, err := dbTx.ExecContext(ctx,
@@ -278,7 +386,8 @@ func (r *WalletRepo) ApproveWithdrawal(ctx context.Context, id string) (*domain.
 	}
 
 	wallet.Balance = newBalance
-	wallet.AvailableBalance = newBalance - wallet.ReservedBalance
+	wallet.ReservedBalance = newReserved
+	wallet.AvailableBalance = newBalance - newReserved
 	wallet.UpdatedAt = now
 	walletTx.Status = "completed"
 	walletTx.BalanceBefore = wallet.Balance + walletTx.Amount
@@ -287,33 +396,89 @@ func (r *WalletRepo) ApproveWithdrawal(ctx context.Context, id string) (*domain.
 	return walletTx, wallet, nil
 }
 
-// RejectWithdrawal conditionally moves a pending withdrawal to rejected in one
-// statement, so an approval racing the rejection cannot be overwritten.
-func (r *WalletRepo) RejectWithdrawal(ctx context.Context, id string) (*domain.WalletTransaction, error) {
+// RejectWithdrawal atomically moves a pending withdrawal to rejected and releases
+// the reserved funds from escrow back into the available wallet balance.
+func (r *WalletRepo) RejectWithdrawal(ctx context.Context, id string) (*domain.WalletTransaction, *domain.Wallet, error) {
+	dbTx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer dbTx.Rollback()
+
 	walletTx := &domain.WalletTransaction{}
 	var metaJSON []byte
-	err := r.db.QueryRowContext(ctx,
-		`UPDATE wallet_transactions
-		    SET status = 'rejected', updated_at = $2
-		  WHERE id = $1 AND type = 'withdrawal' AND status = 'pending'
-		  RETURNING id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at`,
-		id, time.Now()).Scan(
+	err = dbTx.QueryRowContext(ctx,
+		`SELECT id, wallet_id, user_id, type, status, amount, balance_before, balance_after, reference, description, metadata, created_at, updated_at
+		 FROM wallet_transactions WHERE id = $1 FOR UPDATE`, id).Scan(
 		&walletTx.ID, &walletTx.WalletID, &walletTx.UserID, &walletTx.Type, &walletTx.Status,
 		&walletTx.Amount, &walletTx.BalanceBefore, &walletTx.BalanceAfter, &walletTx.Reference,
 		&walletTx.Description, &metaJSON, &walletTx.CreatedAt, &walletTx.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, errors.ErrConflict
+			return nil, nil, errors.ErrNotFound
 		}
-		return nil, err
+		return nil, nil, err
+	}
+	if walletTx.Type != "withdrawal" || walletTx.Status != "pending" {
+		return nil, nil, errors.ErrConflict
 	}
 	if metaJSON != nil {
 		if err := json.Unmarshal(metaJSON, &walletTx.Metadata); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return walletTx, nil
+
+	wallet := &domain.Wallet{}
+	err = dbTx.QueryRowContext(ctx,
+		`SELECT id, user_id, balance, reserved_balance, currency, created_at, updated_at
+		 FROM wallets WHERE id = $1 FOR UPDATE`, walletTx.WalletID).Scan(
+		&wallet.ID, &wallet.UserID, &wallet.Balance, &wallet.ReservedBalance,
+		&wallet.Currency, &wallet.CreatedAt, &wallet.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil, errors.ErrNotFound
+		}
+		return nil, nil, err
+	}
+
+	now := time.Now()
+	amtCents := int64(math.Round(walletTx.Amount * 100))
+	newReserved := math.Max(0, wallet.ReservedBalance - walletTx.Amount)
+
+	// Release reserved escrow funds back to available balance without modifying total balance
+	if _, err := dbTx.ExecContext(ctx,
+		`UPDATE wallets
+		 SET reserved_balance = GREATEST(0, reserved_balance - $1),
+		     reserved_cents = GREATEST(0, reserved_cents - $2),
+		     updated_at = $3
+		 WHERE id = $4`,
+		walletTx.Amount, amtCents, now, wallet.ID); err != nil {
+		return nil, nil, err
+	}
+
+	if _, err := dbTx.ExecContext(ctx,
+		`UPDATE wallet_transactions
+		 SET status = 'rejected',
+		     updated_at = $1
+		 WHERE id = $2`,
+		now, walletTx.ID); err != nil {
+		return nil, nil, err
+	}
+
+	if err := dbTx.Commit(); err != nil {
+		return nil, nil, err
+	}
+
+	wallet.ReservedBalance = newReserved
+	wallet.AvailableBalance = wallet.Balance - newReserved
+	wallet.UpdatedAt = now
+
+	walletTx.Status = "rejected"
+	walletTx.UpdatedAt = now
+
+	return walletTx, wallet, nil
 }
 
 func (r *WalletRepo) ExistsByReference(ctx context.Context, reference string) (bool, error) {

@@ -40,6 +40,9 @@ const PAGE_SIZE = 10
 function BalanceCard() {
   const { t } = useTranslation()
   const { data, isLoading } = useQuery({ queryKey: ['wallet'], queryFn: walletApi.balance, staleTime: 0 })
+  const availableBalance = data?.available_balance ?? data?.balance ?? 0
+  const reservedBalance = data?.reserved_balance ?? 0
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -50,15 +53,25 @@ function BalanceCard() {
         {isLoading ? <Skeleton className="h-9 w-40" /> : (
           <>
             <p className="text-3xl font-bold">
-              {formatCurrency(data?.available_balance ?? data?.balance ?? 0, data?.currency)}
+              {formatCurrency(availableBalance, data?.currency)}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">{t('wallet.ethiopianBirr')}</p>
-            {(data?.reserved_balance ?? 0) > 0 && (
-              <p className="mt-2 text-[11px] font-medium text-warning">
-                {t('wallet.reservedBalanceNote', {
-                  amount: formatCurrency(data?.reserved_balance ?? 0, data?.currency),
-                })}
-              </p>
+            {reservedBalance > 0 && (
+              <div className="mt-3 space-y-1.5 rounded-lg border border-warning/30 bg-warning/10 p-2.5 text-xs text-warning">
+                <div className="flex items-center justify-between font-medium">
+                  <span>{t('wallet.totalBalance')}:</span>
+                  <span className="font-semibold tabular-nums">{formatCurrency(data?.balance ?? 0, data?.currency)}</span>
+                </div>
+                <div className="flex items-center justify-between text-warning/90">
+                  <span>{t('wallet.reservedEscrow')}:</span>
+                  <span className="font-semibold tabular-nums">{formatCurrency(reservedBalance, data?.currency)}</span>
+                </div>
+                <p className="pt-1 text-[11px] leading-tight text-warning/80">
+                  {t('wallet.reservedBalanceNote', {
+                    amount: formatCurrency(reservedBalance, data?.currency),
+                  })}
+                </p>
+              </div>
             )}
           </>
         )}
@@ -515,8 +528,9 @@ function WithdrawCard() {
     },
   })
 
+  const available = wallet?.available_balance ?? wallet?.balance ?? 0
   const parsedAmount = parseFloat(amount)
-  const isValid = parsedAmount > 0 && parsedAmount <= (wallet?.balance ?? 0) && phone.trim().length >= 7
+  const isValid = parsedAmount > 0 && parsedAmount <= available && phone.trim().length >= 7
 
   const reset = () => { setShowForm(false); setAmount(''); setPhone('') }
 
@@ -537,7 +551,19 @@ function WithdrawCard() {
       </CardHeader>
       <CardContent>
         {!showForm ? (
-          <p className="text-sm text-muted-foreground">{t('wallet.withdrawDescription')}</p>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">{t('wallet.withdrawDescription')}</p>
+            {(wallet?.reserved_balance ?? 0) > 0 && (
+              <div className="rounded-lg border border-warning/30 bg-warning/10 p-2.5 text-xs text-warning">
+                <p className="font-medium">{t('wallet.pendingWithdrawals')}</p>
+                <p className="mt-0.5 text-[11px] text-warning/90">
+                  {t('wallet.reservedBalanceNote', {
+                    amount: formatCurrency(wallet?.reserved_balance ?? 0, wallet?.currency),
+                  })}
+                </p>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="space-y-4">
             {withdrawMutation.isSuccess && (
@@ -565,7 +591,7 @@ function WithdrawCard() {
                   </div>
                   {wallet && (
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {t('wallet.balanceHelper', { balance: formatCurrency(wallet.balance), max: formatCurrency(wallet.balance) })}
+                      {t('wallet.balanceHelper', { balance: formatCurrency(available), max: formatCurrency(available) })}
                     </p>
                   )}
                 </div>
@@ -623,7 +649,7 @@ function TransactionHistory() {
   const isCredit = (type: string) =>
     type === 'deposit' || type === 'p2p_stake_refund' || type === 'p2p_payout'
   const isDebit = (type: string) =>
-    type === 'withdraw' || type === 'p2p_match_stake' || type === 'p2p_platform_fee'
+    type === 'withdraw' || type === 'withdrawal' || type === 'p2p_match_stake' || type === 'p2p_platform_fee'
 
   // P2P ledger rows keep their own categories instead of being folded into
   // ordinary deposits/withdrawals.
@@ -638,9 +664,10 @@ function TransactionHistory() {
       case 'p2p_platform_fee':
         return t('wallet.platformFee')
     }
-    if (tx.status === 'completed') return tx.type === 'deposit' ? t('wallet.credit') : t('wallet.debit')
-    if (tx.status === 'pending') return t('wallet.pending')
-    if (tx.status === 'rejected') return t('wallet.failed')
+    const isWithdrawal = tx.type === 'withdraw' || tx.type === 'withdrawal'
+    if (tx.status === 'completed') return isCredit(tx.type) ? t('wallet.credit') : t('wallet.debit')
+    if (tx.status === 'pending') return isWithdrawal ? t('wallet.pendingWithdrawal') : t('wallet.pending')
+    if (tx.status === 'rejected') return isWithdrawal ? t('wallet.rejectedWithdrawal') : t('wallet.failed')
     return tx.status
   }
 

@@ -143,8 +143,11 @@ func (m *mockWalletRepo) UpdateTransactionStatus(ctx context.Context, id, status
 func (m *mockWalletRepo) ApproveWithdrawal(ctx context.Context, id string) (*walletdomain.WalletTransaction, *walletdomain.Wallet, error) {
 	return &walletdomain.WalletTransaction{ID: id, Status: "completed"}, &walletdomain.Wallet{ID: "w-1", Balance: 100}, nil
 }
-func (m *mockWalletRepo) RejectWithdrawal(ctx context.Context, id string) (*walletdomain.WalletTransaction, error) {
-	return &walletdomain.WalletTransaction{ID: id, Status: "rejected"}, nil
+func (m *mockWalletRepo) RejectWithdrawal(ctx context.Context, id string) (*walletdomain.WalletTransaction, *walletdomain.Wallet, error) {
+	return &walletdomain.WalletTransaction{ID: id, Status: "rejected"}, &walletdomain.Wallet{ID: "w-1", Balance: 100}, nil
+}
+func (m *mockWalletRepo) RequestWithdrawal(ctx context.Context, userID string, amount float64, reference, description string) (*walletdomain.WalletTransaction, *walletdomain.Wallet, error) {
+	return &walletdomain.WalletTransaction{ID: "tx-1", UserID: userID, Amount: amount, Status: "pending"}, &walletdomain.Wallet{ID: "w-1", UserID: userID, Balance: 100, ReservedBalance: amount}, nil
 }
 func (m *mockWalletRepo) ExistsByReference(ctx context.Context, reference string) (bool, error) {
 	return false, nil

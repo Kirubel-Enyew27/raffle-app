@@ -23,7 +23,8 @@ type WalletRepository interface {
 	FindTransactionByID(ctx context.Context, id string) (*WalletTransaction, error)
 	UpdateTransactionStatus(ctx context.Context, id, status string) error
 	ApproveWithdrawal(ctx context.Context, id string) (*WalletTransaction, *Wallet, error)
-	RejectWithdrawal(ctx context.Context, id string) (*WalletTransaction, error)
+	RejectWithdrawal(ctx context.Context, id string) (*WalletTransaction, *Wallet, error)
+	RequestWithdrawal(ctx context.Context, userID string, amount float64, reference, description string) (*WalletTransaction, *Wallet, error)
 	ExistsByReference(ctx context.Context, reference string) (bool, error)
 }
 

@@ -150,8 +150,12 @@ func (m *mockWalletRepo) ApproveWithdrawal(ctx context.Context, id string) (*dom
 	return nil, nil, fmt.Errorf("not implemented")
 }
 
-func (m *mockWalletRepo) RejectWithdrawal(ctx context.Context, id string) (*domain.WalletTransaction, error) {
-	return nil, fmt.Errorf("not implemented")
+func (m *mockWalletRepo) RejectWithdrawal(ctx context.Context, id string) (*domain.WalletTransaction, *domain.Wallet, error) {
+	return nil, nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockWalletRepo) RequestWithdrawal(ctx context.Context, userID string, amount float64, reference, description string) (*domain.WalletTransaction, *domain.Wallet, error) {
+	return nil, nil, fmt.Errorf("not implemented")
 }
 
 func (m *mockWalletRepo) ExistsByReference(ctx context.Context, reference string) (bool, error) {

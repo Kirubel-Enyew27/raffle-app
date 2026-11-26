@@ -73,8 +73,11 @@ func (s *stubWalletRepo) UpdateTransactionStatus(ctx context.Context, id, status
 func (s *stubWalletRepo) ApproveWithdrawal(ctx context.Context, id string) (*domain.WalletTransaction, *domain.Wallet, error) {
 	return nil, nil, nil
 }
-func (s *stubWalletRepo) RejectWithdrawal(ctx context.Context, id string) (*domain.WalletTransaction, error) {
-	return nil, nil
+func (s *stubWalletRepo) RejectWithdrawal(ctx context.Context, id string) (*domain.WalletTransaction, *domain.Wallet, error) {
+	return nil, nil, nil
+}
+func (s *stubWalletRepo) RequestWithdrawal(ctx context.Context, userID string, amount float64, reference, description string) (*domain.WalletTransaction, *domain.Wallet, error) {
+	return nil, nil, nil
 }
 func (s *stubWalletRepo) ExistsByReference(ctx context.Context, reference string) (bool, error) {
 	return false, nil

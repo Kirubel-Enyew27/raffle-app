@@ -129,42 +129,25 @@ func (s *WalletService) Withdraw(ctx context.Context, userID string, amount floa
 	if amount <= 0 {
 		return nil, errors.ErrValidationFailed
 	}
-	wallet, err := s.GetWallet(ctx, userID)
+
+	tx, wallet, err := s.repo.RequestWithdrawal(ctx, userID, amount, reference, description)
 	if err != nil {
 		return nil, err
 	}
-	// Only unreserved funds may be withdrawn; stakes held for an active P2P
-	// match stay locked until that match settles.
-	if wallet.Balance-wallet.ReservedBalance < amount {
-		return nil, errors.ErrInsufficientFunds
-	}
 
-	tx := &domain.WalletTransaction{
-		ID:            generateID(),
-		WalletID:      wallet.ID,
-		UserID:        userID,
-		Type:          "withdrawal",
-		Status:        "pending",
-		Amount:        amount,
-		BalanceBefore: wallet.Balance,
-		BalanceAfter:  wallet.Balance, // unchanged until admin approves
-		Reference:     reference,
-		Description:   description,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
-	}
-	if err := s.repo.CreateTransaction(ctx, tx); err != nil {
-		return nil, err
-	}
-
-	// Balance is NOT deducted — admin will approve and send manually within 24h
 	if s.auditService != nil {
-		oldVal := fmt.Sprintf("%.2f", wallet.Balance)
-		newVal := "pending_withdrawal"
+		oldVal := fmt.Sprintf("balance=%.2f; reserved=%.2f", wallet.Balance, wallet.ReservedBalance-amount)
+		newVal := fmt.Sprintf("pending_withdrawal; amount=%.2f; reserved=%.2f", amount, wallet.ReservedBalance)
 		_ = s.auditService.Record(ctx, &userID, "user", "withdrawal_request", "wallet", &wallet.ID, "", &oldVal, &newVal)
 	}
 
 	if s.realtimeSvc != nil {
+		_ = s.realtimeSvc.Publish(ctx, "wallet_update", userID, "", map[string]interface{}{
+			"balance":           wallet.Balance,
+			"reserved_balance":  wallet.ReservedBalance,
+			"available_balance": wallet.AvailableBalance,
+			"currency":          wallet.Currency,
+		})
 		_ = s.realtimeSvc.Publish(ctx, "withdrawal_request", "", "admin", tx)
 		_ = s.realtimeSvc.Publish(ctx, "transaction_update", userID, "", tx)
 	}
@@ -190,8 +173,10 @@ func (s *WalletService) ApproveWithdrawal(ctx context.Context, txID, adminUserID
 
 	if s.realtimeSvc != nil {
 		_ = s.realtimeSvc.Publish(ctx, "wallet_update", tx.UserID, "", map[string]interface{}{
-			"balance":  tx.BalanceAfter,
-			"currency": wallet.Currency,
+			"balance":           wallet.Balance,
+			"reserved_balance":  wallet.ReservedBalance,
+			"available_balance": wallet.AvailableBalance,
+			"currency":          wallet.Currency,
 		})
 		_ = s.realtimeSvc.Publish(ctx, "withdrawal_status", tx.UserID, "", tx)
 		_ = s.realtimeSvc.Publish(ctx, "transaction_update", tx.UserID, "", tx)
@@ -201,7 +186,7 @@ func (s *WalletService) ApproveWithdrawal(ctx context.Context, txID, adminUserID
 }
 
 func (s *WalletService) RejectWithdrawal(ctx context.Context, txID, adminUserID string) (*domain.WalletTransaction, error) {
-	tx, err := s.repo.RejectWithdrawal(ctx, txID)
+	tx, wallet, err := s.repo.RejectWithdrawal(ctx, txID)
 	if err != nil {
 		return nil, err
 	}
@@ -213,6 +198,12 @@ func (s *WalletService) RejectWithdrawal(ctx context.Context, txID, adminUserID 
 	}
 
 	if s.realtimeSvc != nil {
+		_ = s.realtimeSvc.Publish(ctx, "wallet_update", tx.UserID, "", map[string]interface{}{
+			"balance":           wallet.Balance,
+			"reserved_balance":  wallet.ReservedBalance,
+			"available_balance": wallet.AvailableBalance,
+			"currency":          wallet.Currency,
+		})
 		_ = s.realtimeSvc.Publish(ctx, "withdrawal_status", tx.UserID, "", tx)
 		_ = s.realtimeSvc.Publish(ctx, "transaction_update", tx.UserID, "", tx)
 	}
